@@ -1,0 +1,751 @@
+{
+  "last_node_id": 49,
+  "last_link_id": 138,
+  "nodes": [
+    {
+      "id": 20,
+      "type": "PreviewImage",
+      "pos": [
+        2590,
+        -200
+      ],
+      "size": {
+        "0": 210,
+        "1": 246
+      },
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 34
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      }
+    },
+    {
+      "id": 4,
+      "type": "CheckpointLoaderSimple",
+      "pos": [
+        -100,
+        -170
+      ],
+      "size": {
+        "0": 315,
+        "1": 98
+      },
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            121
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            122
+          ],
+          "slot_index": 1
+        },
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            123
+          ],
+          "slot_index": 2
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CheckpointLoaderSimple"
+      },
+      "widgets_values": [
+        "tmndMix_tmndMixVIIBakedvae.safetensors"
+      ]
+    },
+    {
+      "id": 5,
+      "type": "EmptyLatentImage",
+      "pos": [
+        -100,
+        30
+      ],
+      "size": {
+        "0": 315,
+        "1": 106
+      },
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            124
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "EmptyLatentImage"
+      },
+      "widgets_values": [
+        512,
+        512,
+        1
+      ]
+    },
+    {
+      "id": 7,
+      "type": "CLIPTextEncode",
+      "pos": [
+        850,
+        90
+      ],
+      "size": {
+        "0": 425.27801513671875,
+        "1": 180.6060791015625
+      },
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 127
+        }
+      ],
+      "outputs": [
+        {
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "links": [
+            129
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CLIPTextEncode"
+      },
+      "widgets_values": [
+        "text, watermark"
+      ]
+    },
+    {
+      "id": 46,
+      "type": "Highway",
+      "pos": [
+        590,
+        -190
+      ],
+      "size": {
+        "0": 210,
+        "1": 102
+      },
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "_pipe_in",
+          "type": "HIGHWAY_PIPE",
+          "link": 125,
+          "orig_name": "_pipe_in"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "_pipe_out",
+          "type": "HIGHWAY_PIPE",
+          "links": [
+            130
+          ],
+          "shape": 3,
+          "orig_name": "_pipe_out",
+          "slot_index": 0
+        },
+        {
+          "name": "CLIP:-clip",
+          "type": "CLIP",
+          "links": [
+            126,
+            127
+          ],
+          "orig_name": "-clip",
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "Highway"
+      },
+      "widgets_values": [
+        "<clip",
+        null
+      ],
+      "color": "#332922",
+      "bgcolor": "#593930"
+    },
+    {
+      "id": 6,
+      "type": "CLIPTextEncode",
+      "pos": [
+        850,
+        -130
+      ],
+      "size": {
+        "0": 422.84503173828125,
+        "1": 164.31304931640625
+      },
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 126
+        }
+      ],
+      "outputs": [
+        {
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "links": [
+            128
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CLIPTextEncode"
+      },
+      "widgets_values": [
+        "beautiful scenery nature glass bottle landscape, , purple galaxy bottle,"
+      ]
+    },
+    {
+      "id": 45,
+      "type": "Highway",
+      "pos": [
+        300,
+        -190
+      ],
+      "size": {
+        "0": 210,
+        "1": 162
+      },
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "_pipe_in",
+          "type": "HIGHWAY_PIPE",
+          "link": null,
+          "orig_name": "_pipe_in"
+        },
+        {
+          "name": "+model:MODEL",
+          "type": "MODEL",
+          "link": 121,
+          "orig_name": "+model"
+        },
+        {
+          "name": "+clip:CLIP",
+          "type": "CLIP",
+          "link": 122,
+          "orig_name": "+clip"
+        },
+        {
+          "name": "+vae:VAE",
+          "type": "VAE",
+          "link": 123,
+          "orig_name": "+vae"
+        },
+        {
+          "name": "+latent:LATENT",
+          "type": "LATENT",
+          "link": 124,
+          "orig_name": "+latent"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "_pipe_out",
+          "type": "HIGHWAY_PIPE",
+          "links": [
+            125
+          ],
+          "shape": 3,
+          "orig_name": "_pipe_out",
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "Highway"
+      },
+      "widgets_values": [
+        ">model;>clip;>vae;>latent",
+        null
+      ],
+      "color": "#332922",
+      "bgcolor": "#593930"
+    },
+    {
+      "id": 47,
+      "type": "Highway",
+      "pos": [
+        1330,
+        -190
+      ],
+      "size": {
+        "0": 228.39999389648438,
+        "1": 122
+      },
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "_pipe_in",
+          "type": "HIGHWAY_PIPE",
+          "link": 130,
+          "orig_name": "_pipe_in"
+        },
+        {
+          "name": "+pos:CONDITIONING",
+          "type": "CONDITIONING",
+          "link": 128,
+          "orig_name": "+pos"
+        },
+        {
+          "name": "+neg:CONDITIONING",
+          "type": "CONDITIONING",
+          "link": 129,
+          "orig_name": "+neg"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "_pipe_out",
+          "type": "HIGHWAY_PIPE",
+          "links": [
+            131
+          ],
+          "shape": 3,
+          "orig_name": "_pipe_out",
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "Highway"
+      },
+      "widgets_values": [
+        ">pos;>neg;",
+        null
+      ],
+      "color": "#332922",
+      "bgcolor": "#593930"
+    },
+    {
+      "id": 3,
+      "type": "KSampler",
+      "pos": [
+        1900,
+        -40
+      ],
+      "size": {
+        "0": 315,
+        "1": 262
+      },
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 133
+        },
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "link": 134
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "link": 135
+        },
+        {
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": 136
+        }
+      ],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            7
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "KSampler"
+      },
+      "widgets_values": [
+        5774111018233,
+        "randomize",
+        20,
+        8,
+        "euler",
+        "normal",
+        1
+      ]
+    },
+    {
+      "id": 48,
+      "type": "Highway",
+      "pos": [
+        1620,
+        -190
+      ],
+      "size": {
+        "0": 220,
+        "1": 162
+      },
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "_pipe_in",
+          "type": "HIGHWAY_PIPE",
+          "link": 131,
+          "orig_name": "_pipe_in"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "_pipe_out",
+          "type": "HIGHWAY_PIPE",
+          "links": [
+            137
+          ],
+          "shape": 3,
+          "orig_name": "_pipe_out",
+          "slot_index": 0
+        },
+        {
+          "name": "MODEL:-model",
+          "type": "MODEL",
+          "links": [
+            133
+          ],
+          "orig_name": "-model"
+        },
+        {
+          "name": "CONDITIONING:-pos",
+          "type": "CONDITIONING",
+          "links": [
+            134
+          ],
+          "orig_name": "-pos",
+          "slot_index": 2
+        },
+        {
+          "name": "CONDITIONING:-neg",
+          "type": "CONDITIONING",
+          "links": [
+            135
+          ],
+          "orig_name": "-neg",
+          "slot_index": 3
+        },
+        {
+          "name": "LATENT:-latent",
+          "type": "LATENT",
+          "links": [
+            136
+          ],
+          "orig_name": "-latent",
+          "slot_index": 4
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "Highway"
+      },
+      "widgets_values": [
+        "<model;<pos;<neg;<latent",
+        null
+      ],
+      "color": "#332922",
+      "bgcolor": "#593930"
+    },
+    {
+      "id": 49,
+      "type": "Highway",
+      "pos": [
+        1950,
+        -300
+      ],
+      "size": {
+        "0": 210,
+        "1": 102
+      },
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "_pipe_in",
+          "type": "HIGHWAY_PIPE",
+          "link": 137,
+          "orig_name": "_pipe_in"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "_pipe_out",
+          "type": "HIGHWAY_PIPE",
+          "links": null,
+          "shape": 3,
+          "orig_name": "_pipe_out"
+        },
+        {
+          "name": "VAE:-vae",
+          "type": "VAE",
+          "links": [
+            138
+          ],
+          "orig_name": "-vae",
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "Highway"
+      },
+      "widgets_values": [
+        "<vae",
+        null
+      ],
+      "color": "#332922",
+      "bgcolor": "#593930"
+    },
+    {
+      "id": 8,
+      "type": "VAEDecode",
+      "pos": [
+        2300,
+        -200
+      ],
+      "size": {
+        "0": 210,
+        "1": 46
+      },
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 7
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 138
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            34
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAEDecode"
+      }
+    }
+  ],
+  "links": [
+    [
+      7,
+      3,
+      0,
+      8,
+      0,
+      "LATENT"
+    ],
+    [
+      34,
+      8,
+      0,
+      20,
+      0,
+      "IMAGE"
+    ],
+    [
+      121,
+      4,
+      0,
+      45,
+      1,
+      "*"
+    ],
+    [
+      122,
+      4,
+      1,
+      45,
+      2,
+      "*"
+    ],
+    [
+      123,
+      4,
+      2,
+      45,
+      3,
+      "*"
+    ],
+    [
+      124,
+      5,
+      0,
+      45,
+      4,
+      "*"
+    ],
+    [
+      125,
+      45,
+      0,
+      46,
+      0,
+      "HIGHWAY_PIPE"
+    ],
+    [
+      126,
+      46,
+      1,
+      6,
+      0,
+      "CLIP"
+    ],
+    [
+      127,
+      46,
+      1,
+      7,
+      0,
+      "CLIP"
+    ],
+    [
+      128,
+      6,
+      0,
+      47,
+      1,
+      "*"
+    ],
+    [
+      129,
+      7,
+      0,
+      47,
+      2,
+      "*"
+    ],
+    [
+      130,
+      46,
+      0,
+      47,
+      0,
+      "HIGHWAY_PIPE"
+    ],
+    [
+      131,
+      47,
+      0,
+      48,
+      0,
+      "HIGHWAY_PIPE"
+    ],
+    [
+      133,
+      48,
+      1,
+      3,
+      0,
+      "MODEL"
+    ],
+    [
+      134,
+      48,
+      2,
+      3,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      135,
+      48,
+      3,
+      3,
+      2,
+      "CONDITIONING"
+    ],
+    [
+      136,
+      48,
+      4,
+      3,
+      3,
+      "LATENT"
+    ],
+    [
+      137,
+      48,
+      0,
+      49,
+      0,
+      "HIGHWAY_PIPE"
+    ],
+    [
+      138,
+      49,
+      1,
+      8,
+      1,
+      "VAE"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {},
+  "version": 0.4
+}
