@@ -28,6 +28,9 @@ For now `Highway` node is probably stable, as long as there's no cyclic connecti
 
 Can probably have "nested Highway" but probably useless since the node have unlimited in-out pins.
 
+Note for [chrisgoringe/cg-use-everywhere](https://github.com/chrisgoringe/cg-use-everywhere) users:
+- Since inout pins are dynamic, therefore it is impossible to target `Highway` pins using `Anything Everywhere?` node, althrough the only exception is `_pipe_in` pin which is static.
+
 Demo workflow is in [assets/workflow_highway.json](https://github.com/Trung0246/ComfyUI-0246/blob/main/assets/workflow_highway.json).
 
 Special thanks to [@kijai](https://github.com/kijai/ComfyUI-KJNodes) for `ConditioningMultiCombine` node as which `Highway` node is based of.
