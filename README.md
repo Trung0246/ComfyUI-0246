@@ -26,6 +26,8 @@ For now `Highway` node is probably stable, as long as there's no cyclic connecti
   - Cyclic connection means that input and output of the same `Highway` node must not be connect, including indirect connection.
     - Else will be recursion error due to how ComfyUI execute nodes (trust me I tried).
 
+Can probably have "nested Highway" but probably useless since the node have unlimited in-out pins.
+
 Demo workflow is in [assets/workflow_highway.json](https://github.com/Trung0246/ComfyUI-0246/blob/main/assets/workflow_highway.json).
 
 Special thanks to [@kijai](https://github.com/kijai/ComfyUI-KJNodes) for `ConditioningMultiCombine` node as which `Highway` node is based of.
