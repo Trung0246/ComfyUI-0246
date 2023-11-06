@@ -13,6 +13,11 @@ Random nodes for ComfyUI I made to solve my struggle with ComfyUI. Have varying 
     <img src="https://raw.githubusercontent.com/Trung0246/ComfyUI-0246/main/assets/Screenshot%202023-11-05%20181932.png">
 </p>
 
+More complex example of what could be done (using my personal workflow as example) with extensions like `use-everywhere`:
+<p align="center">
+    <img src="https://raw.githubusercontent.com/Trung0246/ComfyUI-0246/main/assets/Screenshot%202023-11-06%20002520.png">
+</p>
+
 The query syntax goes as follow:
 
 - `>name`: input variable.
@@ -30,7 +35,7 @@ Can probably have "nested Highway" but probably useless since the node have unli
 
 Note for [chrisgoringe/cg-use-everywhere](https://github.com/chrisgoringe/cg-use-everywhere) users:
 - Since inout pins are dynamic, therefore it is impossible to target `Highway` pins using `Anything Everywhere?` node, althrough the only exception is `_pipe_in` pin which is static. But the problem is it could cause cyclic connection with the way `use-everywhere` traversal each nodes. So I guess avoid until I could find a fix for this.
-    - After further testing, looks like disabling `Anything Everywhere check loops` fixed the issue and `user-everywhere` can be used again.
+    - After further testing, looks like disabling `Anything Everywhere check loops` fixed the issue and `use-everywhere` can be used again.
 
 Demo workflow is in [assets/workflow_highway.json](https://github.com/Trung0246/ComfyUI-0246/blob/main/assets/workflow_highway.json).
 
