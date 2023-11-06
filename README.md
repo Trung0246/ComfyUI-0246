@@ -1,5 +1,5 @@
 # ComfyUI-0246
-Random nodes for ComfyUI
+Random nodes for ComfyUI I made to solve my struggle with ComfyUI. Have varying quality.
 
 # Nodes list
 
