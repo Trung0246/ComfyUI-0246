@@ -31,8 +31,6 @@ class ByPassTypeTuple(tuple):
 #####################################################################################
 
 async def parse_handler(request):
-	# return aiohttp.web.Response(text = "This is a new endpoint!")
-
 	data = await request.json()
 
 	# Validate json

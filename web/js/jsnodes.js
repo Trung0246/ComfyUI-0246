@@ -216,5 +216,3 @@ app.registerExtension({
 		}
 	},
 });
-
-// ./run_nvidia_gpu.bat
