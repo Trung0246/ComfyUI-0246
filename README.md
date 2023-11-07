@@ -68,3 +68,4 @@ Inspired by /u/GianoBifronte ideas
 ##### TODO (may or may not get implemented)
 
 - More robust test since I only test this with simple test cases.
+- Same cyclic issue with `Highway`.
