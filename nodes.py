@@ -48,8 +48,6 @@ async def parse_handler(request):
 		"error": errors
 	})
 
-# server.PromptServer.instance.app.router.add_post("/0246-parse", parse_handler)
-
 print("Added new endpoint: /0246-parse")
 
 ######################################################################################
