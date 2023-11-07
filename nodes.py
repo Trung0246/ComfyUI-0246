@@ -5,11 +5,7 @@ import sys
 
 import aiohttp.web
 
-# Hacky way to get the server instance in order to add new api endpoints
-server_path = pathlib.Path(__file__).resolve().parent.parent.parent
-sys.path.insert(0, str(server_path))
-
-server = __import__("server")
+from server import PromptServer
 
 # Some python fucky wucky
 
@@ -30,6 +26,7 @@ class ByPassTypeTuple(tuple):
 ######################################## API ########################################
 #####################################################################################
 
+@PromptServer.instance.routes.post('/0246-parse')
 async def parse_handler(request):
 	data = await request.json()
 
@@ -40,7 +37,9 @@ async def parse_handler(request):
 		})
 
 	# Parse the input string
-	expr_res, order, errors = parse_query(data["input"])
+	expr_res, order, errors = parse_query(data["input"], HIGHWAY_OPS)
+
+	highway_check(expr_res, errors)
 
 	# Return a JSON response with the processed data
 	return aiohttp.web.json_response({
@@ -49,7 +48,7 @@ async def parse_handler(request):
 		"error": errors
 	})
 
-server.PromptServer.instance.app.router.add_post("/0246-parse", parse_handler)
+# server.PromptServer.instance.app.router.add_post("/0246-parse", parse_handler)
 
 print("Added new endpoint: /0246-parse")
 
@@ -58,12 +57,14 @@ print("Added new endpoint: /0246-parse")
 ######################################################################################
 
 # Special thanks to ChatGPT for this
-def parse_query(input_string):
+HIGHWAY_OPS = {'>': 'set', '<': 'get', '!': 'eat'}
+
+def parse_query(input, ops):
 	# States
 	inside_backticks = False
 	operation = None
 	name = []
-	result = {'set': [], 'get': [], 'eat': []}
+	result = {value: [] for value in ops.values()}  # Initialize result with values from ops
 	errors = []
 	order = []  # To keep track of the order of operations
 	i = 0  # Current index in the input string
@@ -75,18 +76,18 @@ def parse_query(input_string):
 			order.append((op, name_str))
 
 	# Iterate over the input string
-	while i < len(input_string):
-		char = input_string[i]
+	while i < len(input):
+		char = input[i]
 
 		# Handle operation characters
-		if char in '><!':
+		if char in ops:
 			if inside_backticks:
 				name.append(char)
 			elif operation is not None:
 				errors.append(f"Error at char {i+1}: Multiple operation symbols")
 				break
 			else:
-				operation = {'>': 'set', '<': 'get', '!': 'eat'}[char]
+				operation = ops[char]
 
 		# Handle backticks
 		elif char == '`':
@@ -142,6 +143,10 @@ def parse_query(input_string):
 	if operation and not name and not errors:
 		errors.append(f"Error at char {i + 1}: Operation '{operation}' without a name")
 
+	# Return the result, any errors, and the order of operations
+	return (result, order, errors)
+
+def highway_check(result, errors):
 	# Check if duplicate names exist within results
 	exists = set()
 	for name in result['set']:
@@ -157,8 +162,9 @@ def parse_query(input_string):
 		else:
 			exists.add(name)
 
-	# Return the result, any errors, and the order of operations
-	return (result, order, errors)
+def check_used(_pipe_in, elem):
+	if elem[1] in _pipe_in["used"]:
+		raise Exception(f"Output \"{elem[1]}\" is already used.")
 
 class Highway:
 	@classmethod
@@ -172,6 +178,10 @@ class Highway:
 			},
 			"optional": {
 				"_pipe_in": ("HIGHWAY_PIPE", ),
+			},
+			"hidden": {
+				"_prompt": "PROMPT",
+				"_id": "UNIQUE_ID"
 			}
 		}
 
@@ -191,12 +201,15 @@ class Highway:
 			# Therefore if already exist then throw error
 				# => Cyclic detection in JS instead of python
 
-	def execute(self, _pipe_in = None, _query = "", **kwargs): # input_count,
+	def execute(self, _id = None, _prompt = None, _pipe_in = None, _query = "", **kwargs):
+		_type = _prompt[_id]["inputs"]["_type"]
+
 		if (_pipe_in is None):
 			_pipe_in = {}
 			_pipe_in["orig"] = self
 			_pipe_in["curr"] = self
 			_pipe_in["data"] = {}
+			_pipe_in["type"] = {}
 			_pipe_in["used"] = set()
 		# elif (_pipe_in["curr"]._uuid == self._uuid):
 		# 	raise Exception("Recursion error. Do not reverse the \"layering\" of the nodes.")
@@ -207,7 +220,8 @@ class Highway:
 
 		if _query != self._prev_query:
 			# If it is different, parse the new query
-			res, ord, err = parse_query(_query)
+			res, ord, err = parse_query(_query, HIGHWAY_OPS)
+			highway_check(res, err)
 			if len(err) > 0:
 				raise Exception(err)
 			
@@ -216,32 +230,20 @@ class Highway:
 			self._parsed_query = res
 			self._parsed_order = ord
 
-		# [TODO] Users are responsible at their own for doing type check for now
-			# Until then discover a way to actually type check this
-
 		# Time to let the magic play out
 
-		for raw_param in kwargs:
-			if raw_param.startswith("+"):
-				# "label" did not affect this
-				param_name = raw_param[1 : raw_param.rfind(':')]
-				_pipe_in["data"][param_name] = kwargs[raw_param]
-				if param_name in _pipe_in["used"]:
-					_pipe_in["used"].remove(param_name)
+		for param, key in zip(_type["in"], list(kwargs)):
+			name = param["name"][1:]
+			_pipe_in["data"][name] = kwargs[key]
+			_pipe_in["type"][name] = param["type"]
 
 		res = []
 
-		for elem in self._parsed_order:
-			if elem[0] == "get":
-				if elem[1] in _pipe_in["used"]:
-					raise Exception(f"Output \"{elem[1]}\" is already used.")
-				res.append(_pipe_in["data"].get(elem[1], None)) # Intentionally putting None if not found
-			elif elem[0] == "eat":
-				if elem[1] in _pipe_in["used"]:
-					raise Exception(f"Output \"{elem[1]}\" is already used.")
-				res.append(_pipe_in["data"].get(elem[1], None))
-				# [TODO] Still kind of buggy due to not able to force update so disabled for now
-				# _pipe_in["used"].add(elem[1])
+		for elem in _type["out"]:
+			if elem["name"][1:] in _pipe_in["data"] and _pipe_in["type"][elem["name"][1:]] == elem["type"]:
+				res.append(_pipe_in["data"][elem["name"][1:]])
+			else:
+				raise Exception(f"Output \"{elem['name'][1:]}\" is not defined or is not of type \"{elem['type']}\".")
 
 		return (_pipe_in, ) + tuple(res)
 
@@ -253,5 +255,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
 	"Highway": "Highway"
 }
 
-# Just in case
-sys.path.remove(str(server_path))
+# [TODO] For "eat", still kind of buggy due to not able to force update so disabled for now
+	# _pipe_in["used"].add(elem[1])
