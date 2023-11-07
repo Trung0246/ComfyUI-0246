@@ -4,6 +4,7 @@ Random nodes for ComfyUI I made to solve my struggle with ComfyUI. Have varying 
 # Nodes list
 
 - `Highway`: yet another implementation but overkill version of pipe and reroute.
+- `Junction`: over-the-head data packing and unpacking sequentially.
 
 ---
 
@@ -44,3 +45,20 @@ Special thanks to [@kijai](https://github.com/kijai/ComfyUI-KJNodes) for `Condit
 
 - Cyclic detection in JS (python probably not possible unless I figure out a way how to extract the node graph).
 - Node force update (for `!name`).
+
+---
+
+### Junction
+
+<p align="center">
+    <img src="https://raw.githubusercontent.com/Trung0246/ComfyUI-0246/main/assets/Screenshot%202023-11-07%20040534.png">
+</p>
+
+The offset syntax goes as follow:
+
+- `type,1`: `type` is the type (usually `LATENT`, `MODEL`, `VAE`, etc.) and `1` is the index being set.
+- `type,+2`: Same as above but instead of set offset, it increase the offset instead.
+- `type,-2`: Decrease offset.
+- `type1, -1; type2, +2; type3, 4`: Multiple offset.
+
+Inspired by /u/GianoBifronte ideas
