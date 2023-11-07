@@ -61,4 +61,10 @@ The offset syntax goes as follow:
 - `type,-2`: Decrease offset.
 - `type1, -1; type2, +2; type3, 4`: Multiple offset.
 
+Can automatically expand pins.
+
 Inspired by /u/GianoBifronte ideas
+
+##### TODO (may or may not get implemented)
+
+- More robust test since I only test this with simple test cases.
