@@ -63,10 +63,10 @@ The offset syntax goes as follow:
 
 Can automatically expand pins.
 
-Inspired by /u/GianoBifronte ideas
+Inspired by /u/GianoBifronte ideas.
 
 ##### TODO (may or may not get implemented)
 
 - More robust test since I only test this with simple test cases.
 - Same cyclic issue with `Highway`.
--  [`Mirror`](https://github.com/Trung0246/ComfyUI-0246/issues/4#issuecomment-1799448804), `Junction Plus`, `Merge` to merge `Highway` or `Junction` together, `Filter`, `Extract` to extract subset from `Highway` or `Junction`. `Dummy` to ignore and skip some output of `Junction` by connecting to it and do nothing else. `Probe` to debug internal data.
+-  [`Mirror`](https://github.com/Trung0246/ComfyUI-0246/issues/4#issuecomment-1799448804), `Junction Plus`, `Merge` to merge `Highway` or `Junction` together, `Filter`, `Extract` to extract subset from `Highway` or `Junction`. `Dummy` to ignore and skip some output of `Junction` by connecting to it and do nothing else. `Probe` to debug internal data. `Fork`.
