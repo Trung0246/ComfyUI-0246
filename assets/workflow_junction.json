@@ -1,0 +1,1451 @@
+{
+  "last_node_id": 172,
+  "last_link_id": 891,
+  "nodes": [
+    {
+      "id": 150,
+      "type": "EmptyLatentImage",
+      "pos": [
+        -10,
+        1180
+      ],
+      "size": {
+        "0": 315,
+        "1": 106
+      },
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            827
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "EmptyLatentImage"
+      },
+      "widgets_values": [
+        512,
+        512,
+        1
+      ]
+    },
+    {
+      "id": 152,
+      "type": "CLIPTextEncode",
+      "pos": [
+        800,
+        630
+      ],
+      "size": {
+        "0": 422.84503173828125,
+        "1": 164.31304931640625
+      },
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 829
+        }
+      ],
+      "outputs": [
+        {
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "links": [
+            869
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CLIPTextEncode"
+      },
+      "widgets_values": [
+        "beautiful scenery nature glass bottle landscape, purple galaxy bottle"
+      ]
+    },
+    {
+      "id": 153,
+      "type": "CLIPTextEncode",
+      "pos": [
+        800,
+        850
+      ],
+      "size": {
+        "0": 425.27801513671875,
+        "1": 180.6060791015625
+      },
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 830
+        }
+      ],
+      "outputs": [
+        {
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "links": [
+            870
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CLIPTextEncode"
+      },
+      "widgets_values": [
+        "text, watermark"
+      ]
+    },
+    {
+      "id": 158,
+      "type": "VAEDecode",
+      "pos": [
+        2400,
+        550
+      ],
+      "size": {
+        "0": 210,
+        "1": 46
+      },
+      "flags": {},
+      "order": 15,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 876
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 879
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            857
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAEDecode"
+      }
+    },
+    {
+      "id": 160,
+      "type": "VAEDecode",
+      "pos": [
+        2400,
+        650
+      ],
+      "size": {
+        "0": 210,
+        "1": 46
+      },
+      "flags": {},
+      "order": 16,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 877
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 880
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            858
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAEDecode"
+      }
+    },
+    {
+      "id": 162,
+      "type": "PreviewImage",
+      "pos": [
+        2800,
+        730
+      ],
+      "size": {
+        "0": 210,
+        "1": 246
+      },
+      "flags": {},
+      "order": 19,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 858
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      }
+    },
+    {
+      "id": 163,
+      "type": "PreviewImage",
+      "pos": [
+        2800,
+        1030
+      ],
+      "size": {
+        "0": 210,
+        "1": 246
+      },
+      "flags": {},
+      "order": 20,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 859
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      }
+    },
+    {
+      "id": 159,
+      "type": "PreviewImage",
+      "pos": [
+        2800,
+        430
+      ],
+      "size": {
+        "0": 210,
+        "1": 246
+      },
+      "flags": {},
+      "order": 18,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 857
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      }
+    },
+    {
+      "id": 161,
+      "type": "VAEDecode",
+      "pos": [
+        2400,
+        750
+      ],
+      "size": {
+        "0": 210,
+        "1": 46
+      },
+      "flags": {},
+      "order": 17,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 878
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 881
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            859
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAEDecode"
+      }
+    },
+    {
+      "id": 154,
+      "type": "KSampler",
+      "pos": [
+        1650,
+        640
+      ],
+      "size": {
+        "0": 315,
+        "1": 262
+      },
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 833
+        },
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "link": 834
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "link": 835
+        },
+        {
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": 836
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "link": 861,
+          "widget": {
+            "name": "seed"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            873
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "KSampler"
+      },
+      "widgets_values": [
+        141701481897343,
+        "randomize",
+        20,
+        8,
+        "euler",
+        "normal",
+        1
+      ]
+    },
+    {
+      "id": 155,
+      "type": "KSampler",
+      "pos": [
+        1650,
+        950
+      ],
+      "size": {
+        "0": 315,
+        "1": 262
+      },
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 837
+        },
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "link": 839
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "link": 841
+        },
+        {
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": 843
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "link": 862,
+          "widget": {
+            "name": "seed"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            871,
+            874
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "KSampler"
+      },
+      "widgets_values": [
+        1022607127376846,
+        "randomize",
+        20,
+        8,
+        "euler",
+        "normal",
+        1
+      ]
+    },
+    {
+      "id": 156,
+      "type": "KSampler",
+      "pos": [
+        1650,
+        1260
+      ],
+      "size": {
+        "0": 315,
+        "1": 262
+      },
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 838
+        },
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "link": 840
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "link": 842
+        },
+        {
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": 844
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "link": 863,
+          "widget": {
+            "name": "seed"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            875
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "KSampler"
+      },
+      "widgets_values": [
+        120554911891644,
+        "randomize",
+        20,
+        8,
+        "euler",
+        "normal",
+        1
+      ]
+    },
+    {
+      "id": 4,
+      "type": "CheckpointLoaderSimple",
+      "pos": [
+        -10,
+        870
+      ],
+      "size": {
+        "0": 315,
+        "1": 98
+      },
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            823
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            824
+          ],
+          "slot_index": 1
+        },
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            825
+          ],
+          "slot_index": 2
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CheckpointLoaderSimple"
+      },
+      "widgets_values": [
+        "AnythingV5Ink_ink.safetensors"
+      ]
+    },
+    {
+      "id": 134,
+      "type": "Junction",
+      "pos": [
+        490,
+        530
+      ],
+      "size": {
+        "0": 210,
+        "1": 258
+      },
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "_junc_in",
+          "type": "JUNCTION_PIPE",
+          "link": null
+        },
+        {
+          "name": "0:INT",
+          "type": "INT",
+          "link": 817
+        },
+        {
+          "name": "1:INT",
+          "type": "INT",
+          "link": 818
+        },
+        {
+          "name": "2:INT",
+          "type": "INT",
+          "link": 819
+        },
+        {
+          "name": "3:MODEL",
+          "type": "MODEL",
+          "link": 823
+        },
+        {
+          "name": "4:CLIP",
+          "type": "CLIP",
+          "link": 824
+        },
+        {
+          "name": "5:VAE",
+          "type": "VAE",
+          "link": 825
+        },
+        {
+          "name": "6:LATENT",
+          "type": "LATENT",
+          "link": 826
+        },
+        {
+          "name": "7:LATENT",
+          "type": "LATENT",
+          "link": 827
+        },
+        {
+          "name": "8:LATENT",
+          "type": "LATENT",
+          "link": 828
+        },
+        {
+          "name": "...",
+          "type": "*",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "_junc_out",
+          "type": "JUNCTION_PIPE",
+          "links": [
+            822
+          ],
+          "shape": 3,
+          "slot_index": 0
+        },
+        {
+          "name": "CLIP:0",
+          "type": "CLIP",
+          "links": [
+            829,
+            830
+          ],
+          "slot_index": 1
+        },
+        {
+          "name": "...",
+          "type": "*",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "Junction"
+      },
+      "widgets_values": [
+        ";",
+        null
+      ],
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 141,
+      "type": "Junction",
+      "pos": [
+        1310,
+        530
+      ],
+      "size": {
+        "0": 245.1999969482422,
+        "1": 258
+      },
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "_junc_in",
+          "type": "JUNCTION_PIPE",
+          "link": 822
+        },
+        {
+          "name": "0:CONDITIONING",
+          "type": "CONDITIONING",
+          "link": 869
+        },
+        {
+          "name": "1:CONDITIONING",
+          "type": "CONDITIONING",
+          "link": 870
+        },
+        {
+          "name": "...",
+          "type": "*",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "_junc_out",
+          "type": "JUNCTION_PIPE",
+          "links": [
+            882
+          ],
+          "shape": 3,
+          "slot_index": 0
+        },
+        {
+          "name": "MODEL:0",
+          "type": "MODEL",
+          "links": [
+            833,
+            837,
+            838
+          ],
+          "slot_index": 1
+        },
+        {
+          "name": "CONDITIONING:1",
+          "type": "CONDITIONING",
+          "links": [
+            834,
+            839,
+            840
+          ],
+          "slot_index": 2
+        },
+        {
+          "name": "CONDITIONING:2",
+          "type": "CONDITIONING",
+          "links": [
+            835,
+            841,
+            842
+          ],
+          "slot_index": 3
+        },
+        {
+          "name": "LATENT:3",
+          "type": "LATENT",
+          "links": [
+            836
+          ],
+          "slot_index": 4
+        },
+        {
+          "name": "LATENT:4",
+          "type": "LATENT",
+          "links": [
+            843
+          ],
+          "slot_index": 5
+        },
+        {
+          "name": "LATENT:5",
+          "type": "LATENT",
+          "links": [
+            844
+          ],
+          "slot_index": 6
+        },
+        {
+          "name": "INT:6",
+          "type": "INT",
+          "links": [
+            861
+          ],
+          "slot_index": 7
+        },
+        {
+          "name": "INT:7",
+          "type": "INT",
+          "links": [
+            862
+          ],
+          "slot_index": 8
+        },
+        {
+          "name": "INT:8",
+          "type": "INT",
+          "links": [
+            863
+          ],
+          "slot_index": 9
+        },
+        {
+          "name": "...",
+          "type": "*",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "Junction"
+      },
+      "widgets_values": [
+        ";",
+        null
+      ],
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 151,
+      "type": "EmptyLatentImage",
+      "pos": [
+        -10,
+        1340
+      ],
+      "size": {
+        "0": 315,
+        "1": 106
+      },
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            828
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "EmptyLatentImage"
+      },
+      "widgets_values": [
+        512,
+        800,
+        1
+      ]
+    },
+    {
+      "id": 5,
+      "type": "EmptyLatentImage",
+      "pos": [
+        -10,
+        1020
+      ],
+      "size": {
+        "0": 315,
+        "1": 106
+      },
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            826
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "EmptyLatentImage"
+      },
+      "widgets_values": [
+        800,
+        512,
+        1
+      ]
+    },
+    {
+      "id": 166,
+      "type": "Junction",
+      "pos": [
+        2070,
+        530
+      ],
+      "size": {
+        "0": 210,
+        "1": 158
+      },
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "_junc_in",
+          "type": "JUNCTION_PIPE",
+          "link": 882
+        },
+        {
+          "name": "0:LATENT",
+          "type": "LATENT",
+          "link": 873
+        },
+        {
+          "name": "1:LATENT",
+          "type": "LATENT",
+          "link": 874
+        },
+        {
+          "name": "2:LATENT",
+          "type": "LATENT",
+          "link": 875
+        },
+        {
+          "name": "...",
+          "type": "*",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "_junc_out",
+          "type": "JUNCTION_PIPE",
+          "links": null,
+          "shape": 3
+        },
+        {
+          "name": "LATENT:0",
+          "type": "LATENT",
+          "links": [
+            876
+          ],
+          "slot_index": 1
+        },
+        {
+          "name": "LATENT:1",
+          "type": "LATENT",
+          "links": [
+            877
+          ],
+          "slot_index": 2
+        },
+        {
+          "name": "LATENT:2",
+          "type": "LATENT",
+          "links": [
+            878
+          ],
+          "slot_index": 3
+        },
+        {
+          "name": "VAE:3",
+          "type": "VAE",
+          "links": [
+            879,
+            880,
+            881
+          ],
+          "slot_index": 4
+        },
+        {
+          "name": "...",
+          "type": "*",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "Junction"
+      },
+      "widgets_values": [
+        "LATENT,3;",
+        null
+      ],
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 124,
+      "type": "Seed (rgthree)",
+      "pos": [
+        100,
+        510
+      ],
+      "size": {
+        "0": 210,
+        "1": 130
+      },
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "outputs": [
+        {
+          "name": "SEED",
+          "type": "INT",
+          "links": [
+            770,
+            819
+          ],
+          "shape": 3,
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "Seed (rgthree)"
+      },
+      "widgets_values": [
+        997721674573342,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "id": 126,
+      "type": "Seed (rgthree)",
+      "pos": [
+        100,
+        330
+      ],
+      "size": {
+        "0": 210,
+        "1": 130
+      },
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "outputs": [
+        {
+          "name": "SEED",
+          "type": "INT",
+          "links": [
+            772,
+            817
+          ],
+          "shape": 3,
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "Seed (rgthree)"
+      },
+      "widgets_values": [
+        780159715176761,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "id": 125,
+      "type": "Seed (rgthree)",
+      "pos": [
+        100,
+        690
+      ],
+      "size": {
+        "0": 210,
+        "1": 130
+      },
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "outputs": [
+        {
+          "name": "SEED",
+          "type": "INT",
+          "links": [
+            771,
+            818
+          ],
+          "shape": 3,
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "Seed (rgthree)"
+      },
+      "widgets_values": [
+        194333301345543,
+        null,
+        null,
+        null
+      ]
+    }
+  ],
+  "links": [
+    [
+      770,
+      124,
+      0,
+      134,
+      1,
+      "*"
+    ],
+    [
+      771,
+      125,
+      0,
+      134,
+      2,
+      "*"
+    ],
+    [
+      772,
+      126,
+      0,
+      134,
+      3,
+      "*"
+    ],
+    [
+      817,
+      126,
+      0,
+      134,
+      1,
+      "INT"
+    ],
+    [
+      818,
+      125,
+      0,
+      134,
+      2,
+      "INT"
+    ],
+    [
+      819,
+      124,
+      0,
+      134,
+      3,
+      "*"
+    ],
+    [
+      822,
+      134,
+      0,
+      141,
+      0,
+      "JUNCTION_PIPE"
+    ],
+    [
+      823,
+      4,
+      0,
+      134,
+      4,
+      "*"
+    ],
+    [
+      824,
+      4,
+      1,
+      134,
+      5,
+      "*"
+    ],
+    [
+      825,
+      4,
+      2,
+      134,
+      6,
+      "*"
+    ],
+    [
+      826,
+      5,
+      0,
+      134,
+      7,
+      "*"
+    ],
+    [
+      827,
+      150,
+      0,
+      134,
+      8,
+      "*"
+    ],
+    [
+      828,
+      151,
+      0,
+      134,
+      9,
+      "*"
+    ],
+    [
+      829,
+      134,
+      1,
+      152,
+      0,
+      "CLIP"
+    ],
+    [
+      830,
+      134,
+      1,
+      153,
+      0,
+      "CLIP"
+    ],
+    [
+      833,
+      141,
+      1,
+      154,
+      0,
+      "MODEL"
+    ],
+    [
+      834,
+      141,
+      2,
+      154,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      835,
+      141,
+      3,
+      154,
+      2,
+      "CONDITIONING"
+    ],
+    [
+      836,
+      141,
+      4,
+      154,
+      3,
+      "LATENT"
+    ],
+    [
+      837,
+      141,
+      1,
+      155,
+      0,
+      "MODEL"
+    ],
+    [
+      838,
+      141,
+      1,
+      156,
+      0,
+      "MODEL"
+    ],
+    [
+      839,
+      141,
+      2,
+      155,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      840,
+      141,
+      2,
+      156,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      841,
+      141,
+      3,
+      155,
+      2,
+      "CONDITIONING"
+    ],
+    [
+      842,
+      141,
+      3,
+      156,
+      2,
+      "CONDITIONING"
+    ],
+    [
+      843,
+      141,
+      5,
+      155,
+      3,
+      "LATENT"
+    ],
+    [
+      844,
+      141,
+      6,
+      156,
+      3,
+      "LATENT"
+    ],
+    [
+      857,
+      158,
+      0,
+      159,
+      0,
+      "IMAGE"
+    ],
+    [
+      858,
+      160,
+      0,
+      162,
+      0,
+      "IMAGE"
+    ],
+    [
+      859,
+      161,
+      0,
+      163,
+      0,
+      "IMAGE"
+    ],
+    [
+      861,
+      141,
+      7,
+      154,
+      4,
+      "INT"
+    ],
+    [
+      862,
+      141,
+      8,
+      155,
+      4,
+      "INT"
+    ],
+    [
+      863,
+      141,
+      9,
+      156,
+      4,
+      "INT"
+    ],
+    [
+      869,
+      152,
+      0,
+      141,
+      1,
+      "*"
+    ],
+    [
+      870,
+      153,
+      0,
+      141,
+      2,
+      "*"
+    ],
+    [
+      871,
+      155,
+      0,
+      157,
+      1,
+      "LATENT"
+    ],
+    [
+      873,
+      154,
+      0,
+      166,
+      1,
+      "*"
+    ],
+    [
+      874,
+      155,
+      0,
+      166,
+      2,
+      "*"
+    ],
+    [
+      875,
+      156,
+      0,
+      166,
+      3,
+      "*"
+    ],
+    [
+      876,
+      166,
+      1,
+      158,
+      0,
+      "LATENT"
+    ],
+    [
+      877,
+      166,
+      2,
+      160,
+      0,
+      "LATENT"
+    ],
+    [
+      878,
+      166,
+      3,
+      161,
+      0,
+      "LATENT"
+    ],
+    [
+      879,
+      166,
+      4,
+      158,
+      1,
+      "VAE"
+    ],
+    [
+      880,
+      166,
+      4,
+      160,
+      1,
+      "VAE"
+    ],
+    [
+      881,
+      166,
+      4,
+      161,
+      1,
+      "VAE"
+    ],
+    [
+      882,
+      141,
+      0,
+      166,
+      0,
+      "JUNCTION_PIPE"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {},
+  "version": 0.4
+}
