@@ -69,4 +69,4 @@ Inspired by /u/GianoBifronte ideas
 
 - More robust test since I only test this with simple test cases.
 - Same cyclic issue with `Highway`.
--  [`Mirror`](https://github.com/Trung0246/ComfyUI-0246/issues/4#issuecomment-1799448804), `Junction Plus`, `Merge` to merge `Highway` or `Junction` together.
+-  [`Mirror`](https://github.com/Trung0246/ComfyUI-0246/issues/4#issuecomment-1799448804), `Junction Plus`, `Merge` to merge `Highway` or `Junction` together, `Filter`.
