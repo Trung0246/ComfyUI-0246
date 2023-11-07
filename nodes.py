@@ -189,11 +189,6 @@ class Highway:
 	FUNCTION = "execute"
 	CATEGORY = "0246"
 
-	def __init__(self):
-		self._prev_query = None
-		self._parsed_query = None
-		self._uuid = uuid.uuid4()
-
 	# [TODO] Potential recursion error when attempting to hook the inout in not a very specific way
 		# => May have to keep a unique identifier for each class and each node instance
 			# Therefore if already exist then throw error
@@ -209,24 +204,8 @@ class Highway:
 			_pipe_in["data"] = {}
 			_pipe_in["type"] = {}
 			_pipe_in["used"] = set()
-		# elif (_pipe_in["curr"]._uuid == self._uuid):
-		# 	raise Exception("Recursion error. Do not reverse the \"layering\" of the nodes.")
 		else:
 			_pipe_in["curr"] = self
-
-		# Caching the parsed result if the query is the same as the previous one
-
-		if _query != self._prev_query:
-			# If it is different, parse the new query
-			res, ord, err = parse_query(_query, HIGHWAY_OPS)
-			highway_check(res, err)
-			if len(err) > 0:
-				raise Exception(err)
-			
-			# Update the cache with the new query and the parsed result
-			self._prev_query = _query
-			self._parsed_query = res
-			self._parsed_order = ord
 
 		# Time to let the magic play out
 
@@ -238,20 +217,206 @@ class Highway:
 		res = []
 
 		for elem in _type["out"]:
-			if elem["name"][1:] in _pipe_in["data"] and _pipe_in["type"][elem["name"][1:]] == elem["type"]:
-				res.append(_pipe_in["data"][elem["name"][1:]])
+			name = elem["name"][1:]
+			if name in _pipe_in["data"] and _pipe_in["type"][name] == elem["type"]:
+				res.append(_pipe_in["data"][name])
 			else:
-				raise Exception(f"Output \"{elem['name'][1:]}\" is not defined or is not of type \"{elem['type']}\".")
+				raise Exception(f"Output \"{name}\" is not defined or is not of type \"{elem['type']}\". Expected \"{_pipe_in['type'][name]}\".")
 
 		return (_pipe_in, ) + tuple(res)
 
+def parse_offset(input):
+	# Split the string by semicolons
+	segments = input.split(';')
+	
+	# Initialize an empty list to store the parsed data
+	parsed_data = []
+	
+	# Iterate over each segment
+	for segment in segments:
+		# Trim whitespace and check if the segment is not empty
+		segment = segment.strip()
+		if segment:
+			# Split the segment by comma
+			parts = segment.split(',')
+			
+			# Check if there are exactly two parts after splitting by comma
+			if len(parts) != 2:
+				return (None, f"Segment '{segment}' is invalid: expected a pair separated by a single comma.")
+			
+			# Trim whitespace from the string part
+			string_part = parts[0].strip()
+			
+			# Ensure the string part is not empty
+			if not string_part:
+				return (None, f"Segment '{segment}' is invalid: string part is empty.")
+			
+			# Concatenate the number part to remove spaces and keep the operator
+			number_part = ''.join(parts[1].split())
+			try:
+				# Check for multiple operators or incorrect placement
+				if number_part.count('+') + number_part.count('-') > 1 or not number_part.lstrip('+-').isdigit():
+					return (None, f"Segment '{segment}' is invalid: number part has multiple operators or incorrect placement.")
+
+				# Check if the substring is an integer
+				int(number_part.lstrip('+-'))
+			except ValueError:
+				return (None, f"Segment '{segment}' is invalid: number part is not an integer.")
+			
+			# Add the tuple to the list
+			parsed_data.append((string_part, number_part))
+	
+	return (parsed_data, None)
+
+######################################################################################
+
+class Junction:
+	@classmethod
+	def INPUT_TYPES(s):
+		return {
+			"required": {
+				"_offset": ("STRING", {
+					"default": ";;;",
+					"multiline": False
+				}),
+			},
+			"optional": {
+				"_junc_in": ("JUNCTION_PIPE", ),
+			},
+			"hidden": {
+				"_prompt": "PROMPT",
+				"_id": "UNIQUE_ID"
+			}
+		}
+	
+	RETURN_TYPES = ByPassTypeTuple(("JUNCTION_PIPE", ))
+	RETURN_NAMES = ByPassTypeTuple(("_junc_out", ))
+	FUNCTION = "execute"
+	CATEGORY = "0246"
+
+	def __init__(self):
+		self._prev_offset = None
+		self._parsed_offset = None
+
+	def execute(self, _id = None, _prompt = None, _junc_in = None, _offset = "", **kwargs):
+		_type = _prompt[_id]["inputs"]["_type"]
+
+
+		if _junc_in is None:
+			_junc_in = {}
+			_junc_in["orig"] = self
+			_junc_in["curr"] = self
+			_junc_in["data"] = {}
+			_junc_in["index"] = {}
+
+		# Pack all data from _junc_in and kwargs together
+
+		for param, key in zip(_type["in"], list(kwargs)):
+			if param["type"] not in _junc_in["data"]:
+				_junc_in["data"][param["type"]] = []
+				_junc_in["index"][param["type"]] = 0
+			_junc_in["data"][param["type"]].append(kwargs[key])
+
+		# Parse the offset string
+
+		if _offset != self._prev_offset:
+			parsed_offset, err = parse_offset(_offset)
+			if err:
+				raise Exception(err)
+			self._prev_offset = _offset
+			self._parsed_offset = parsed_offset
+
+		# Apply the offset to the junction input
+
+		if self._parsed_offset is None:
+			raise Exception("Offset is not parsed.")
+		
+		for elem in self._parsed_offset:
+			if elem[0] not in _junc_in["data"]:
+				raise Exception(f"Type \"{elem[0]}\" in offset string does not available in junction.")
+			
+			total = len(_junc_in["data"][elem[0]])
+
+			# Check for ops char
+			if elem[1][0] == '+':
+				_junc_in["index"][elem[0]] += int(elem[1][1:])
+				if _junc_in["index"][elem[0]] >= total:
+					raise Exception(f"Offset \"{elem[1]}\" is too large (count: \"{total}\").")
+			elif elem[1][0] == '-':
+				_junc_in["index"][elem[0]] -= int(elem[1][1:])
+				if _junc_in["index"][elem[0]] < 0:
+					raise Exception(f"Offset \"{elem[1]}\" is too small (count: \"{total}\").")
+			else:
+				_junc_in["index"][elem[0]] = int(elem[1])
+				if _junc_in["index"][elem[0]] >= total:
+					raise Exception(f"Offset \"{elem[1]}\" is too large (count: \"{total}\").")
+				elif _junc_in["index"][elem[0]] < 0:
+					raise Exception(f"Offset \"{elem[1]}\" is too small (count: \"{total}\").")
+
+		res = []
+		track = {}
+
+		for key in _junc_in["data"]:
+			track[key] = 0
+
+		for elem in _type["out"]:
+			if elem["full_name"] == "..." or elem["full_name"][0] == "_":
+				continue
+
+			if elem["type"] not in _junc_in["data"]:
+				raise Exception(f"Type \"{elem['type']}\" of output \"{elem['full_name']}\" does not available in junction.")
+			
+			offset = _junc_in["index"][elem["type"]]
+			real_index = track[elem["type"]] + offset
+			total = len(_junc_in["data"][elem["type"]])
+
+			if real_index >= total:
+				raise Exception(f"Too much type \"{elem['type']}\" being taken or offset \"{offset}\" is too large (count: \"{total}\").")
+			
+			res.append(_junc_in["data"][elem["type"]][real_index])
+			track[elem["type"]] += 1
+		
+		return (_junc_in, ) + tuple(res)
+
+######################################################################################
+
+# [TODO] Add new nodes to allows reading internal data
+
 NODE_CLASS_MAPPINGS = {
-	"Highway": Highway
+	"Highway": Highway,
+	"Junction": Junction
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-	"Highway": "Highway"
+	"Highway": "Highway",
+	"Junction": "Junction"
 }
+
+######################################################################################
+
+# Trash that may be used later, don't mind me :)
+
+# def __init__(self):
+	# self._prev_query = None
+	# self._parsed_query = None
+	# self._uuid = uuid.uuid4()
 
 # [TODO] For "eat", still kind of buggy due to not able to force update so disabled for now
 	# _pipe_in["used"].add(elem[1])
+
+# elif (_pipe_in["curr"]._uuid == self._uuid):
+# 	raise Exception("Recursion error. Do not reverse the \"layering\" of the nodes.")
+
+# Caching the parsed result if the query is the same as the previous one
+
+# if _query != self._prev_query:
+# 	# If it is different, parse the new query
+# 	res, ord, err = parse_query(_query, HIGHWAY_OPS)
+# 	highway_check(res, err)
+# 	if len(err) > 0:
+# 		raise Exception(err)
+	
+# 	# Update the cache with the new query and the parsed result
+# 	self._prev_query = _query
+# 	self._parsed_query = res
+# 	self._parsed_order = ord

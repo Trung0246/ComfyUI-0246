@@ -6,52 +6,127 @@ function error_popup(msg) {
 	dialog.show(`<p>${msg}</p>`);
 }
 
+function init_type(node) {
+	node.addCustomWidget({
+		name: "_type",
+		computeSize: () => [0, -4],
+		async serializeValue (node, index_str) {
+			return serialize_type(node);
+		}
+	});
+}
+
+function serialize_type(node) {
+	let data = {
+		in: [],
+		out: []
+	}
+	for (let i = 0; i < node.inputs.length; ++ i) {
+		if (node.inputs[i].name[0] === "_")
+			continue;
+		data.in.push({
+			name: node.inputs[i].orig_name,
+			full_name: node.inputs[i].name,
+			type: node.inputs[i].type,
+		});
+	}
+	for (let i = 0; i < node.outputs.length; ++ i) {
+		if (node.outputs[i].name[0] === "_")
+			continue;
+		data.out.push({
+			name: node.outputs[i].orig_name,
+			full_name: node.outputs[i].name,
+			type: node.outputs[i].type,
+		});
+	}
+	return data;
+}
+
+function connection_handle(node, type, index, connected, link_info, exclude_type, name_callback) {
+	if (link_info instanceof Object) {
+		switch (type) {
+			case 1: {
+				// Input
+				// link_info.target_slot from 1 forward
+				const pin_obj = node.inputs[link_info.target_slot];
+				if (connected) {
+					const link = app.graph.links[link_info.id];
+					const data_type = app.graph.getNodeById(link.origin_id).outputs[link.origin_slot]?.type ?? "*";
+
+					if (data_type === exclude_type && link_info.target_slot === 0)
+						return
+
+					if (pin_obj.type === "*") {
+						pin_obj.type = data_type;
+						name_callback?.(pin_obj, data_type, false);
+					}
+
+					link.color = LGraphCanvas.link_type_colors[data_type];
+				} else {
+					if (pin_obj.type === exclude_type && link_info.target_slot === 0)
+						return
+
+					pin_obj.type = "*";
+					name_callback?.(pin_obj, "*", false);
+				}
+				node.size = node.computeSize();
+			} break;
+			case 2: {
+				// Output
+				// link_info.origin_slot from 1 forward
+				const pin_obj = node.outputs[link_info.origin_slot];
+				if (connected) {
+					const link = app.graph.links[link_info.id];
+					const data_type = app.graph.getNodeById(link.target_id).inputs[link.target_slot]?.type ?? "*";
+
+					if (data_type === exclude_type && link_info.origin_slot === 0)
+						return
+
+					if (pin_obj.type === "*") {
+						pin_obj.type = data_type;
+						name_callback?.(pin_obj, data_type, true);
+					}
+				} else {
+					if (pin_obj.type === exclude_type && link_info.origin_slot === 0)
+						return
+					
+					if (pin_obj.links.length === 0) {
+						pin_obj.type = "*";
+						name_callback?.(pin_obj, "*", true);
+					}
+				}
+				node.size = node.computeSize();
+			} break;
+			default: {
+				throw new Error("Unsuported type: " + type);
+			}
+		}
+	}
+}
+
 app.registerExtension({
 	name: "0246.Node",
 	nodeCreated(node) {
 		switch (node.getTitle()) {
-			case "Highway":
+			case "Highway": {
 				node.color = LGraphCanvas.node_colors.brown.color;
 				node.bgcolor = LGraphCanvas.node_colors.brown.bgcolor;
-				break;
+			} break;
+			case "Junction": {
+				node.color = LGraphCanvas.node_colors.blue.color;
+				node.bgcolor = LGraphCanvas.node_colors.blue.bgcolor;
+			} break;
 		}
 	},
 	async beforeRegisterNodeDef (nodeType, nodeData, app) {
 		switch (nodeData.name) {
-			case "Highway":
-				nodeType.prototype.onNodeMoved = function () {
-					console.log(this.pos[0]);
-				}
+			case "Highway": {
+				nodeType.prototype.onNodeMoved = function () {};
+
 				nodeType.prototype.onNodeCreated = function () {
 					let last_query = "";
 
-					this.addCustomWidget({
-						name: "_type",
-						computeSize: () => [0, -4],
-						async serializeValue (node, index_str) {
-							let data = {
-								in: [],
-								out: []
-							}
-							for (let i = 0; i < node.inputs.length; ++ i) {
-								if (node.inputs[i].name[0] === "_")
-									continue;
-								data.in.push({
-									name: node.inputs[i].orig_name,
-									type: node.inputs[i].type,
-								});
-							}
-							for (let i = 0; i < node.outputs.length; ++ i) {
-								if (node.outputs[i].name[0] === "_")
-									continue;
-								data.out.push({
-									name: node.outputs[i].orig_name,
-									type: node.outputs[i].type,
-								});
-							}
-							return data;
-						}
-					});
+					init_type(this);
 
 					this.addWidget("button", "Update", null, () => {
 						const query = this.widgets.find(w => w.name === "_query");
@@ -164,68 +239,148 @@ app.registerExtension({
 					});
 
 					this.onConnectionsChange = function (type, index, connected, link_info) {
-						scope: {
-							if (link_info instanceof Object) {
-								switch (type) {
-									case 1: {
-										// Input
-										// link_info.target_slot from 1 forward
-										if (connected) {
-											const link = app.graph.links[link_info.id];
-											const data_type = app.graph.getNodeById(link.origin_id).outputs[link.origin_slot]?.type ?? "*";
+						connection_handle(this, type, index, connected, link_info, "HIGHWAY_PIPE", (pin_obj, data_type, is_output) => {
+							if (is_output) {
+								if (data_type === "*")
+									pin_obj.name = pin_obj.orig_name;
+								else
+									pin_obj.name = `${data_type}:${pin_obj.orig_name}`;
+							} else {
+								if (data_type === "*")
+									pin_obj.name = pin_obj.orig_name;
+								else
+									pin_obj.name += `:${data_type}`;
+							}
+						});
+					};
+				};
+			} break;
+			case "Junction": {
+				nodeType.prototype.onNodeMoved = function () {};
 
-											if (data_type === "HIGHWAY_PIPE" && link_info.target_slot === 0)
-												break scope;
+				nodeType.prototype.onNodeCreated = function () {
+					init_type(this);
 
-											if (this.inputs[link_info.target_slot].type === "*") {
-												this.inputs[link_info.target_slot].type = data_type;
-												this.inputs[link_info.target_slot].name += `:${data_type}`;
-											}
+					this.addInput("...", "*");
+					this.addOutput("...", "*");
 
-											link.color = LGraphCanvas.link_type_colors[data_type];
-										} else {
-											if (this.inputs[link_info.target_slot].type === "HIGHWAY_PIPE" && link_info.target_slot === 0)
-												break scope;
+					this.onConnectionsChange = function (type, index, connected, link_info) {
+						if (link_info === null) {
+							// Clean input/output
+							for (let i = 1; i < this.inputs.length - 1; ++ i)
+								this.inputs.splice(i, 1);
+							for (let i = 1; i < this.outputs.length - 1; ++ i)
+								this.outputs.splice(i, 1);
+							return;
+						}
 
-											this.inputs[link_info.target_slot].type = "*";
-											this.inputs[link_info.target_slot].name = this.inputs[link_info.target_slot].orig_name; // this.inputs[link_info.target_slot].name.split(":")[0];
+						connection_handle(this, type, index, connected, link_info, "JUNCTION_PIPE", (pin_obj, data_type, is_output) => {
+							if (is_output) {
+								if (data_type === "*") {
+									if (pin_obj.links.length === 0) {
+										pin_obj.name = String(link_info.origin_slot - 1);
+										
+										// Check for closest empty output
+										let res_index = 1;
+										scope: {
+											for (; res_index < this.outputs.length; ++ res_index)
+												if (this.outputs[res_index].links.length === 0)
+													break scope;
+											this.removeOutput(this.outputs.length - 1);
+											return;
 										}
-										this.size = this.computeSize();
-									} break;
-									case 2: {
-										// Output
-										// link_info.origin_slot from 1 forward
-										if (connected) {
-											const link = app.graph.links[link_info.id];
-											const data_type = app.graph.getNodeById(link.target_id).inputs[link.target_slot]?.type ?? "*";
+										
+										// Disconnect event handler
+										const old_func = this.onConnectionsChange;
+										this.onConnectionsChange = null;
 
-											if (data_type === "HIGHWAY_PIPE" && link_info.origin_slot === 0)
-												break scope;
+										// Shift up all links
+										for (; res_index < this.outputs.length - 2; ++ res_index) {
+											let old_length = this.outputs[res_index + 1].links.length,
+												last_pin = this.outputs[res_index];
 
-											if (this.outputs[link_info.origin_slot].type === "*") {
-												this.outputs[link_info.origin_slot].type = data_type;
-												this.outputs[link_info.origin_slot].name = `${data_type}:${this.outputs[link_info.origin_slot].name}`;
-											}
-										} else {
-											if (this.outputs[link_info.origin_slot].type === "HIGHWAY_PIPE" && link_info.origin_slot === 0)
-												break scope;
-											
-											if (this.outputs[link_info.origin_slot].links.length === 0) {
-												this.outputs[link_info.origin_slot].type = "*";
-												this.outputs[link_info.origin_slot].name = this.outputs[link_info.origin_slot].orig_name; //this.outputs[link_info.origin_slot].name.split(":")[1];
+											last_pin.name = `${this.outputs[res_index + 1].type}:${res_index - 1}`;
+											last_pin.type = this.outputs[res_index + 1].type;
+
+											for (let j = 0; j < old_length; ++ j) {
+												const link = app.graph.links[this.outputs[res_index + 1].links[0]];
+
+												app.graph.getNodeById(link.target_id).disconnectInput(link.target_slot);
+
+												this.connect(
+													res_index,
+													link.target_id,
+													link.target_slot
+												);
 											}
 										}
-										this.size = this.computeSize();
-									} break;
-									default: {
-										throw new Error("Unsuported type: " + type);
+										
+										// Revert things back
+										this.onConnectionsChange = old_func;
+
+										this.removeOutput(this.outputs.length - 1);
+
+										let last_pin = this.outputs[this.outputs.length - 1];
+										last_pin.name = "..."; // String(this.outputs.length - 2);
+										last_pin.type = "*";
 									}
+								} else {
+									pin_obj.name = `${data_type}:${link_info.origin_slot - 1}`;
+									this.addOutput("...", "*");
+								}
+							} else {
+								if (data_type === "*") {
+									pin_obj.name = String(link_info.origin_slot - 1);
+									
+									// Check for closest empty output
+									let res_index = 1;
+									scope: {
+										for (; res_index < this.inputs.length; ++ res_index)
+											if (!this.inputs[res_index].link)
+												break scope;
+										this.removeOutput(this.inputs.length - 1);
+										return;
+									}
+
+									// Disconnect event handler
+									const old_func = this.onConnectionsChange;
+									this.onConnectionsChange = null;
+
+									// Shift up all links
+									for (; res_index < this.inputs.length - 2; ++ res_index) {
+										let last_pin = this.inputs[res_index];
+
+										last_pin.name = `${res_index - 1}:${this.inputs[res_index + 1].type}`;
+										last_pin.type = this.inputs[res_index + 1].type;
+
+										const link = app.graph.links[this.inputs[res_index + 1].link];
+
+										this.disconnectInput(link.target_slot);
+
+										app.graph.getNodeById(link.origin_id).connect(
+											link.origin_slot,
+											this,
+											res_index
+										);
+									}
+
+									// Revert things back
+									this.onConnectionsChange = old_func;
+
+									this.removeInput(this.inputs.length - 1);
+
+									let last_pin = this.inputs[this.inputs.length - 1];
+									last_pin.name = "..."; // String(this.inputs.length - 2);
+									last_pin.type = "*";
+								} else {
+									pin_obj.name = `${link_info.target_slot - 1}:${data_type}`;
+									this.addInput("...", "*");
 								}
 							}
-						}
+						});
 					};
-				}
-				break;
+				};
+			} break;
 		}
 	},
 });
