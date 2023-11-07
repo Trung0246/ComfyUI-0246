@@ -199,7 +199,7 @@ app.registerExtension({
 											const link = app.graph.links[link_info.id];
 											const data_type = app.graph.getNodeById(link.target_id).inputs[link.target_slot]?.type ?? "*";
 
-											if (data_type === "HIGHWAY_PIPE")
+											if (data_type === "HIGHWAY_PIPE" && link_info.origin_slot === 0)
 												break scope;
 
 											if (this.outputs[link_info.origin_slot].type === "*") {
@@ -207,7 +207,7 @@ app.registerExtension({
 												this.outputs[link_info.origin_slot].name = `${data_type}:${this.outputs[link_info.origin_slot].name}`;
 											}
 										} else {
-											if (this.outputs[link_info.origin_slot].type === "HIGHWAY_PIPE")
+											if (this.outputs[link_info.origin_slot].type === "HIGHWAY_PIPE" && link_info.origin_slot === 0)
 												break scope;
 											
 											if (this.outputs[link_info.origin_slot].links.length === 0) {
