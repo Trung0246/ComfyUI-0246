@@ -174,7 +174,7 @@ app.registerExtension({
 											const link = app.graph.links[link_info.id];
 											const data_type = app.graph.getNodeById(link.origin_id).outputs[link.origin_slot]?.type ?? "*";
 
-											if (data_type === "HIGHWAY_PIPE" || this.inputs[link_info.target_slot].name[0] === "_")
+											if (data_type === "HIGHWAY_PIPE" && link_info.target_slot === 0)
 												break scope;
 
 											if (this.inputs[link_info.target_slot].type === "*") {
@@ -184,7 +184,7 @@ app.registerExtension({
 
 											link.color = LGraphCanvas.link_type_colors[data_type];
 										} else {
-											if (this.inputs[link_info.target_slot].type === "HIGHWAY_PIPE" || this.inputs[link_info.target_slot].name[0] === "_")
+											if (this.inputs[link_info.target_slot].type === "HIGHWAY_PIPE" && link_info.target_slot === 0)
 												break scope;
 
 											this.inputs[link_info.target_slot].type = "*";
@@ -199,7 +199,7 @@ app.registerExtension({
 											const link = app.graph.links[link_info.id];
 											const data_type = app.graph.getNodeById(link.target_id).inputs[link.target_slot]?.type ?? "*";
 
-											if (data_type === "HIGHWAY_PIPE" && this.outputs[link_info.origin_slot].name[0] === "_")
+											if (data_type === "HIGHWAY_PIPE")
 												break scope;
 
 											if (this.outputs[link_info.origin_slot].type === "*") {
