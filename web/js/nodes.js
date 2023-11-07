@@ -199,7 +199,7 @@ app.registerExtension({
 											const link = app.graph.links[link_info.id];
 											const data_type = app.graph.getNodeById(link.target_id).inputs[link.target_slot]?.type ?? "*";
 
-											if (data_type === "HIGHWAY_PIPE")
+											if (data_type === "HIGHWAY_PIPE" && this.outputs[link_info.origin_slot].name[0] === "_")
 												break scope;
 
 											if (this.outputs[link_info.origin_slot].type === "*") {
