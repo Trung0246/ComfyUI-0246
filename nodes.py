@@ -48,8 +48,6 @@ async def parse_handler(request):
 		"error": errors
 	})
 
-# server.PromptServer.instance.app.router.add_post("/0246-parse", parse_handler)
-
 print("Added new endpoint: /0246-parse")
 
 ######################################################################################
@@ -162,8 +160,8 @@ def highway_check(result, errors):
 		else:
 			exists.add(name)
 
-def check_used(_pipe_in, elem):
-	if elem[1] in _pipe_in["used"]:
+def check_used(_way_in, elem):
+	if elem[1] in _way_in["used"]:
 		raise Exception(f"Output \"{elem[1]}\" is already used.")
 
 class Highway:
@@ -177,7 +175,7 @@ class Highway:
 				}),
 			},
 			"optional": {
-				"_pipe_in": ("HIGHWAY_PIPE", ),
+				"_way_in": ("HIGHWAY_PIPE", ),
 			},
 			"hidden": {
 				"_prompt": "PROMPT",
@@ -187,83 +185,239 @@ class Highway:
 
 	# Amogus moment ඞ
 	RETURN_TYPES = ByPassTypeTuple(("HIGHWAY_PIPE", ))
-	RETURN_NAMES = ByPassTypeTuple(("_pipe_out", ))
+	RETURN_NAMES = ByPassTypeTuple(("_way_out", ))
 	FUNCTION = "execute"
 	CATEGORY = "0246"
-
-	def __init__(self):
-		self._prev_query = None
-		self._parsed_query = None
-		self._uuid = uuid.uuid4()
 
 	# [TODO] Potential recursion error when attempting to hook the inout in not a very specific way
 		# => May have to keep a unique identifier for each class and each node instance
 			# Therefore if already exist then throw error
 				# => Cyclic detection in JS instead of python
 
-	def execute(self, _id = None, _prompt = None, _pipe_in = None, _query = "", **kwargs): # input_count,
-		# raise Exception("Yep.")
-		# print(kwargs.keys())
-		print(_prompt[_id])
-		if (_pipe_in is None):
-			_pipe_in = {}
-			_pipe_in["orig"] = self
-			_pipe_in["curr"] = self
-			_pipe_in["data"] = {}
-			_pipe_in["used"] = set()
-		# elif (_pipe_in["curr"]._uuid == self._uuid):
-		# 	raise Exception("Recursion error. Do not reverse the \"layering\" of the nodes.")
+	def execute(self, _id = None, _prompt = None, _way_in = None, _query = "", **kwargs):
+		_type = _prompt[_id]["inputs"]["_type"]
+
+		if (_way_in is None):
+			_way_in = {}
+			_way_in["orig"] = self
+			_way_in["curr"] = self
+			_way_in["data"] = {}
+			_way_in["type"] = {}
+			_way_in["used"] = set()
 		else:
-			_pipe_in["curr"] = self
-
-		# Caching the parsed result if the query is the same as the previous one
-
-		if _query != self._prev_query:
-			# If it is different, parse the new query
-			res, ord, err = parse_query(_query, HIGHWAY_OPS)
-			highway_check(res, err)
-			if len(err) > 0:
-				raise Exception(err)
-			
-			# Update the cache with the new query and the parsed result
-			self._prev_query = _query
-			self._parsed_query = res
-			self._parsed_order = ord
-
-		# [TODO] Users are responsible at their own for doing type check for now
-			# Until then discover a way to actually type check this
+			_way_in["curr"] = self
 
 		# Time to let the magic play out
 
-		for raw_param in kwargs:
-			if raw_param.startswith("+"):
-				# "label" did not affect this
-				param_name = raw_param[1 : raw_param.rfind(':')]
-				_pipe_in["data"][param_name] = kwargs[raw_param]
-				if param_name in _pipe_in["used"]:
-					_pipe_in["used"].remove(param_name)
+		for param, key in zip(_type["in"], list(kwargs)):
+			name = param["name"][1:]
+			_way_in["data"][name] = kwargs[key]
+			_way_in["type"][name] = param["type"]
 
 		res = []
 
-		for elem in self._parsed_order:
-			if elem[0] == "get":
-				# check_used(_pipe_in, elem)
-				res.append(_pipe_in["data"].get(elem[1], None)) # Intentionally putting None if not found
-			elif elem[0] == "eat":
-				# check_used(_pipe_in, elem)
-				res.append(_pipe_in["data"].get(elem[1], None))
-				# [TODO] Still kind of buggy due to not able to force update so disabled for now
-				# _pipe_in["used"].add(elem[1])
+		for elem in _type["out"]:
+			name = elem["name"][1:]
+			if (name in _way_in["data"] and _way_in["type"][name] == elem["type"]) or elem["type"] == "*":
+				res.append(_way_in["data"][name])
+			else:
+				raise Exception(f"Output \"{name}\" is not defined or is not of type \"{elem['type']}\". Expected \"{_way_in['type'][name]}\".")
 
-		return (_pipe_in, ) + tuple(res)
+		return (_way_in, ) + tuple(res)
+
+def parse_offset(input):
+	# Split the string by semicolons
+	segments = input.split(';')
+	
+	# Initialize an empty list to store the parsed data
+	parsed_data = []
+	
+	# Iterate over each segment
+	for segment in segments:
+		# Trim whitespace and check if the segment is not empty
+		segment = segment.strip()
+		if segment:
+			# Split the segment by comma
+			parts = segment.split(',')
+			
+			# Check if there are exactly two parts after splitting by comma
+			if len(parts) != 2:
+				return (None, f"Segment '{segment}' is invalid: expected a pair separated by a single comma.")
+			
+			# Trim whitespace from the string part
+			string_part = parts[0].strip()
+			
+			# Ensure the string part is not empty
+			if not string_part:
+				return (None, f"Segment '{segment}' is invalid: string part is empty.")
+			
+			# Concatenate the number part to remove spaces and keep the operator
+			number_part = ''.join(parts[1].split())
+			try:
+				# Check for multiple operators or incorrect placement
+				if number_part.count('+') + number_part.count('-') > 1 or not number_part.lstrip('+-').isdigit():
+					return (None, f"Segment '{segment}' is invalid: number part has multiple operators or incorrect placement.")
+
+				# Check if the substring is an integer
+				int(number_part.lstrip('+-'))
+			except ValueError:
+				return (None, f"Segment '{segment}' is invalid: number part is not an integer.")
+			
+			# Add the tuple to the list
+			parsed_data.append((string_part, number_part))
+	
+	return (parsed_data, None)
+
+######################################################################################
+
+class Junction:
+	@classmethod
+	def INPUT_TYPES(s):
+		return {
+			"required": {
+				"_offset": ("STRING", {
+					"default": ";",
+					"multiline": False
+				}),
+			},
+			"optional": {
+				"_junc_in": ("JUNCTION_PIPE", ),
+			},
+			"hidden": {
+				"_prompt": "PROMPT",
+				"_id": "UNIQUE_ID"
+			}
+		}
+	
+	RETURN_TYPES = ByPassTypeTuple(("JUNCTION_PIPE", ))
+	RETURN_NAMES = ByPassTypeTuple(("_junc_out", ))
+	FUNCTION = "execute"
+	CATEGORY = "0246"
+
+	def __init__(self):
+		self._prev_offset = None
+		self._parsed_offset = None
+
+	def execute(self, _id = None, _prompt = None, _junc_in = None, _offset = "", **kwargs):
+		_type = _prompt[_id]["inputs"]["_type"]
+
+		print(kwargs.keys())
+
+		if _junc_in is None:
+			_junc_in = {}
+			_junc_in["orig"] = self
+			_junc_in["curr"] = self
+			_junc_in["data"] = {}
+			_junc_in["index"] = {}
+
+		# Pack all data from _junc_in and kwargs together
+
+		for param, key in zip(_type["in"], list(kwargs)):
+			if param["type"] not in _junc_in["data"]:
+				_junc_in["data"][param["type"]] = []
+				_junc_in["index"][param["type"]] = 0
+			_junc_in["data"][param["type"]].append(kwargs[key])
+
+		# Parse the offset string
+
+		if _offset != self._prev_offset:
+			parsed_offset, err = parse_offset(_offset)
+			if err:
+				raise Exception(err)
+			self._prev_offset = _offset
+			self._parsed_offset = parsed_offset
+
+		# Apply the offset to the junction input
+
+		if self._parsed_offset is None:
+			raise Exception("Offset is not parsed.")
+		
+		for elem in self._parsed_offset:
+			if elem[0] not in _junc_in["data"]:
+				raise Exception(f"Type \"{elem[0]}\" in offset string does not available in junction.")
+			
+			total = len(_junc_in["data"][elem[0]])
+
+			# Check for ops char
+			if elem[1][0] == '+':
+				_junc_in["index"][elem[0]] += int(elem[1][1:])
+				if _junc_in["index"][elem[0]] >= total:
+					raise Exception(f"Offset \"{elem[1]}\" (total: \"{_junc_in['index'][elem[0]]}\") is too large (count: \"{total}\").")
+			elif elem[1][0] == '-':
+				_junc_in["index"][elem[0]] -= int(elem[1][1:])
+				if _junc_in["index"][elem[0]] < 0:
+					raise Exception(f"Offset \"{elem[1]}\" (total: \"{_junc_in['index'][elem[0]]}\") is too small (count: \"{total}\").")
+			else:
+				_junc_in["index"][elem[0]] = int(elem[1])
+				if _junc_in["index"][elem[0]] >= total:
+					raise Exception(f"Offset \"{elem[1]}\" (total: \"{_junc_in['index'][elem[0]]}\") is too large (count: \"{total}\").")
+				elif _junc_in["index"][elem[0]] < 0:
+					raise Exception(f"Offset \"{elem[1]}\" (total: \"{_junc_in['index'][elem[0]]}\") is too small (count: \"{total}\").")
+
+		res = []
+		track = {}
+
+		for key in _junc_in["data"]:
+			track[key] = 0
+
+		for elem in _type["out"]:
+			if elem["full_name"] == "..." or elem["full_name"][0] == "_":
+				continue
+
+			if elem["type"] not in _junc_in["data"]:
+				raise Exception(f"Type \"{elem['type']}\" of output \"{elem['full_name']}\" does not available in junction.")
+			
+			offset = _junc_in["index"][elem["type"]]
+			real_index = track[elem["type"]] + offset
+			total = len(_junc_in["data"][elem["type"]])
+
+			if real_index >= total:
+				raise Exception(f"Too much type \"{elem['type']}\" being taken or offset \"{offset}\" is too large (count: \"{total}\").")
+			
+			res.append(_junc_in["data"][elem["type"]][real_index])
+			track[elem["type"]] += 1
+		
+		return (_junc_in, ) + tuple(res)
+
+######################################################################################
+
+# [TODO] Add new nodes to allows reading internal data
 
 NODE_CLASS_MAPPINGS = {
-	"Highway": Highway
+	"Highway": Highway,
+	"Junction": Junction
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-	"Highway": "Highway"
+	"Highway": "Highway",
+	"Junction": "Junction"
 }
 
-# Just in case
-# sys.path.remove(str(server_path))
+######################################################################################
+
+# Trash that may be used later, don't mind me :)
+
+# def __init__(self):
+	# self._prev_query = None
+	# self._parsed_query = None
+	# self._uuid = uuid.uuid4()
+
+# [TODO] For "eat", still kind of buggy due to not able to force update so disabled for now
+	# _way_in["used"].add(elem[1])
+
+# elif (_way_in["curr"]._uuid == self._uuid):
+# 	raise Exception("Recursion error. Do not reverse the \"layering\" of the nodes.")
+
+# Caching the parsed result if the query is the same as the previous one
+
+# if _query != self._prev_query:
+# 	# If it is different, parse the new query
+# 	res, ord, err = parse_query(_query, HIGHWAY_OPS)
+# 	highway_check(res, err)
+# 	if len(err) > 0:
+# 		raise Exception(err)
+	
+# 	# Update the cache with the new query and the parsed result
+# 	self._prev_query = _query
+# 	self._parsed_query = res
+# 	self._parsed_order = ord
