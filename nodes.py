@@ -218,7 +218,7 @@ class Highway:
 
 		for elem in _type["out"]:
 			name = elem["name"][1:]
-			if name in _pipe_in["data"] and _pipe_in["type"][name] == elem["type"]:
+			if (name in _pipe_in["data"] and _pipe_in["type"][name] == elem["type"]) or elem["type"] == "*":
 				res.append(_pipe_in["data"][name])
 			else:
 				raise Exception(f"Output \"{name}\" is not defined or is not of type \"{elem['type']}\". Expected \"{_pipe_in['type'][name]}\".")
@@ -276,7 +276,7 @@ class Junction:
 		return {
 			"required": {
 				"_offset": ("STRING", {
-					"default": ";;;",
+					"default": ";",
 					"multiline": False
 				}),
 			},
@@ -341,17 +341,17 @@ class Junction:
 			if elem[1][0] == '+':
 				_junc_in["index"][elem[0]] += int(elem[1][1:])
 				if _junc_in["index"][elem[0]] >= total:
-					raise Exception(f"Offset \"{elem[1]}\" is too large (count: \"{total}\").")
+					raise Exception(f"Offset \"{elem[1]}\" (total: \"{_junc_in['index'][elem[0]]}\") is too large (count: \"{total}\").")
 			elif elem[1][0] == '-':
 				_junc_in["index"][elem[0]] -= int(elem[1][1:])
 				if _junc_in["index"][elem[0]] < 0:
-					raise Exception(f"Offset \"{elem[1]}\" is too small (count: \"{total}\").")
+					raise Exception(f"Offset \"{elem[1]}\" (total: \"{_junc_in['index'][elem[0]]}\") is too small (count: \"{total}\").")
 			else:
 				_junc_in["index"][elem[0]] = int(elem[1])
 				if _junc_in["index"][elem[0]] >= total:
-					raise Exception(f"Offset \"{elem[1]}\" is too large (count: \"{total}\").")
+					raise Exception(f"Offset \"{elem[1]}\" (total: \"{_junc_in['index'][elem[0]]}\") is too large (count: \"{total}\").")
 				elif _junc_in["index"][elem[0]] < 0:
-					raise Exception(f"Offset \"{elem[1]}\" is too small (count: \"{total}\").")
+					raise Exception(f"Offset \"{elem[1]}\" (total: \"{_junc_in['index'][elem[0]]}\") is too small (count: \"{total}\").")
 
 		res = []
 		track = {}
