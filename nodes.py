@@ -301,8 +301,6 @@ class Junction:
 	def execute(self, _id = None, _prompt = None, _junc_in = None, _offset = "", **kwargs):
 		_type = _prompt[_id]["inputs"]["_type"]
 
-		print(kwargs.keys())
-
 		if _junc_in is None:
 			_junc_in = {}
 			_junc_in["orig"] = self
