@@ -270,6 +270,54 @@ def parse_offset(input):
 	
 	return (parsed_data, None)
 
+class TwoDictList:
+	def __init__(self):
+		self.data = {}
+
+	def __getitem__(self, index):
+		for key in self.data:
+			if index < len(self.data[key]):
+				return self.data[key][index]
+			index -= len(self.data[key])
+
+	def get_type(self, type):
+		return self.data.get(type, None)
+
+	def type_keys(self):
+		return self.data.keys()
+
+	def get_type_index(self, type, index):
+		for name in self.data[type]:
+			if index < len(self.data[type][name]):
+				return self.data[type][name][index]
+			index -= len(self.data[type][name])
+
+	def put(self, type, name, data):
+		if type not in self.data:
+			self.data[type] = {}
+		if name not in self.data[type]:
+			self.data[type][name] = []
+		self.data[type][name].append(data)
+
+	def name_del(self, name):
+		for key in self.data:
+			if name in self.data[key]:
+				del self.data[key][name]
+
+	def type_name_del(self, type, name):
+		if type in self.data:
+			if name in self.data[type]:
+				del self.data[type][name]
+
+	def __len__(self):
+		return sum([len(self.data[key]) for key in self.data])
+	
+	def type_len(self, type):
+		return sum([len(self.data[type][key]) for key in self.data[type]])
+	
+	def __repr__(self):
+		return repr(self.data)
+
 class Junction:
 	@classmethod
 	def INPUT_TYPES(s):
@@ -305,16 +353,17 @@ class Junction:
 			_junc_in = {}
 			_junc_in["orig"] = self
 			_junc_in["curr"] = self
-			_junc_in["data"] = {}
+			_junc_in["data"] = TwoDictList()
 			_junc_in["index"] = {}
 
-		# Pack all data from _junc_in and kwargs together
+		_junc_in["data"].name_del(_id)
+
+		# Pack all data from _junc_in and kwargs together with the following format:
 
 		for param, key in zip(_type["in"], list(kwargs)):
-			if param["type"] not in _junc_in["data"]:
-				_junc_in["data"][param["type"]] = []
+			_junc_in["data"].put(param["type"], _id, kwargs[key])
+			if param["type"] not in _junc_in["index"]:
 				_junc_in["index"][param["type"]] = 0
-			_junc_in["data"][param["type"]].append(kwargs[key])
 
 		# Parse the offset string
 
@@ -331,10 +380,10 @@ class Junction:
 			raise Exception("Offset is not parsed.")
 		
 		for elem in self._parsed_offset:
-			if elem[0] not in _junc_in["data"]:
+			if _junc_in["data"].get_type(elem[0]) is None:
 				raise Exception(f"Type \"{elem[0]}\" in offset string does not available in junction.")
 			
-			total = len(_junc_in["data"][elem[0]])
+			total = _junc_in["data"].type_len(elem[0])
 
 			# Check for ops char
 			if elem[1][0] == '+':
@@ -355,24 +404,24 @@ class Junction:
 		res = []
 		track = {}
 
-		for key in _junc_in["data"]:
+		for key in _junc_in["data"].type_keys():
 			track[key] = 0
 
 		for elem in _type["out"]:
 			if elem["full_name"] == "..." or elem["full_name"][0] == "_":
 				continue
 
-			if elem["type"] not in _junc_in["data"]:
+			if _junc_in["data"].get_type(elem["type"]) is None:
 				raise Exception(f"Type \"{elem['type']}\" of output \"{elem['full_name']}\" does not available in junction.")
 			
 			offset = _junc_in["index"][elem["type"]]
 			real_index = track[elem["type"]] + offset
-			total = len(_junc_in["data"][elem["type"]])
+			total = _junc_in["data"].type_len(elem["type"])
 
 			if real_index >= total:
 				raise Exception(f"Too much type \"{elem['type']}\" being taken or offset \"{offset}\" is too large (count: \"{total}\").")
 			
-			res.append(_junc_in["data"][elem["type"]][real_index])
+			res.append(_junc_in["data"].get_type_index(elem["type"], real_index))
 			track[elem["type"]] += 1
 		
 		return (_junc_in, ) + tuple(res)
@@ -392,28 +441,4 @@ NODE_DISPLAY_NAME_MAPPINGS = {
 ######################################################################################
 
 # Trash that may be used later, don't mind me :)
-
-# def __init__(self):
-	# self._prev_query = None
-	# self._parsed_query = None
-	# self._uuid = uuid.uuid4()
-
-# [TODO] For "eat", still kind of buggy due to not able to force update so disabled for now
-	# _way_in["used"].add(elem[1])
-
-# elif (_way_in["curr"]._uuid == self._uuid):
-# 	raise Exception("Recursion error. Do not reverse the \"layering\" of the nodes.")
-
-# Caching the parsed result if the query is the same as the previous one
-
-# if _query != self._prev_query:
-# 	# If it is different, parse the new query
-# 	res, ord, err = parse_query(_query, HIGHWAY_OPS)
-# 	highway_check(res, err)
-# 	if len(err) > 0:
-# 		raise Exception(err)
-	
-# 	# Update the cache with the new query and the parsed result
-# 	self._prev_query = _query
-# 	self._parsed_query = res
-# 	self._parsed_order = ord
+# https://pastebin.com/raw/Z3Y9HimQ

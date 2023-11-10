@@ -32,6 +32,22 @@ function removeElements(array, isValid) {
 /////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////
 
+function init_refresh(node) {
+	// Why this class is necessary? Once again it's due to how ComfyUI caching nodes output.
+		// Which affect how Highway and Junction reroute works.
+		// This is probably just a temp fix until I can figure out a way to prevent nodes compute on old data.
+	node.addCustomWidget({
+		name: "_refresh",
+		computeSize: () => [0, -4],
+		async serializeValue (node, index_str) {
+			// Only force refresh when this node is root, therefore not doing it excessively
+			if (node.inputs[0].link !== null)
+				return 0;
+			return window.performance.now();
+		}
+	});
+}
+
 function init_type(node) {
 	node.addCustomWidget({
 		name: "_type",
@@ -172,6 +188,8 @@ app.registerExtension({
 
 						init_type(this);
 
+						init_refresh(this);
+
 						this.addWidget("button", "Update", null, () => {
 							const query = this.widgets.find(w => w.name === "_query");
 
@@ -291,6 +309,12 @@ app.registerExtension({
 						) {
 							if (BLACKLIST.includes(this.inputs[this_target_slot_index].name))
 								return true;
+
+							if (this.inputs[this_target_slot_index].link !== null) {
+								// Prevent premature link kill
+								app.graph.links[this.inputs[this_target_slot_index].link].replaced = true;
+								return true;
+							}
 							
 							let curr_pin = this.inputs[this_target_slot_index];
 							curr_pin.type = other_origin_slot_obj.type;
@@ -348,10 +372,10 @@ app.registerExtension({
 							if (!connected) {
 								switch (type) {
 									case 1: {
-										if (!BLACKLIST.includes(this.inputs[link_info.target_slot].name)) {
-											this.inputs[link_info.target_slot].name = this.inputs[link_info.target_slot].orig_name;
-											this.inputs[link_info.target_slot].type = "*";
-										}
+										if (BLACKLIST.includes(this.inputs[link_info.target_slot].name) || link_info.replaced)
+											return;
+										this.inputs[link_info.target_slot].name = this.inputs[link_info.target_slot].orig_name;
+										this.inputs[link_info.target_slot].type = "*";
 									} break;
 									case 2: {
 										if (this.outputs[link_info.origin_slot].links.length === 0 && !BLACKLIST.includes(this.outputs[link_info.origin_slot].name)) {
@@ -373,6 +397,8 @@ app.registerExtension({
 					nodeType.prototype.onNodeCreated = function () {
 						init_type(this);
 
+						init_refresh(this);
+
 						this.addInput("...", "*");
 						this.addOutput("...", "*");
 
@@ -390,7 +416,6 @@ app.registerExtension({
 								return true;
 
 							if (this.inputs[this_target_slot_index].link !== null) {
-								// Forgot why this was here's but whatever
 								app.graph.links[this.inputs[this_target_slot_index].link].replaced = true;
 								return true;
 							}
