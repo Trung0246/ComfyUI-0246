@@ -15,6 +15,19 @@ function hijack(obj, key, before_func, after_func) {
 	};
 }
 
+function removeElements(array, isValid) {
+	let shift = 0;
+
+	for (let i = 0; i < array.length; ++ i) {
+		if (isValid(array[i]))
+			++ shift;
+		else if (shift > 0)
+			array[i - shift] = array[i];
+	}
+
+	array.length -= shift;
+}
+
 /////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////
@@ -67,10 +80,11 @@ function link_shift_up(self, arr, index, flag, link_callback) {
 	// Shift up all links
 	for (; index < arr.length - 2; ++ index) {
 		let last_pin = arr[index];
-		last_pin.name = `${arr[index + 1].type}:${index - 1}`;
 		last_pin.type = arr[index + 1].type;
 
 		if (flag) {
+			last_pin.name = `${arr[index + 1].type}:${index - 1}`;
+
 			const old_length = arr[index + 1].links.length;
 			for (let j = 0; j < old_length; ++ j) {
 				const link = app.graph.links[arr[index + 1].links[0]];
@@ -84,6 +98,8 @@ function link_shift_up(self, arr, index, flag, link_callback) {
 				);
 			}
 		} else {
+			last_pin.name = `${index - 1}:${arr[index + 1].type}`;
+
 			const link = app.graph.links[arr[index + 1].link];
 
 			self.disconnectInput(link.target_slot);
@@ -138,7 +154,6 @@ app.registerExtension({
 			switch (nodeData.name) {
 				case "Highway": {
 					nodeType.prototype.onNodeMoved = function () {};
-
 
 					nodeType.prototype.onNodeCreated = function () {
 						hijack(this, "configure", () => {}, function (data) {
@@ -303,6 +318,7 @@ app.registerExtension({
 								curr_pin.type = other_target_node.__outputType;
 							else if (other_target_node.defaultConnectionsLayout) // Reroute (rgthree)
 								// rgthree accept this anyways so whatever since too lazy to properly do graph traversal
+								// EDIT: I was wrong, I have to do it, but not here :(
 								curr_pin.type = other_target_slot_obj.type; 
 							else
 								curr_pin.type = other_target_slot_obj.type;
@@ -409,8 +425,7 @@ app.registerExtension({
 							if (other_target_node.__outputType) // Reroute
 								curr_pin.type = other_target_node.__outputType;
 							else if (other_target_node.defaultConnectionsLayout) // Reroute (rgthree)
-								// rgthree accept this anyways so whatever since too lazy to properly do graph traversal
-								// EDIT: I was wrong, I have to do it, but not here :(
+								// Same thing here I guess
 								curr_pin.type = other_target_slot_obj.type;
 							else
 								curr_pin.type = other_target_slot_obj.type;
@@ -425,12 +440,8 @@ app.registerExtension({
 						this.onConnectionsChange = function (type, index, connected, link_info) {
 							if (link_info === null) {
 								// Clean up when copy paste or template load
-								for (let i = 0; i < this.inputs.length; ++ i)
-									if (!BLACKLIST.includes(this.inputs[i].name))
-										this.removeInput(i);
-								for (let i = 0; i < this.outputs.length; ++ i)
-									if (!BLACKLIST.includes(this.outputs[i].name))
-										this.removeOutput(i);
+								removeElements(this.inputs, (e) => !BLACKLIST.includes(e.name));
+								removeElements(this.outputs, (e) => !BLACKLIST.includes(e.name));
 								this.computeSize();
 								return;
 							}

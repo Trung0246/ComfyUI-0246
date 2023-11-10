@@ -225,6 +225,8 @@ class Highway:
 
 		return (_way_in, ) + tuple(res)
 
+######################################################################################
+
 def parse_offset(input):
 	# Split the string by semicolons
 	segments = input.split(';')
@@ -267,8 +269,6 @@ def parse_offset(input):
 			parsed_data.append((string_part, number_part))
 	
 	return (parsed_data, None)
-
-######################################################################################
 
 class Junction:
 	@classmethod
@@ -378,8 +378,6 @@ class Junction:
 		return (_junc_in, ) + tuple(res)
 
 ######################################################################################
-
-# [TODO] Add new nodes to allows reading internal data
 
 NODE_CLASS_MAPPINGS = {
 	"Highway": Highway,
