@@ -53,6 +53,10 @@ Special thanks to [@kijai](https://github.com/kijai/ComfyUI-KJNodes) for `Condit
     <img src="https://raw.githubusercontent.com/Trung0246/ComfyUI-0246/main/assets/Screenshot%202023-11-07%20040534.png">
 </p>
 
+`_offset` is used to skip data ahead for specific type (since internally it's a sequene of data).
+
+`_offset` is persistent and will retains information across linked `Junction`.
+
 The offset syntax goes as follow:
 
 - `type,1`: `type` is the type (usually `LATENT`, `MODEL`, `VAE`, etc.) and `1` is the index being set.
