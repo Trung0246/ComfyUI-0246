@@ -1,7 +1,11 @@
-import uuid
-import re
-import pathlib
-import sys
+# import uuid
+# import re
+# import pathlib
+# import sys
+
+import bisect
+import collections
+import collections.abc
 
 import aiohttp.web
 
@@ -21,6 +25,81 @@ class ByPassTypeTuple(tuple):
 		if isinstance(item, str):
 			return TautologyStr(item)
 		return item
+
+class RevisionItem(collections.namedtuple("RevisionItem", "key value his")):
+	def __lt__(self, other):
+		return self.his < other.his
+
+class RevisionDict(collections.abc.MutableMapping):
+	def __init__(self, *args, **kwargs):
+		self._items = list()
+		self._index = dict()
+		self.update(*args, **kwargs)
+
+	def __setitem__(self, key, value):
+		self._index[key] = len(self._items)
+		self._items.append(RevisionItem(key, value, self._index[key]))
+
+	def __getitem__(self, key):
+		return self._items[self._index[key]].value
+	
+	def __delitem__(self, key):
+		index = self._index.pop(key)
+		self._items.pop(index)
+		self._index.update(
+			((k, i - 1) for (k, i) in self._index.items() if i > index)
+		)
+
+	def __iter__(self):
+		return iter(sorted(self._index, key=self._index.get))
+
+	def __len__(self):
+		return len(self._items)
+	
+	def find(self, key, his = None, func = None):
+		# Move back from the insertion point until we find the key we are looking for
+		index = bisect.bisect_right(self._items, RevisionItem(key, None, his)) - 1
+		while index >= 0 and self._items[index].key != key:
+			index -= 1
+
+		# If we found an item with the matching key
+		if index >= 0:
+			if func is None:
+				return self._items[index]
+			return func(self._items[index], index)
+		
+		return None
+	
+	def recv(self, his = None):
+		if his is None or his > len(self._items) - 2:
+			his = len(self._items) - 1
+
+		snapshot = {}
+
+		for key in self._index.keys():
+			self.find(key, his, lambda item, index: snapshot.__setitem__(item.key, item.value))
+
+		return snapshot
+	
+	def purge(self, his = 0):
+		if his == 0:
+			self._items.clear()
+			self._index.clear()
+			self._track = 0
+			return
+	
+		if his > len(self._items):
+			his = len(self._items)
+
+		# Delete all revisions after start
+		self._items = self._items[0:his]
+
+		# Update index
+		keys = list(self._index.keys())
+		self._index.clear()
+
+		for key in keys:
+			self.find(key, his, lambda item, index: self._index.__setitem__(item.key, index))
 
 #####################################################################################
 ######################################## API ########################################
@@ -197,29 +276,32 @@ class Highway:
 	def execute(self, _id = None, _prompt = None, _way_in = None, _query = "", **kwargs):
 		_type = _prompt[_id]["inputs"]["_type"]
 
-		if (_way_in is None):
+		if _way_in is None:
 			_way_in = {}
-			_way_in["orig"] = self
-			_way_in["curr"] = self
-			_way_in["data"] = {}
-			_way_in["type"] = {}
-			_way_in["used"] = set()
-		else:
-			_way_in["curr"] = self
+			_way_in["data"] = RevisionDict()
+			_way_in["used"] = {}
+		elif _id in _way_in["used"]:
+			_way_in["data"].purge(_way_in["used"][_id])
+		
+		_way_in["used"][_id] = len(_way_in["data"])
 
 		# Time to let the magic play out
 
 		for param, key in zip(_type["in"], list(kwargs)):
 			name = param["name"][1:]
-			_way_in["data"][name] = kwargs[key]
-			_way_in["type"][name] = param["type"]
+			_way_in["data"][f"data.{name}"] = kwargs[key]
+			_way_in["data"][f"type.{name}"] = param["type"]
 
 		res = []
 
 		for elem in _type["out"]:
 			name = elem["name"][1:]
-			if (name in _way_in["data"] and _way_in["type"][name] == elem["type"]) or elem["type"] == "*":
-				res.append(_way_in["data"][name])
+
+			if (
+				f"data.{name}" in _way_in["data"] and
+				elem["type"] == _way_in["data"][f"type.{name}"]
+			) or elem["type"] == "*":
+				res.append(_way_in["data"][f"data.{name}"])
 			else:
 				raise Exception(f"Output \"{name}\" is not defined or is not of type \"{elem['type']}\". Expected \"{_way_in['type'][name]}\".")
 
@@ -270,53 +352,13 @@ def parse_offset(input):
 	
 	return (parsed_data, None)
 
-class TwoDictList:
-	def __init__(self):
-		self.data = {}
-
-	def __getitem__(self, index):
-		for key in self.data:
-			if index < len(self.data[key]):
-				return self.data[key][index]
-			index -= len(self.data[key])
-
-	def get_type(self, type):
-		return self.data.get(type, None)
-
-	def type_keys(self):
-		return self.data.keys()
-
-	def get_type_index(self, type, index):
-		for name in self.data[type]:
-			if index < len(self.data[type][name]):
-				return self.data[type][name][index]
-			index -= len(self.data[type][name])
-
-	def put(self, type, name, data):
-		if type not in self.data:
-			self.data[type] = {}
-		if name not in self.data[type]:
-			self.data[type][name] = []
-		self.data[type][name].append(data)
-
-	def name_del(self, name):
-		for key in self.data:
-			if name in self.data[key]:
-				del self.data[key][name]
-
-	def type_name_del(self, type, name):
-		if type in self.data:
-			if name in self.data[type]:
-				del self.data[type][name]
-
-	def __len__(self):
-		return sum([len(self.data[key]) for key in self.data])
-	
-	def type_len(self, type):
-		return sum([len(self.data[type][key]) for key in self.data[type]])
-	
-	def __repr__(self):
-		return repr(self.data)
+BLACKLIST = [
+	"_way_in",
+	"_way_out",
+	"_junc_in",
+	"_junc_out",
+	"..."
+]
 
 class Junction:
 	@classmethod
@@ -351,19 +393,25 @@ class Junction:
 
 		if _junc_in is None:
 			_junc_in = {}
-			_junc_in["orig"] = self
-			_junc_in["curr"] = self
-			_junc_in["data"] = TwoDictList()
-			_junc_in["index"] = {}
-
-		_junc_in["data"].name_del(_id)
+			_junc_in["data"] = RevisionDict()
+			_junc_in["used"] = {}
+		elif _id in _junc_in["used"]:
+			_junc_in["data"].purge(_junc_in["used"][_id])
+		
+		_junc_in["used"][_id] = len(_junc_in["data"])
 
 		# Pack all data from _junc_in and kwargs together with the following format:
 
 		for param, key in zip(_type["in"], list(kwargs)):
-			_junc_in["data"].put(param["type"], _id, kwargs[key])
-			if param["type"] not in _junc_in["index"]:
-				_junc_in["index"][param["type"]] = 0
+			count = 0
+			for key_data in _junc_in["data"]:
+				if key_data.startswith(f"data.{param['type']}"):
+					count += 1
+			_junc_in["data"][f"data.{param['type']}.{count}"] = kwargs[key]
+			if count == 0:
+				_junc_in["data"][f"index.{param['type']}"] = 0
+			_junc_in["data"][f"type.{param['type']}"] = param["type"]
+			count += 1
 
 		# Parse the offset string
 
@@ -380,48 +428,68 @@ class Junction:
 			raise Exception("Offset is not parsed.")
 		
 		for elem in self._parsed_offset:
-			if _junc_in["data"].get_type(elem[0]) is None:
+			for key in _junc_in["data"]:
+				if key.startswith(f"data.{elem[0]}"):
+					break
+			else:
 				raise Exception(f"Type \"{elem[0]}\" in offset string does not available in junction.")
 			
-			total = _junc_in["data"].type_len(elem[0])
+			total = 0
+			for key in _junc_in["data"]:
+				if key.startswith(f"data.{elem[0]}"):
+					total += 1
 
 			# Check for ops char
+
 			if elem[1][0] == '+':
-				_junc_in["index"][elem[0]] += int(elem[1][1:])
-				if _junc_in["index"][elem[0]] >= total:
-					raise Exception(f"Offset \"{elem[1]}\" (total: \"{_junc_in['index'][elem[0]]}\") is too large (count: \"{total}\").")
+				_junc_in["data"][f"index.{elem[0]}"] += int(elem[1][1:])
+				temp = _junc_in["data"][f"index.{elem[0]}"]
+
+				if temp >= total:
+					raise Exception(f"Offset \"{elem[1]}\" (total: \"{temp}\") is too large (count: \"{total}\").")
 			elif elem[1][0] == '-':
-				_junc_in["index"][elem[0]] -= int(elem[1][1:])
-				if _junc_in["index"][elem[0]] < 0:
-					raise Exception(f"Offset \"{elem[1]}\" (total: \"{_junc_in['index'][elem[0]]}\") is too small (count: \"{total}\").")
+				_junc_in["data"][f"index.{elem[0]}"] -= int(elem[1][1:])
+				temp = _junc_in["data"][f"index.{elem[0]}"]
+
+				if temp < 0:
+					raise Exception(f"Offset \"{elem[1]}\" (total: \"{temp}\") is too small (count: \"{total}\").")
 			else:
-				_junc_in["index"][elem[0]] = int(elem[1])
-				if _junc_in["index"][elem[0]] >= total:
-					raise Exception(f"Offset \"{elem[1]}\" (total: \"{_junc_in['index'][elem[0]]}\") is too large (count: \"{total}\").")
-				elif _junc_in["index"][elem[0]] < 0:
-					raise Exception(f"Offset \"{elem[1]}\" (total: \"{_junc_in['index'][elem[0]]}\") is too small (count: \"{total}\").")
+				_junc_in["data"][f"index.{elem[0]}"] = int(elem[1])
+				temp = _junc_in["data"][f"index.{elem[0]}"]
+
+				if temp >= total:
+					raise Exception(f"Offset \"{elem[1]}\" (total: \"{temp}\") is too large (count: \"{total}\").")
+				elif temp < 0:
+					raise Exception(f"Offset \"{elem[1]}\" (total: \"{temp}\") is too small (count: \"{total}\").")
 
 		res = []
 		track = {}
 
-		for key in _junc_in["data"].type_keys():
-			track[key] = 0
+		for key in _junc_in["data"]:
+			if key.startswith("type."):
+				track[key[5:]] = 0
 
 		for elem in _type["out"]:
-			if elem["full_name"] == "..." or elem["full_name"][0] == "_":
+			if elem["full_name"] in BLACKLIST:
 				continue
 
-			if _junc_in["data"].get_type(elem["type"]) is None:
+			for key in _junc_in["data"]:
+				if key.startswith(f"data.{elem['type']}"):
+					break
+			else:
 				raise Exception(f"Type \"{elem['type']}\" of output \"{elem['full_name']}\" does not available in junction.")
 			
-			offset = _junc_in["index"][elem["type"]]
+			offset = _junc_in["data"][f"index.{elem['type']}"]
 			real_index = track[elem["type"]] + offset
-			total = _junc_in["data"].type_len(elem["type"])
+			total = 0
+			for key in _junc_in["data"]:
+				if key.startswith(f"data.{elem['type']}"):
+					total += 1
 
 			if real_index >= total:
 				raise Exception(f"Too much type \"{elem['type']}\" being taken or offset \"{offset}\" is too large (count: \"{total}\").")
 			
-			res.append(_junc_in["data"].get_type_index(elem["type"], real_index))
+			res.append(_junc_in["data"][f"data.{elem['type']}.{real_index}"])
 			track[elem["type"]] += 1
 		
 		return (_junc_in, ) + tuple(res)

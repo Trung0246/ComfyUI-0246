@@ -32,22 +32,6 @@ function removeElements(array, isValid) {
 /////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////
 
-function init_refresh(node) {
-	// Why this class is necessary? Once again it's due to how ComfyUI caching nodes output.
-		// Which affect how Highway and Junction reroute works.
-		// This is probably just a temp fix until I can figure out a way to prevent nodes compute on old data.
-	node.addCustomWidget({
-		name: "_refresh",
-		computeSize: () => [0, -4],
-		async serializeValue (node, index_str) {
-			// Only force refresh when this node is root, therefore not doing it excessively
-			if (node.inputs[0].link !== null)
-				return 0;
-			return window.performance.now();
-		}
-	});
-}
-
 function init_type(node) {
 	node.addCustomWidget({
 		name: "_type",
@@ -187,8 +171,6 @@ app.registerExtension({
 						let last_query = "";
 
 						init_type(this);
-
-						init_refresh(this);
 
 						this.addWidget("button", "Update", null, () => {
 							const query = this.widgets.find(w => w.name === "_query");
@@ -396,8 +378,6 @@ app.registerExtension({
 
 					nodeType.prototype.onNodeCreated = function () {
 						init_type(this);
-
-						init_refresh(this);
 
 						this.addInput("...", "*");
 						this.addOutput("...", "*");
