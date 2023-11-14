@@ -114,37 +114,25 @@ function link_shift_up(self, arr, index, flag, link_callback) {
 	self.onConnectOutput = null;
 
 	// Shift up all links
-	for (; index < arr.length - 2; ++ index) {
-		let last_pin = arr[index];
-		last_pin.type = arr[index + 1].type;
 
-		if (flag) {
-			last_pin.name = `${arr[index + 1].type}:${index - 1}`;
-
-			const old_length = arr[index + 1].links.length;
-			for (let j = 0; j < old_length; ++ j) {
-				const link = app.graph.links[arr[index + 1].links[0]];
-
-				app.graph.getNodeById(link.target_id).disconnectInput(link.target_slot);
-
-				self.connect(
-					index,
-					link.target_id,
-					link.target_slot
-				);
+	if (flag) {
+		if (arr[index].links.length === 0) {
+			self.removeOutput(index);
+			for (let i = 0, c = 0; i < arr.length; ++ i) {
+				if (BLACKLIST.includes(arr[i].name))
+					continue;
+				arr[i].name = `${arr[i].type}:${c}`;
+				++ c;
 			}
-		} else {
-			last_pin.name = `${index - 1}:${arr[index + 1].type}`;
+		}
+	} else {
+		self.removeInput(index);
 
-			const link = app.graph.links[arr[index + 1].link];
-
-			self.disconnectInput(link.target_slot);
-
-			app.graph.getNodeById(link.origin_id).connect(
-				link.origin_slot,
-				self,
-				index
-			);
+		for (let i = 0, c = 0; i < arr.length; ++ i) {
+			if (BLACKLIST.includes(arr[i].name))
+				continue;
+			arr[i].name = `${c}:${arr[i].type}`;
+			++ c;
 		}
 	}
 	
@@ -153,9 +141,7 @@ function link_shift_up(self, arr, index, flag, link_callback) {
 	self.onConnectInput = old_in_func;
 	self.onConnectOutput = old_out_func;
 
-	let last_pin = arr[arr.length - 2];
-	last_pin.name = "..."; // String(this.outputs.length - 2);
-	last_pin.type = "*";
+	return;
 }
 
 const BLACKLIST = [
@@ -163,6 +149,8 @@ const BLACKLIST = [
 	"_way_out",
 	"_junc_in",
 	"_junc_out",
+	"_query",
+	"_offset",
 	"..."
 ];
 
@@ -427,6 +415,21 @@ app.registerExtension({
 						this.addInput("...", "*");
 						this.addOutput("...", "*");
 
+						let real_inputs = 0,
+							real_outputs = 0;
+
+						hijack(this, "configure", () => {}, function (data) {
+							// Count real inputs and outputs
+							for (let i = 0; i < this.inputs.length; ++ i) {
+								if (!BLACKLIST.includes(this.inputs[i].name))
+									++ real_inputs;
+							}
+							for (let i = 0; i < this.outputs.length; ++ i) {
+								if (!BLACKLIST.includes(this.outputs[i].name))
+									++ real_outputs;
+							}
+						});
+
 						this.onConnectInput = function (
 							this_target_slot_index,
 							other_origin_slot_type,
@@ -449,7 +452,7 @@ app.registerExtension({
 							
 							let curr_pin = this.inputs[this_target_slot_index];
 							curr_pin.type = other_origin_slot_obj.type;
-							curr_pin.name = `${this_target_slot_index - 1}:${curr_pin.type}`;
+							curr_pin.name = `${real_inputs ++}:${curr_pin.type}`;
 
 							this.addInput("...", "*");
 
@@ -484,7 +487,7 @@ app.registerExtension({
 							else
 								curr_pin.type = other_target_slot_obj.type;
 
-							curr_pin.name = `${curr_pin.type}:${this_origin_slot_index - 1}`;
+							curr_pin.name = `${curr_pin.type}:${real_outputs ++}`;
 
 							this.addOutput("...", "*");
 
@@ -508,7 +511,7 @@ app.registerExtension({
 										link_shift_up(this, this.inputs, link_info.target_slot, false, (link_index, extra_link_index) => {
 											return this.inputs[link_index].link;
 										});
-										this.removeInput(this.inputs.length - 1);
+										-- real_inputs;
 									} break;
 									case 2: {
 										if (BLACKLIST.includes(this.outputs[link_info.origin_slot].name))
@@ -517,7 +520,7 @@ app.registerExtension({
 											link_shift_up(this, this.outputs, link_info.origin_slot, true, (link_index, extra_link_index) => {
 												return this.outputs[link_index].links[extra_link_index];
 											});
-											this.removeOutput(this.outputs.length - 1);
+											-- real_outputs;
 										}
 									} break;
 									default: {

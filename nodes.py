@@ -162,8 +162,6 @@ async def parse_handler(request):
 		"error": errors
 	})
 
-# print("Added new endpoint: /0246-parse")
-
 # Print with yellow color to the console
 print("\033[93m" + "Added new endpoint: /0246-parse" + "\033[0m")
 
