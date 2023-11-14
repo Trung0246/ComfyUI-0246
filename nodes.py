@@ -2,6 +2,8 @@ import bisect
 import collections
 import collections.abc
 
+import ast
+
 import aiohttp.web
 
 from server import PromptServer
@@ -21,19 +23,22 @@ class ByPassTypeTuple(tuple):
 			return TautologyStr(item)
 		return item
 
-class RevisionItem(collections.namedtuple("RevisionItem", "key value his")):
+class RevisionItem(collections.namedtuple("RevisionItem", "key value rev id")):
 	def __lt__(self, other):
-		return self.his < other.his
+		if isinstance(other, int):
+			return self.rev < other
+		return self.rev < other.rev
 
 class RevisionDict(collections.abc.MutableMapping):
 	def __init__(self, *args, **kwargs):
 		self._items = list()
 		self._index = dict()
+		self._id = None
 		self.update(*args, **kwargs)
 
 	def __setitem__(self, key, value):
 		self._index[key] = len(self._items)
-		self._items.append(RevisionItem(key, value, self._index[key]))
+		self._items.append(RevisionItem(key, value, self._index[key], self._id))
 
 	def __getitem__(self, key):
 		return self._items[self._index[key]].value
@@ -51,50 +56,85 @@ class RevisionDict(collections.abc.MutableMapping):
 	def __len__(self):
 		return len(self._items)
 	
-	def find(self, key, his = None, func = None):
-		# Move back from the insertion point until we find the key we are looking for
-		index = bisect.bisect_right(self._items, RevisionItem(key, None, his)) - 1
-		while index >= 0 and self._items[index].key != key:
-			index -= 1
+	def _find(self, key, func = None):
+		index = self.find(lambda item: item.key == key, True)
 
-		# If we found an item with the matching key
-		if index >= 0:
+		if index < len(self._items):
 			if func is None:
 				return self._items[index]
 			return func(self._items[index], index)
 		
 		return None
 	
-	def recv(self, his = None):
-		if his is None or his > len(self._items) - 2:
-			his = len(self._items) - 1
+	def find(self, cmp, flag = False):
+		non_negative_index = bisect.bisect_left(self._items, 0)
+
+		if flag:
+			# Scan for the last occurrence
+			for index in range(len(self._items) - 1, non_negative_index - 1, -1):
+				if cmp(self._items[index]):
+					return index
+		else:
+			# Scan for the first occurrence
+			for index in range(non_negative_index, len(self._items)):
+				if cmp(self._items[index]):
+					return index
+				
+		return len(self._items)
+	
+	def recv(self, rev = None):
+		if rev is None or rev > len(self._items) - 2:
+			rev = len(self._items) - 1
 
 		snapshot = {}
 
 		for key in self._index.keys():
-			self.find(key, his, lambda item, index: snapshot.__setitem__(item.key, item.value))
+			self._find(key, lambda item, index: snapshot.__setitem__(item.key, item.value))
 
 		return snapshot
 	
-	def purge(self, his = 0):
-		if his == 0:
+	def purge(self, rev = 0):
+		if rev == 0:
 			self._items.clear()
 			self._index.clear()
-			self._track = 0
 			return
 	
-		if his > len(self._items):
-			his = len(self._items)
+		if rev >= len(self._items):
+			return
 
 		# Delete all revisions after start
-		self._items = self._items[0:his]
+		self._items = self._items[0:rev]
 
 		# Update index
 		keys = list(self._index.keys())
 		self._index.clear()
 
 		for key in keys:
-			self.find(key, his, lambda item, index: self._index.__setitem__(item.key, index))
+			self._find(key, lambda item, index: self._index.__setitem__(item.key, index))
+
+	def path_count(self, path):
+		count = 0
+		for key in self._index.keys():
+			if key[0:len(path)] == path:
+				count += 1
+		return count
+	
+	def path_exists(self, path):
+		for key in self._index.keys():
+			if key[0:len(path)] == path:
+				return True
+		return False
+	
+	def path_iter(self, path):
+		for key in self._index.keys():
+			if key[0:len(path)] == path:
+				yield key
+
+	def path_keys(self, path):
+		res = []
+		for key in self.path_iter(path):
+			res.append(key[len(path):])
+		return res
 
 #####################################################################################
 ######################################## API ########################################
@@ -122,7 +162,10 @@ async def parse_handler(request):
 		"error": errors
 	})
 
-print("Added new endpoint: /0246-parse")
+# print("Added new endpoint: /0246-parse")
+
+# Print with yellow color to the console
+print("\033[93m" + "Added new endpoint: /0246-parse" + "\033[0m")
 
 ######################################################################################
 ######################################## CODE ########################################
@@ -268,24 +311,22 @@ class Highway:
 			# Therefore if already exist then throw error
 				# => Cyclic detection in JS instead of python
 
-	def execute(self, _id = None, _prompt = None, _way_in = None, _query = "", **kwargs):
+	# Do not remove the "useless" _query parameter, since data need to be consumed for expanding
+	def execute(self, _id = None, _prompt = None, _way_in = None, _query = None, **kwargs):
 		_type = _prompt[_id]["inputs"]["_type"]
 
 		if _way_in is None:
-			_way_in = {}
-			_way_in["data"] = RevisionDict()
-			_way_in["used"] = {}
-		elif _id in _way_in["used"]:
-			_way_in["data"].purge(_way_in["used"][_id])
-		
-		_way_in["used"][_id] = len(_way_in["data"])
+			_way_in = RevisionDict()
+
+		_way_in._id = _id
+		_way_in.purge(_way_in.find(lambda item: item.id == _id))
 
 		# Time to let the magic play out
 
 		for param, key in zip(_type["in"], list(kwargs)):
 			name = param["name"][1:]
-			_way_in["data"][f"data.{name}"] = kwargs[key]
-			_way_in["data"][f"type.{name}"] = param["type"]
+			_way_in[("data", name)] = kwargs[key]
+			_way_in[("type", name)] = param["type"]
 
 		res = []
 
@@ -293,14 +334,20 @@ class Highway:
 			name = elem["name"][1:]
 
 			if (
-				f"data.{name}" in _way_in["data"] and
-				elem["type"] == _way_in["data"][f"type.{name}"]
+				("data", name) in _way_in and
+				elem["type"] == _way_in[("type", name)]
 			) or elem["type"] == "*":
-				res.append(_way_in["data"][f"data.{name}"])
+				res.append(_way_in[("data", name)])
 			else:
-				raise Exception(f"Output \"{name}\" is not defined or is not of type \"{elem['type']}\". Expected \"{_way_in['type'][name]}\".")
+				raise Exception(f"Output \"{name}\" is not defined or is not of type \"{elem['type']}\". Expected \"{_way_in[('type', name)]}\".")
 
 		return (_way_in, ) + tuple(res)
+	
+	@classmethod
+	def IS_CHANGED(self, _query, _way_in = None, *args, **kwargs):
+		if type(_query) is str:
+			_query = ast.literal_eval(_query) # [TODO] Maybe properly handle this in the future
+		return _query["update"]
 
 ######################################################################################
 
@@ -383,39 +430,35 @@ class Junction:
 		self._prev_offset = None
 		self._parsed_offset = None
 
-	def execute(self, _id = None, _prompt = None, _junc_in = None, _offset = "", **kwargs):
+	def execute(self, _id = None, _prompt = None, _junc_in = None, _offset = None, **kwargs):
 		_type = _prompt[_id]["inputs"]["_type"]
 
 		if _junc_in is None:
-			_junc_in = {}
-			_junc_in["data"] = RevisionDict()
-			_junc_in["used"] = {}
-		elif _id in _junc_in["used"]:
-			_junc_in["data"].purge(_junc_in["used"][_id])
-		
-		_junc_in["used"][_id] = len(_junc_in["data"])
+			_junc_in = RevisionDict()
+
+		_junc_in._id = _id
+		_junc_in.purge(_junc_in.find(lambda item: item.id == _id))
 
 		# Pack all data from _junc_in and kwargs together with the following format:
 
 		for param, key in zip(_type["in"], list(kwargs)):
-			count = 0
-			for key_data in _junc_in["data"]:
-				if key_data.startswith(f"data.{param['type']}"):
-					count += 1
-			_junc_in["data"][f"data.{param['type']}.{count}"] = kwargs[key]
+			count = _junc_in.path_count(("data", param["type"]))
+			_junc_in[("data", param["type"], count)] = kwargs[key]
 			if count == 0:
-				_junc_in["data"][f"index.{param['type']}"] = 0
-			_junc_in["data"][f"type.{param['type']}"] = param["type"]
-			count += 1
+				_junc_in[("index", param["type"])] = 0
+			_junc_in[("type", param["type"])] = param["type"]
 
 		# Parse the offset string
 
-		if _offset != self._prev_offset:
-			parsed_offset, err = parse_offset(_offset)
-			if err:
-				raise Exception(err)
-			self._prev_offset = _offset
-			self._parsed_offset = parsed_offset
+		if _offset is not None:
+			if type(_offset) is str:
+				_offset = ast.literal_eval(_offset)
+			if _offset["data"] != self._prev_offset:
+				parsed_offset, err = parse_offset(_offset["data"])
+				if err:
+					raise Exception(err)
+				self._prev_offset = _offset["data"]
+				self._parsed_offset = parsed_offset
 
 		# Apply the offset to the junction input
 
@@ -423,71 +466,55 @@ class Junction:
 			raise Exception("Offset is not parsed.")
 		
 		for elem in self._parsed_offset:
-			for key in _junc_in["data"]:
-				if key.startswith(f"data.{elem[0]}"):
-					break
-			else:
+			total = _junc_in.path_count(("data", elem[0]))
+			if total == 0:
 				raise Exception(f"Type \"{elem[0]}\" in offset string does not available in junction.")
-			
-			total = 0
-			for key in _junc_in["data"]:
-				if key.startswith(f"data.{elem[0]}"):
-					total += 1
 
 			# Check for ops char
 
 			if elem[1][0] == '+':
-				_junc_in["data"][f"index.{elem[0]}"] += int(elem[1][1:])
-				temp = _junc_in["data"][f"index.{elem[0]}"]
-
-				if temp >= total:
-					raise Exception(f"Offset \"{elem[1]}\" (total: \"{temp}\") is too large (count: \"{total}\").")
+				_junc_in[("index", elem[0])] += int(elem[1][1:])
 			elif elem[1][0] == '-':
-				_junc_in["data"][f"index.{elem[0]}"] -= int(elem[1][1:])
-				temp = _junc_in["data"][f"index.{elem[0]}"]
-
-				if temp < 0:
-					raise Exception(f"Offset \"{elem[1]}\" (total: \"{temp}\") is too small (count: \"{total}\").")
+				_junc_in[("index", elem[0])] -= int(elem[1][1:])
 			else:
-				_junc_in["data"][f"index.{elem[0]}"] = int(elem[1])
-				temp = _junc_in["data"][f"index.{elem[0]}"]
-
-				if temp >= total:
-					raise Exception(f"Offset \"{elem[1]}\" (total: \"{temp}\") is too large (count: \"{total}\").")
-				elif temp < 0:
-					raise Exception(f"Offset \"{elem[1]}\" (total: \"{temp}\") is too small (count: \"{total}\").")
+				_junc_in[("index", elem[0])] = int(elem[1])
+			
+			temp = _junc_in[("index", elem[0])]
+			if temp >= total:
+				raise Exception(f"Offset \"{elem[1]}\" (total: \"{temp}\") is too large (count: \"{total}\").")
+			elif temp < 0:
+				raise Exception(f"Offset \"{elem[1]}\" (total: \"{temp}\") is too small (count: \"{total}\").")
 
 		res = []
 		track = {}
 
-		for key in _junc_in["data"]:
-			if key.startswith("type."):
-				track[key[5:]] = 0
+		for key in _junc_in.path_iter(("type", )):
+			track[key[1]] = 0
 
 		for elem in _type["out"]:
 			if elem["full_name"] in BLACKLIST:
 				continue
 
-			for key in _junc_in["data"]:
-				if key.startswith(f"data.{elem['type']}"):
-					break
-			else:
+			total = _junc_in.path_count(("data", elem["type"]))
+			if total == 0:
 				raise Exception(f"Type \"{elem['type']}\" of output \"{elem['full_name']}\" does not available in junction.")
 			
-			offset = _junc_in["data"][f"index.{elem['type']}"]
+			offset = _junc_in[("index", elem["type"])]
 			real_index = track[elem["type"]] + offset
-			total = 0
-			for key in _junc_in["data"]:
-				if key.startswith(f"data.{elem['type']}"):
-					total += 1
 
 			if real_index >= total:
 				raise Exception(f"Too much type \"{elem['type']}\" being taken or offset \"{offset}\" is too large (count: \"{total}\").")
 			
-			res.append(_junc_in["data"][f"data.{elem['type']}.{real_index}"])
+			res.append(_junc_in[("data", elem["type"], real_index)])
 			track[elem["type"]] += 1
 		
 		return (_junc_in, ) + tuple(res)
+	
+	@classmethod
+	def IS_CHANGED(self, _offset, _junc_in = None, *args, **kwargs):
+		if type(_offset) is str:
+			_offset = ast.literal_eval(_offset) # [TODO] Maybe properly handle this in the future
+		return _offset["update"]
 
 ######################################################################################
 

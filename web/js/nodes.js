@@ -28,6 +28,24 @@ function removeElements(array, isValid) {
 	array.length -= shift;
 }
 
+async function randomSHA256() {
+	// Generate a random array of bytes
+	const randomValues = new Uint8Array(32);
+	window.crypto.getRandomValues(randomValues);
+
+	// Convert the random bytes to a string
+	const randomString = Array.from(randomValues).map(b => String.fromCharCode(b)).join('');
+
+	// Hash the string using SHA-256
+	const msgBuffer = new TextEncoder().encode(randomString); // encode as (utf-8) Uint8Array
+	const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer); // hash the message
+
+	// Convert the buffer to hex string
+	const hashArray = Array.from(new Uint8Array(hashBuffer)); // convert buffer to byte array
+	const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join(''); // convert bytes to hex string
+	return hashHex;
+}
+
 /////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////
@@ -40,6 +58,24 @@ function init_type(node) {
 			return serialize_type(node);
 		}
 	});
+}
+
+function init_update(node, name) {
+	node.__update = false;
+	for (let i = 0; i < node.widgets.length; ++ i) {
+		if (node.widgets[i].name === name) {
+			node.widgets[i].serializeValue = async function (inner_node, index_str) {
+				if (node.__update || !node.__hash_update)
+					node.__hash_update = await randomSHA256();
+				node.__update = false;
+				return {
+					data: this.value,
+					update: node.__hash_update,
+				};
+			};
+			return;
+		}
+	}
 }
 
 function serialize_type(node) {
@@ -172,6 +208,8 @@ app.registerExtension({
 
 						init_type(this);
 
+						init_update(this, "_query");
+
 						this.addWidget("button", "Update", null, () => {
 							const query = this.widgets.find(w => w.name === "_query");
 
@@ -196,6 +234,8 @@ app.registerExtension({
 									query.value = last_query;
 									return;
 								}
+
+								this.__update = true;
 
 								last_query = query.value;
 
@@ -289,6 +329,8 @@ app.registerExtension({
 							other_origin_node,
 							other_origin_slot_index
 						) {
+							this.__update = true;
+
 							if (BLACKLIST.includes(this.inputs[this_target_slot_index].name))
 								return true;
 
@@ -314,6 +356,7 @@ app.registerExtension({
 						) {
 							// We detect if we're connecting to Reroute here by checking other_target_node.type === "Reroute"
 							// return false for not allowing connection
+							this.__update = true;
 							
 							if (BLACKLIST.includes(this.outputs[this_origin_slot_index].name))
 								return true;
@@ -379,6 +422,8 @@ app.registerExtension({
 					nodeType.prototype.onNodeCreated = function () {
 						init_type(this);
 
+						init_update(this, "_offset");
+
 						this.addInput("...", "*");
 						this.addOutput("...", "*");
 
@@ -389,6 +434,8 @@ app.registerExtension({
 							other_origin_node,
 							other_origin_slot_index
 						) {
+							this.__update = true;
+
 							if (
 								BLACKLIST.includes(this.inputs[this_target_slot_index].name) &&
 								this.inputs[this_target_slot_index].name !== "..."
@@ -416,6 +463,8 @@ app.registerExtension({
 							other_target_node,
 							other_target_slot_index
 						) {
+							this.__update = true;
+
 							if (
 								BLACKLIST.includes(this.outputs[this_origin_slot_index].name) &&
 								this.outputs[this_origin_slot_index].name !== "..."
