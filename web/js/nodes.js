@@ -28,22 +28,8 @@ function removeElements(array, isValid) {
 	array.length -= shift;
 }
 
-async function randomSHA256() {
-	// Generate a random array of bytes
-	const randomValues = new Uint8Array(32);
-	window.crypto.getRandomValues(randomValues);
-
-	// Convert the random bytes to a string
-	const randomString = Array.from(randomValues).map(b => String.fromCharCode(b)).join('');
-
-	// Hash the string using SHA-256
-	const msgBuffer = new TextEncoder().encode(randomString); // encode as (utf-8) Uint8Array
-	const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer); // hash the message
-
-	// Convert the buffer to hex string
-	const hashArray = Array.from(new Uint8Array(hashBuffer)); // convert buffer to byte array
-	const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join(''); // convert bytes to hex string
-	return hashHex;
+function randomID() {
+	return Date.now().toString(36) + Math.random().toString(36).substring(2);
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -66,7 +52,7 @@ function init_update(node, name) {
 		if (node.widgets[i].name === name) {
 			node.widgets[i].serializeValue = async function (inner_node, index_str) {
 				if (node.__update || !node.__hash_update)
-					node.__hash_update = await randomSHA256();
+					node.__hash_update = randomID();
 				node.__update = false;
 				return {
 					data: this.value,
