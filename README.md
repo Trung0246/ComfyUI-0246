@@ -109,6 +109,10 @@ Cons:
  - Requires two `Hold` to sandwich the `Loop` node to be usable.
 
 To reuse data from previous iteration, I guess there's extensions for that already.
+
+Probably unstable as hell since I only tested for simple case.
+
+Until the topological PRs from the ComfyUI repos got merged, this node will be kept around.
 </details>
 
 ---
