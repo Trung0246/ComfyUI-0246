@@ -91,5 +91,5 @@ Hopefully difference between `batch` and `pluck` are self explainatory in the wo
 
 ##### TODO (may or may not get implemented)
 
-- More robust test since I only test this with simple test cases.
-- Same cyclic issue with `Highway`.
+- Tutorial for `Loop`, `Count`, `Hold`, and `Random`.
+- More testing.
