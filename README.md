@@ -93,6 +93,12 @@ Demo workflow is in [assets/workflow_junction_batch.json](https://github.com/Tru
 
 ---
 
+Looping and Related
+
+https://github.com/Trung0246/ComfyUI-0246/assets/11626920/563b9a00-412a-49b6-b1c6-24c83887a4d3
+
+---
+
 ##### TODO (may or may not get implemented)
 
 - Tutorial for `Loop`, `Count`, `Hold`, and `Random`.
