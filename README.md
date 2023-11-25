@@ -5,6 +5,7 @@ Random nodes for ComfyUI I made to solve my struggle with ComfyUI. Have varying 
 
 - `Highway`: yet another implementation but overkill version of pipe and reroute.
 - `Junction`: over-the-head data packing and unpacking sequentially.
+- `JunctionBatch`: if `Junction` and ComfyUI batching have a kid.
 
 ---
 
@@ -67,6 +68,20 @@ The offset syntax goes as follow:
 Can automatically expand pins.
 
 Inspired by /u/GianoBifronte ideas.
+
+---
+
+### Junction Batch
+
+<p align="center">
+    <img src="https://raw.githubusercontent.com/Trung0246/ComfyUI-0246/main/assets/Screenshot%202023-11-25%20034407.png">
+</p>
+
+Basically same as `Junction` but batch as list instead for further processing.
+
+Hopefully difference between `batch` and `pluck` are self explainatory in the workflow.
+
+---
 
 ##### TODO (may or may not get implemented)
 
