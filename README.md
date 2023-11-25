@@ -90,6 +90,8 @@ Basically same as `Junction` but batch as list instead for further processing.
 
 Hopefully difference between `batch` and `pluck` are self explainatory in the workflow.
 
+This node does not attempt to do something like `Latent From Batch` but instead aggregrate batch got from node.
+
 Demo workflow is in [assets/workflow_junction_batch.json](https://github.com/Trung0246/ComfyUI-0246/blob/main/assets/workflow_junction_batch.json).
 </details>
 
