@@ -71,6 +71,8 @@ The offset syntax goes as follow:
 Can automatically expand pins.
 
 Inspired by /u/GianoBifronte ideas.
+
+Demo workflow is in [assets/workflow_junction.json](https://github.com/Trung0246/ComfyUI-0246/blob/main/assets/workflow_junction.json).
 </details>
 
 ---
@@ -85,6 +87,8 @@ Inspired by /u/GianoBifronte ideas.
 Basically same as `Junction` but batch as list instead for further processing.
 
 Hopefully difference between `batch` and `pluck` are self explainatory in the workflow.
+
+Demo workflow is in [assets/workflow_junction_batch.json](https://github.com/Trung0246/ComfyUI-0246/blob/main/assets/workflow_junction_batch.json).
 </details>
 
 ---
