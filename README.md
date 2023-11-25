@@ -100,10 +100,13 @@ Demo workflow is in [assets/workflow_junction_batch.json](https://github.com/Tru
 https://github.com/Trung0246/ComfyUI-0246/assets/11626920/563b9a00-412a-49b6-b1c6-24c83887a4d3
 
 <details>
+
 Pros:
-    - Can "loop" within a single prompt queue.
+- Can "loop" within a single prompt queue.
+    
 Cons:
-    - Will mees up the workflow very easily if not careful.
+ - Will mess up the workflow very easily if not careful.
+ - Requires two `Hold` to sandwich the `Loop` node to be usable.
 
 To reuse data from previous iteration, I guess there's extensions for that already.
 </details>
