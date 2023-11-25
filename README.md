@@ -6,6 +6,8 @@ Random nodes for ComfyUI I made to solve my struggle with ComfyUI. Have varying 
 - `Highway`: yet another implementation but overkill version of pipe and reroute.
 - `Junction`: over-the-head data packing and unpacking sequentially.
 - `JunctionBatch`: if `Junction` and ComfyUI batching have a kid.
+- `Loop`: very hacky recursive repetiion by messing with ComfyUI internals.
+- `Beautify`: the beautification of data for easy troubleshooting.
 
 ---
 
@@ -93,9 +95,26 @@ Demo workflow is in [assets/workflow_junction_batch.json](https://github.com/Tru
 
 ---
 
-Looping and Related
+### Looping and Related
 
 https://github.com/Trung0246/ComfyUI-0246/assets/11626920/563b9a00-412a-49b6-b1c6-24c83887a4d3
+
+---
+
+### Beautify
+
+<p align="center">
+    <img src="https://github.com/Trung0246/ComfyUI-0246/assets/11626920/c95a99b2-2dee-48c4-a633-fff5da7b5069">
+</p>
+
+<details>
+Recursively display structural data information, especially useful when dealing with `Highway`, `Jucntion` and `JunctionBatch`.
+
+- `basic`: minimally shows as little as possible.
+- `more`: show everything from `basic` but also shows the content. Does not expand if it meet a object.
+- `full`: show everything as much as possible.
+- `json`: attempt to convert the input to json and display it. Will fail if the data cannot be converted.
+</details>
 
 ---
 
