@@ -99,7 +99,11 @@ Demo workflow is in [assets/workflow_junction_batch.json](https://github.com/Tru
 
 ### Looping and Related
 
+Basic looping to create 20 images with all 20 different seeds:
 <img width="1745" alt="Screenshot 2023-11-25 161238" src="https://github.com/Trung0246/ComfyUI-0246/assets/11626920/c30f5200-4e90-4fd9-b1eb-6e0965027259">
+
+A complex looping involves FABRIC nodes from [ComfyUI_fabric](https://github.com/ssitu/ComfyUI_fabric), allowing to pick images multiple times:
+<img width="1864" alt="Screenshot 2023-11-25 224302" src="https://github.com/Trung0246/ComfyUI-0246/assets/11626920/989cf4b0-08a0-4b19-9f15-3b3a50c4d0b2">
 
 <details>
 
