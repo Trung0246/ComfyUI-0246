@@ -6,7 +6,7 @@ Random nodes for ComfyUI I made to solve my struggle with ComfyUI. Have varying 
 - `Highway`: yet another implementation but overkill version of pipe and reroute.
 - `Junction`: over-the-head data packing and unpacking sequentially.
 - `JunctionBatch`: if `Junction` and ComfyUI batching have a kid.
-- `Loop`: very hacky recursive repetiion by messing with ComfyUI internals.
+- `Loop`: very hacky recursive repetition by messing with ComfyUI internals.
 - `Beautify`: the beautification of data for easy troubleshooting.
 
 ---
@@ -137,7 +137,7 @@ Until the topological PRs from the ComfyUI repos got merged, this node will be k
 </p>
 
 <details>
-Recursively display structural data information, especially useful when dealing with `Highway`, `Jucntion` and `JunctionBatch`.
+Recursively display structural data information, especially useful when dealing with `Highway`, `Junction` and `JunctionBatch`.
 
 - `basic`: minimally shows as little as possible.
 - `more`: show everything from `basic` but also shows the content. Does not expand if it meet a object.
