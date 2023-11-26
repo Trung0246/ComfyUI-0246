@@ -99,9 +99,16 @@ Demo workflow is in [assets/workflow_junction_batch.json](https://github.com/Tru
 
 ### Looping and Related
 
-https://github.com/Trung0246/ComfyUI-0246/assets/11626920/563b9a00-412a-49b6-b1c6-24c83887a4d3
+<img width="1745" alt="Screenshot 2023-11-25 161238" src="https://github.com/Trung0246/ComfyUI-0246/assets/11626920/c30f5200-4e90-4fd9-b1eb-6e0965027259">
 
 <details>
+
+The example above showcase that this node can turn node such as [Plasma Noise](https://github.com/Jordach/comfy-plasma) into batch.
+It also allows executing multiple nodes together.
+
+What's it looks like in action for simpler workflow.
+
+https://github.com/Trung0246/ComfyUI-0246/assets/11626920/563b9a00-412a-49b6-b1c6-24c83887a4d3
 
 Pros:
 - Can "loop" within a single prompt queue.
