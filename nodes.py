@@ -27,18 +27,57 @@ def pack_loop(_junc_in, name, value):
 	if count == 0:
 		_junc_in[("index", name)] = 0
 
-def junction_impl(self, _id, _prompt, _junc_in, _offset = None, _in_mode = False, _out_mode = False, _offset_mode = False, **kwargs):
+def find_input_node(nodes, link):
+	for node in nodes:
+		if node.get("inputs"):
+			for input in node["inputs"]:
+				if input["link"] == link:
+					return node["id"]
+	return None
+
+def trace_node(_prompt, _id, _workflow, _shallow = False, _input = False):
+	id_stk = []
+	if _input:
+		for key in _prompt[_id]["inputs"]:
+			if isinstance(_prompt[_id]["inputs"][key], list) and key != "_event":
+				id_stk.append(_prompt[_id]["inputs"][key][0])
+	else:
+		id_stk.append(_id)
+	
+	while len(id_stk) > 0:
+		curr_id = id_stk.pop(0)
+		if curr_id in BASE_EXECUTOR.outputs:
+			del BASE_EXECUTOR.outputs[curr_id]
+		for node in _workflow["workflow"]["nodes"]:
+			if node["id"] == int(curr_id):
+				if node.get("outputs"):
+					for output in node["outputs"]:
+						if output.get("links"):
+							for link in output["links"]:
+								linked_node_id = find_input_node(_workflow["workflow"]["nodes"], link)
+								if linked_node_id is not None:
+									if _shallow:
+										if linked_node_id in BASE_EXECUTOR.outputs:
+											del BASE_EXECUTOR.outputs[linked_node_id]
+									else:
+										id_stk.append(str(linked_node_id))
+
+def junction_impl(self, _id, _prompt, _workflow, _junc_in, _offset = None, _in_mode = False, _out_mode = False, _offset_mode = False, **kwargs):
 	if isinstance(_prompt, list):
 		_prompt = _prompt[0]
 	if isinstance(_id, list):
 		_id = _id[0]
 	if isinstance(_offset, list):
 		_offset = _offset[0]
+	if isinstance(_workflow, list):
+		_workflow = _workflow[0]
 
 	_type = _prompt[_id]["inputs"]["_type"]
 
 	if _junc_in is None:
 		_junc_in = utils0246.RevisionDict()
+	else:
+		_junc_in = utils0246.RevisionDict(_junc_in)
 
 	# _junc_in._id = _id
 	# _junc_in.purge(_junc_in.find(lambda item: item.id == _id))
@@ -153,7 +192,7 @@ def junction_impl(self, _id, _prompt, _junc_in, _offset = None, _in_mode = False
 			res.append(_junc_in[("data", elem["type"], real_index)])
 			track[elem["type"]] += 1
 	
-	return (utils0246.RevisionDict(_junc_in), ) + tuple(res)
+	return (_junc_in, ) + tuple(res)
 
 def gather_impl(_dict_list):
 	new_dict = utils0246.RevisionDict()
@@ -176,6 +215,20 @@ def gather_impl(_dict_list):
 
 	return new_dict
 
+def data_none_arr(data):
+	return [None] if not data else data
+
+def update_hold_db(key, data, mode):
+	# Helper function to handle the logic of updating the hold database
+	if key not in Hold.HOLD_DB or mode == "clear":
+		Hold.HOLD_DB[key] = []
+	if data is not None:
+		Hold.HOLD_DB[key].extend(data)
+	return data_none_arr(Hold.HOLD_DB[key])
+
+def len_zero_arr(data):
+	return 0 if data[0] is None else len(data)
+
 ########################################################################################
 ######################################## HIJACK ########################################
 ########################################################################################
@@ -191,6 +244,9 @@ def execute_param_handle(*args, **kwargs):
 		PROMPT_COUNT += 1
 		PROMPT_ID = args[2]
 		PROMPT_EXTRA = args[3]
+
+	# Scan the prompt to see which Highway, Junction or JunctionBatch did not connect to output node
+
 	return tuple(), {}
 
 utils0246.hijack(execution.PromptExecutor, "execute", execute_param_handle)
@@ -295,6 +351,8 @@ class Highway:
 
 		if _way_in is None:
 			_way_in = utils0246.RevisionDict()
+		else:
+			_way_in = utils0246.RevisionDict(_way_in)
 
 		# _way_in._id = _id
 		# _way_in.purge(_way_in.find(lambda item: item.id == _id))
@@ -319,7 +377,7 @@ class Highway:
 			else:
 				raise Exception(f"Output \"{name}\" is not defined or is not of type \"{elem['type']}\". Expected \"{_way_in[('type', name)]}\".")
 
-		return (utils0246.RevisionDict(_way_in), ) + tuple(res)
+		return (_way_in, ) + tuple(res)
 	
 	@classmethod
 	def IS_CHANGED(self, _query, _id = None, _prompt = None, _workflow = None, _way_in = None, *args, **kwargs):
@@ -358,7 +416,7 @@ class Junction:
 		self._parsed_offset = None
 
 	def execute(self, _id = None, _prompt = None, _workflow = None, _junc_in = None, _offset = None, **kwargs):
-		return junction_impl(self, _id, _prompt, _junc_in, _offset, **kwargs)
+		return junction_impl(self, _id, _prompt, _workflow, _junc_in, _offset, **kwargs)
 	
 	@classmethod
 	def IS_CHANGED(self, _offset, _id = None, _prompt = None, _workflow = None, _junc_in = None, *args, **kwargs):
@@ -406,13 +464,13 @@ class JunctionBatch:
 
 		if _mode == "batch":
 			setattr(JunctionBatch, "OUTPUT_IS_LIST", utils0246.TautologyRest())
-			return junction_impl(self, _id, _prompt, gather_impl(_junc_in), _offset, _in_mode = True, _out_mode = True, _offset_mode = True, **kwargs)
+			return junction_impl(self, _id, _prompt, _workflow, gather_impl(_junc_in), _offset, _in_mode = True, _out_mode = True, _offset_mode = True, **kwargs)
 		else:
 			try:
 				delattr(JunctionBatch, "OUTPUT_IS_LIST")
 			except AttributeError:
 				pass
-			return junction_impl(self, _id, _prompt, gather_impl(_junc_in), _offset, _in_mode = True, _out_mode = False, **kwargs)
+			return junction_impl(self, _id, _prompt, _workflow, gather_impl(_junc_in), _offset, _in_mode = True, _out_mode = False, **kwargs)
 
 	@classmethod
 	def IS_CHANGED(self, _id = None, _prompt = None, _workflow = None, _offset = None, _junc_in = None, _mode = None, *args, **kwargs):
@@ -575,9 +633,14 @@ class Hold:
 	def INPUT_TYPES(s):
 		return {
 			"required": {
-				"_data_in": utils0246.ByPassTypeTuple(("*", )),
+				"_mode": (["keep", "clear"], ),
+				"_key_id": ("STRING", {
+					"default": "",
+					"multiline": False
+				}),
 			},
 			"optional": {
+				"_data_in": utils0246.ByPassTypeTuple(("*", )),
 				"_hold": ("HOLD_TYPE", )
 			},
 			"hidden": {
@@ -595,58 +658,42 @@ class Hold:
 	FUNCTION = "execute"
 	CATEGORY = "0246"
 
-	def execute(self, _data_in = None, _id = None, _mode = None, _hold = None,  **kwargs):
-		if _hold is not None and _hold[0]:
-			return {
-				"ui": {
-					"text": (f"Track: {Hold.HOLD_ID}, Length: {len(_data_in)}, Passed", )
-				},
-				"result": (_data_in, )
-			}
-		global PROMPT_COUNT
+	def execute(self, _data_in = None, _id = None, _hold = None, _mode = None, _key_id = None, **kwargs):
+		mode = _mode[0] if _mode else None
+
+		# Check if Hold ID needs to be updated
 		if Hold.HOLD_ID != PROMPT_COUNT:
-			Hold.HOLD_DB = {}
+			Hold.HOLD_DB.clear()
 			Hold.HOLD_ID = PROMPT_COUNT
-		if _id[0] not in Hold.HOLD_DB:
-			Hold.HOLD_DB[_id[0]] = []
-		Hold.HOLD_DB[_id[0]].extend(_data_in)
-		BASE_EXECUTOR.outputs[_id[0]] = Hold.HOLD_DB[_id[0]]
+
+		# Prepare the base ui_text
+		ui_text = f"Track: {Hold.HOLD_ID}, Id: {_id[0]}"
+
+		# Check if _key_id is specified and process accordingly
+		if _key_id and len(_key_id[0]) > 0:
+			result = update_hold_db(_key_id[0], _data_in, mode)
+			ui_text += f", Size: {len_zero_arr(result)}, Key: {_key_id[0]}"
+		# Check if _hold is specified and process accordingly
+		elif _hold and _hold[0]:
+			result = _data_in if _data_in is not None else [None]
+			ui_text += f", Size: {len_zero_arr(result)}, Passed"
+		else:
+			# Update the outputs and HOLD_DB for _id if specified
+			if _id:
+				result = update_hold_db(_id[0], _data_in, mode)
+				BASE_EXECUTOR.outputs[_id[0]] = Hold.HOLD_DB[_id[0]]
+				ui_text += f", Size: {len(result)}"
+			else:
+				result = [None]
+
 		return {
 			"ui": {
-				"text": (f"Id: {Hold.HOLD_ID}, Length: {len(Hold.HOLD_DB[_id[0]])}", )
+				"text": (ui_text,)
 			},
-			"result": (Hold.HOLD_DB[_id[0]], )
+			"result": (result,)
 		}
 
 ######################################################################################
-
-def find_input_node(nodes, link):
-	for node in nodes:
-		if node.get("inputs"):
-			for input in node["inputs"]:
-				if input["link"] == link:
-					return node["id"]
-	return None
-
-def trace_node(_prompt, _id, _workflow):
-	id_stk = []
-	for key in _prompt[_id]["inputs"]:
-		if isinstance(_prompt[_id]["inputs"][key], list) and key != "_event":
-			id_stk.append(_prompt[_id]["inputs"][key][0])
-	
-	while len(id_stk) > 0:
-		curr_id = id_stk.pop(0)
-		if curr_id in BASE_EXECUTOR.outputs:
-			del BASE_EXECUTOR.outputs[curr_id]
-		for node in _workflow["workflow"]["nodes"]:
-			if node["id"] == int(curr_id):
-				if node.get("outputs"):
-					for output in node["outputs"]:
-						if output.get("links"):
-							for link in output["links"]:
-								linked_node_id = find_input_node(_workflow["workflow"]["nodes"], link)
-								if linked_node_id is not None:
-									id_stk.append(str(linked_node_id))
 
 class Loop:
 	@classmethod
@@ -686,7 +733,7 @@ class Loop:
 				pass
 			
 			# Not the most efficient. The better way is to find all nodes that are connected to inputs and this loop node
-			trace_node(_prompt[0], _id[0], _workflow[0]) # , lambda curr_id: exec.append(curr_id) if curr_id not in exec else None)
+			trace_node(_prompt[0], _id[0], _workflow[0], _shallow = False, _input = True) # , lambda curr_id: exec.append(curr_id) if curr_id not in exec else None)
 
 			if _mode[0] == "sweep":
 				while len(exec) > 0:
@@ -705,7 +752,7 @@ class Loop:
 
 ######################################################################################
 
-# [WIP] Incomplete, not working yet until I figure out things
+# [WIP]
 class Mimic:
 	@classmethod
 	def INPUT_TYPES(s):
