@@ -752,7 +752,7 @@ class Loop:
 
 ######################################################################################
 
-# [WIP]
+# [WIP] Incomplete, not working yet until I figure out things
 class Mimic:
 	@classmethod
 	def INPUT_TYPES(s):
