@@ -92,6 +92,8 @@ Hopefully difference between `batch` and `pluck` are self explainatory in the wo
 
 This node does not attempt to do something like `Latent From Batch` but instead aggregrate batch got from node.
 
+Also if multiple same output type appear during `batch` mode, then the first same type pin will have `[11, 22, 33]`, and the next one is `[22, 33, 11]`.
+
 Demo workflow is in [assets/workflow_junction_batch.json](https://github.com/Trung0246/ComfyUI-0246/blob/main/assets/workflow_junction_batch.json).
 </details>
 
