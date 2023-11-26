@@ -120,6 +120,7 @@ Pros:
 Cons:
  - Will mess up the workflow very easily if not careful.
  - Requires two `Hold` to sandwich the `Loop` node to be usable.
+ - The actual hard limit of how many times can be looped depends on [python maximum recursion depth](https://stackoverflow.com/questions/3323001/what-is-the-maximum-recursion-depth-and-how-to-increase-it). So increase it will increase the maximum loop count.
 
 To reuse data from previous iteration, I guess there's extensions for that already.
 
