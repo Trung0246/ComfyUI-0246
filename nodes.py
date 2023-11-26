@@ -475,7 +475,7 @@ class Random:
 		return {
 			"required": {
 				"val": ("STRING", {
-					"default": "0",
+					"default": "-1",
 					"multiline": False
 				}),
 				"min": ("INT", {
