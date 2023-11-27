@@ -143,7 +143,7 @@ Until the topological PRs from the ComfyUI repos got merged, this node will be k
 Recursively display structural data information, especially useful when dealing with `Highway`, `Junction` and `JunctionBatch`.
 
 - `basic`: minimally shows as little as possible.
-- `more`: show everything from `basic` but also shows the content. Does not expand if it meet a object.
+- `more`: show everything from `basic` but also shows the content. Does not expand if it meet a non-iterable object.
 - `full`: show everything as much as possible.
 - `json`: attempt to convert the input to json and display it. Will fail if the data cannot be converted.
 </details>
