@@ -191,9 +191,11 @@ import { ComfyWidgets } from "../../../scripts/widgets.js";
 
 		// Shift up all links
 
+		app.canvas.setDirty(true, false);
 		if (flag) {
 			if (arr[index].links.length === 0) {
 				node.removeOutput(index);
+				
 				for (let i = 0, c = 0; i < arr.length; ++ i) {
 					if (BLACKLIST.includes(arr[i].name))
 						continue;
@@ -220,6 +222,23 @@ import { ComfyWidgets } from "../../../scripts/widgets.js";
 		return;
 	}
 
+	function node_fit(node, text_widget, widget) {
+		// For now good enough
+		// window.setTimeout(() => {
+		// 	let tally = (node.inputs.length > node.outputs.length ? node.inputs.length : node.outputs.length) - 1;
+		// 	node.size = node.computeSize();
+		// 	if (widget)
+		// 		widget.y = (LiteGraph.NODE_SLOT_HEIGHT) * tally + 26 + (LiteGraph.NODE_WIDGET_HEIGHT) * 2 + 10;
+		// 	if (text_widget) {
+		// 		text_widget.y = (LiteGraph.NODE_SLOT_HEIGHT) * tally + 26;
+		// 		node.size[1] += text_widget.computedHeight - 32;
+		// 	}
+		// 	window.setTimeout(() => {
+		// 		node.setSize(node.computeSize());
+		// 	}, 100);
+		// }, 0);
+	}
+
 	const BLACKLIST = [
 		"_way_in",
 		"_way_out",
@@ -227,10 +246,8 @@ import { ComfyWidgets } from "../../../scripts/widgets.js";
 		"_junc_out",
 		"_query",
 		"_offset",
-		// "_node_head",
-		// "_node_tail",
-		"_node",
 		"_event",
+		"_delimiter",
 		"..."
 	];
 
@@ -315,7 +332,6 @@ import { ComfyWidgets } from "../../../scripts/widgets.js";
 			
 			this["add" + upper_name](pin, "*");
 			this[more_name][this[more_name].length - 1].shape = shape;
-
 			return true;
 		};
 
@@ -324,7 +340,8 @@ import { ComfyWidgets } from "../../../scripts/widgets.js";
 				// Clean up when copy paste or template load
 				if (this.self[more_name])
 					remove_elem_arr(this.self[more_name], (e) => !BLACKLIST.includes(e.name));
-					this.self.computeSize();
+				this.self.computeSize();
+				app.canvas.setDirty(true, false);
 				return;
 			}
 			
@@ -357,6 +374,7 @@ import { ComfyWidgets } from "../../../scripts/widgets.js";
 					} break;
 					case 1: {
 						this.self.inputs[arguments[2]].name = `${arguments[0]}:${arguments[1]}`;
+						node_fit(this.self, this.self.widgets.filter(_ => _.name === "_offset")[0]);
 					} break;
 					case 2: {
 						if (arguments[0] === 1) {
@@ -367,6 +385,7 @@ import { ComfyWidgets } from "../../../scripts/widgets.js";
 								return this.self.inputs[link_index].link;
 							});
 							-- real.input;
+							node_fit(this.self, this.self.widgets.filter(_ => _.name === "_offset")[0]);
 						}
 					} break;
 				}
@@ -387,6 +406,7 @@ import { ComfyWidgets } from "../../../scripts/widgets.js";
 					} break;
 					case 1: {
 						this.self.outputs[arguments[2]].name = `${arguments[1]}:${arguments[0]}`;
+						node_fit(this.self, this.self.widgets.filter(_ => _.name === "_offset")[0]);
 					} break;
 					case 2: {
 						if (arguments[0] === 2) {
@@ -398,6 +418,7 @@ import { ComfyWidgets } from "../../../scripts/widgets.js";
 									return this.self.outputs[link_index].links[extra_link_index];
 								});
 								-- real.output;
+								node_fit(this.self, this.self.widgets.filter(_ => _.name === "_offset")[0]);
 							}
 						}
 					} break;
@@ -411,7 +432,7 @@ import { ComfyWidgets } from "../../../scripts/widgets.js";
 		nodeType.help = indent_str `
 			_offset is used to skip data ahead for specific type (since internally it's a sequence of data).
 
-			_offset is persistent and will retains information across linked Junction.
+			_offset is persistent and will retains information across linked Junction and JunctionBatch.
 			
 			The _offset syntax goes as follow:
 			
@@ -488,9 +509,33 @@ import { ComfyWidgets } from "../../../scripts/widgets.js";
 		};
 	}
 
+	function force_size(node, widget, mode) {
+		let temp_size = node.computeSize();
+		if (!node.size)
+			node.size = temp_size;
+		temp_size[0] = node.size[0];
+		if (widget)
+			temp_size[1] += widget.computedHeight - 32;
+		if (mode)
+			node.setSize(temp_size);
+		else
+			node.size = temp_size;
+	}
+
 	function setup_log(nodeType) {
 		hijack(nodeType.prototype, "onNodeCreated", () => {}, function () {
 			raw_setup_log(this.self);
+			const node = this.self;
+			node.msgSize = function (event) {
+				force_size(node, node.log_widget, false);
+			};
+			window.setTimeout(() => {
+				// https://github.com/failfa-st/failfast-comfyui-extensions/issues/16
+				api.addEventListener("ue-message-handler", node.msgSize);
+				hijack(node, "onRemoved", () => {}, function () {
+					api.removeEventListener("ue-message-handler", node.msgSize);
+				});
+			}, 0);
 		});
 		hijack(nodeType.prototype, "onExecuted", () => {}, function (message) {
 			this.self.log_widget.value = message.text[0];
@@ -530,11 +575,17 @@ import { ComfyWidgets } from "../../../scripts/widgets.js";
 					node.bgcolor = LGraphCanvas.node_colors.pale_blue.bgcolor;
 				} break;
 				case "Beautify": {
+					// Pink UwU
 					node.color = "#652069";
 					node.bgcolor = "#764378";
 				} break;
 				case "Random": {
 					node.color = LGraphCanvas.node_colors.green.color;
+					node.bgcolor = LGraphCanvas.node_colors.blue.bgcolor;
+				} break;
+				case "Stringify": {
+					node.color = LGraphCanvas.node_colors.green.color;
+					node.bgcolor = LGraphCanvas.node_colors.green.bgcolor;
 				} break;
 			}
 		},
@@ -672,6 +723,8 @@ import { ComfyWidgets } from "../../../scripts/widgets.js";
 											}
 										}
 									}
+
+									node_fit(this, query, this.widgets.filter(_ => _.name === "Update")[0]);
 								});
 							});
 
@@ -816,6 +869,9 @@ import { ComfyWidgets } from "../../../scripts/widgets.js";
 					} break;
 					case "Beautify": {
 						setup_log(nodeType);
+					} break;
+					case "Stringify": {
+						single_impl(nodeType, nodeData, app, LiteGraph.CIRCLE_SHAPE, []);
 					} break;
 				}
 			}

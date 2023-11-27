@@ -245,8 +245,6 @@ def execute_param_handle(*args, **kwargs):
 		PROMPT_ID = args[2]
 		PROMPT_EXTRA = args[3]
 
-	# Scan the prompt to see which Highway, Junction or JunctionBatch did not connect to output node
-
 	return tuple(), {}
 
 utils0246.hijack(execution.PromptExecutor, "execute", execute_param_handle)
@@ -838,6 +836,53 @@ class Beautify:
 			}
 		}
 
+######################################################################################
+
+class Stringify:
+	@classmethod
+	def INPUT_TYPES(s):
+		return {
+			"required": {
+				"_mode": (["basic", "value", "force"],),
+				"_delimiter": ("STRING", {
+					"default": ", ",
+					"multiline": False
+				}),
+			},
+		}
+	
+	RETURN_TYPES = ("STRING", )
+	RETURN_NAMES = ("_str", )
+	INPUT_IS_LIST = True
+	FUNCTION = "execute"
+	CATEGORY = "0246"
+
+	def execute(self, _delimiter = None, _mode = None, **kwargs):
+		res = []
+
+		for value in kwargs.values():
+			if isinstance(value, list):
+				for item in value:
+					if _mode[0] == "basic" and type(item).__str__ is object.__str__:
+						continue
+					elif _mode[0] == "value":
+						if isinstance(item, object) and type(item).__module__ != 'builtins' and type(item).__str__ is object.__str__:
+							continue
+					try:
+						item_str = str(item)
+						if item_str:
+							res.append(item_str)
+					except Exception:
+						continue
+
+		res = _delimiter[0].join(res)
+		return {
+			"ui": {
+				"text": (res, )
+			},
+			"result": (res, )
+		}
+
 ########################################################################################
 ######################################## EXPORT ########################################
 ########################################################################################
@@ -851,7 +896,8 @@ NODE_CLASS_MAPPINGS = {
 	"Count": Count,
 	"Hold": Hold,
 	"Loop": Loop,
-	"Beautify": Beautify
+	"Beautify": Beautify,
+	"Stringify": Stringify
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -863,7 +909,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
 	"Count": "Count",
 	"Hold": "Hold",
 	"Loop": "Loop",
-	"Beautify": "Beautify"
+	"Beautify": "Beautify",
+	"Stringify": "Stringify"
 }
 
 print("\033[95m" + utils0246.HEAD_LOG + "Loaded all nodes and apis (/0246-parse)." + "\033[0m")

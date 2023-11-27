@@ -209,9 +209,18 @@ def beautify_structure(data, indent=0, mode=0, stop=False):
 		match mode:
 			case 1:
 				try:
+					if isinstance(data, str):
+						raise TypeError("stub")
+					iterator = iter(data) # Try to get an iterator from data.
+					if hasattr(data, '__len__'):
+						res_str += f"{indent_str}Iterable of {len(data)}:\n"
+					else:
+						res_str += f"{indent_str}Iterable:\n"
+					for item in iterator:
+						res_str += beautify_structure(item, indent + 1, mode)
+				except TypeError:
+					# If data is not iterable, just print its repr.
 					res_str += f"{indent_str}  Data: {repr(data)}\n"
-				except:
-					pass
 			case 2:
 				try:
 					if isinstance(data, (int, float, str, bool, type(None))):

@@ -14,6 +14,65 @@ function hijack(obj, key, before_func, after_func) {
 	};
 }
 
+function monitorArray(obj, key) {
+	let originalArray = obj[key];
+
+	function createLoggingArray(array) {
+		let loggingArray = [];
+		array.forEach((value, index) => {
+			Object.defineProperty(loggingArray, index, {
+				get: function () {
+					return value;
+				},
+				set: function (newValue) {
+					console.log(`${key}[${index}] changed from ${value} to ${newValue}`);
+					if (window.debug_flag) {
+						console.trace();
+						debugger;
+					}
+					value = newValue;
+				},
+				enumerable: true,
+				configurable: true
+			});
+		});
+		return loggingArray;
+	}
+
+	let loggingArray = createLoggingArray(originalArray);
+
+	Object.defineProperty(obj, key, {
+		get: function () {
+			return loggingArray;
+		},
+		set: function (newArray) {
+			console.log(`${key} changed from [${originalArray}] to [${newArray}]`);
+			if (window.debug_flag) {
+				console.trace();
+				debugger;
+			}
+			originalArray = newArray.slice();
+			loggingArray = createLoggingArray(originalArray);
+		},
+		enumerable: true,
+		configurable: true
+	});
+	
+	obj.___MARK___ = true;
+
+	let flag = false;
+	hijack(window, "structuredClone", (obj) => {
+		if (obj && obj.___MARK___)
+			flag = true;
+	}, function (obj) {
+		if (flag) {
+			monitorArray(obj, key);
+			obj.___MARK___ = true;
+			flag = false;
+		}
+	});
+}
+
 /////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////
