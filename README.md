@@ -8,6 +8,7 @@ Random nodes for ComfyUI I made to solve my struggle with ComfyUI. Have varying 
 - `JunctionBatch`: if `Junction` and ComfyUI batching have a kid.
 - `Loop`: very hacky recursive repetition by messing with ComfyUI internals.
 - `Beautify`: the beautification of data for easy troubleshooting.
+- `Stringify`: anything to string, together.
 
 ---
 
