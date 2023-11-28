@@ -4,6 +4,8 @@ import { ComfyDialog } from "../../../scripts/ui.js";
 import { ComfyWidgets } from "../../../scripts/widgets.js";
 
 (async () => {
+	app.graph.extra["0246_VERSION"] = "0.0.1"; // Only used when breaking changes happen
+
 	async function try_import(name) {
 		try {
 			return await import(name);
@@ -103,28 +105,30 @@ import { ComfyWidgets } from "../../../scripts/widgets.js";
 	}
 
 	hijack(app, "loadGraphData", function (workflow) {
-		// Probably safe enough unless someone else attempting to reuse these. Ouch.
-		const patch_node_db = [
-			["Highway", "0246.Highway"],
-			["Junction", "0246.Junction"],
-			["JunctionBatch", "0246.JunctionBatch"],
-			["Loop", "0246.Loop"],
-			["Count", "0246.Count"],
-			["Hold", "0246.Hold"],
-			["Beautify", "0246.Beautify"],
-			["Random", "0246.RandomInt"],
-			["Stringify", "0246.Stringify"],
-		];
+		if (!workflow.extra["0246_VERSION"]) {
+			// Probably safe enough unless someone else attempting to reuse these. Ouch.
+			const patch_node_db = [
+				["Highway", "0246.Highway"],
+				["Junction", "0246.Junction"],
+				["JunctionBatch", "0246.JunctionBatch"],
+				["Loop", "0246.Loop"],
+				["Count", "0246.Count"],
+				["Hold", "0246.Hold"],
+				["Beautify", "0246.Beautify"],
+				["Random", "0246.RandomInt"],
+				["Stringify", "0246.Stringify"],
+			];
 
-		for (let i = 0; i < workflow.nodes.length; ++ i)
-			for (let j = 0; j < patch_node_db.length; ++ j) {
-				if (workflow.nodes[i].type === patch_node_db[j][0]) {
-					console.warn(`[ComfyUI-0246] Patching node "${workflow.nodes[i].type}" to "${patch_node_db[j][1]}"`);
-					workflow.nodes[i].type = patch_node_db[j][1];
-					break;
-				} else if (workflow.nodes[i].type === patch_node_db[j][1])
-					break;
-			}
+			for (let i = 0; i < workflow.nodes.length; ++ i)
+				for (let j = 0; j < patch_node_db.length; ++ j) {
+					if (workflow.nodes[i].type === patch_node_db[j][0]) {
+						console.warn(`[ComfyUI-0246] Patching node "${workflow.nodes[i].type}" to "${patch_node_db[j][1]}"`);
+						workflow.nodes[i].type = patch_node_db[j][1];
+						break;
+					} else if (workflow.nodes[i].type === patch_node_db[j][1])
+						break;
+				}
+		}
 	}, () => {});
 	
 	let error_flag = false;
