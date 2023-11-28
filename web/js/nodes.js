@@ -5,7 +5,7 @@ import { ComfyWidgets } from "../../../scripts/widgets.js";
 
 (async () => {
 	window.setTimeout(() => {
-		app.graph.extra["0246_VERSION"] = [0, 0, 1]; // Only used when breaking changes happen
+		app.graph.extra["0246.VERSION"] = [0, 0, 1]; // Only used when breaking changes happen
 	}, 1500);
 
 	async function try_import(name) {
@@ -117,7 +117,7 @@ import { ComfyWidgets } from "../../../scripts/widgets.js";
 	}
 
 	hijack(app, "loadGraphData", function (workflow) {
-		if (!workflow.extra["0246_VERSION"]) {
+		if (!workflow.extra["0246.VERSION"]) {
 			// Probably safe enough unless someone else attempting to reuse these. Ouch.
 			const patch_node_db = [
 				["Highway", "0246.Highway"],
