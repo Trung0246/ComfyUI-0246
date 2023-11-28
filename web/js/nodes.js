@@ -4,7 +4,9 @@ import { ComfyDialog } from "../../../scripts/ui.js";
 import { ComfyWidgets } from "../../../scripts/widgets.js";
 
 (async () => {
-	app.graph.extra["0246_VERSION"] = "0.0.1"; // Only used when breaking changes happen
+	window.setTimeout(() => {
+		app.graph.extra["0246_VERSION"] = "0.0.1"; // Only used when breaking changes happen
+	}, 1500);
 
 	async function try_import(name) {
 		try {
