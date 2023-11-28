@@ -102,6 +102,59 @@ import { ComfyWidgets } from "../../../scripts/widgets.js";
 		return lines.join('\n');
 	}
 
+	hijack(app, "loadGraphData", function (workflow) {
+		// Probably safe enough unless someone else attempting to reuse these. Ouch.
+		const patch_node_db = [
+			["Highway", "0246.Highway"],
+			["Junction", "0246.Junction"],
+			["JunctionBatch", "0246.JunctionBatch"],
+			["Loop", "0246.Loop"],
+			["Count", "0246.Count"],
+			["Hold", "0246.Hold"],
+			["Beautify", "0246.Beautify"],
+			["Random", "0246.RandomInt"],
+			["Stringify", "0246.Stringify"],
+		];
+
+		for (let i = 0; i < workflow.nodes.length; ++ i)
+			for (let j = 0; j < patch_node_db.length; ++ j) {
+				if (workflow.nodes[i].type === patch_node_db[j][0]) {
+					console.warn(`[ComfyUI-0246] Patching node "${workflow.nodes[i].type}" to "${patch_node_db[j][1]}"`);
+					workflow.nodes[i].type = patch_node_db[j][1];
+					break;
+				} else if (workflow.nodes[i].type === patch_node_db[j][1])
+					break;
+			}
+	}, () => {});
+	
+	let error_flag = false;
+	hijack(app, "showMissingNodesError", function (nodes) {
+		if (!error_flag)
+			for (let i = 0; i < nodes.length; ++ i)
+				for (let j = 0; j < patch_node_db.length; ++ j)
+					if (nodes[i] === patch_node_db[j][0]) {
+						error_popup(indent_str `
+							[ComfyUI-0246] Unfortunately I have to change node internal ID due to I'm being dumb for using generic name. Sorry for inconvenience.
+
+							If this error message shown then that mean automatic patching failed. Please replace each nodes manually :(
+
+							Affected node:
+
+							- Highway -> 0246.Highway
+							- Junction -> 0246.Junction
+							- JunctionBatch -> 0246.JunctionBatch
+							- Loop -> 0246.Loop
+							- Count -> 0246.Count
+							- Hold -> 0246.Hold
+							- Beautify -> 0246.Beautify
+							- Random -> 0246.RandomInt
+							- Stringify -> 0246.Stringify
+						`);
+						error_flag = true;
+						break;
+					}
+	}, () => {});
+
 	/////////////////////////////////////////////////////////////////////////
 	/////////////////////////////////////////////////////////////////////////
 	/////////////////////////////////////////////////////////////////////////
@@ -579,7 +632,7 @@ import { ComfyWidgets } from "../../../scripts/widgets.js";
 					node.color = "#652069";
 					node.bgcolor = "#764378";
 				} break;
-				case "Random": {
+				case "RandomInt": {
 					node.color = LGraphCanvas.node_colors.green.color;
 					node.bgcolor = LGraphCanvas.node_colors.blue.bgcolor;
 				} break;
@@ -592,7 +645,7 @@ import { ComfyWidgets } from "../../../scripts/widgets.js";
 		async beforeRegisterNodeDef (nodeType, nodeData, app) {
 			if (nodeData.category === "0246") {
 				switch (nodeData.name) {
-					case "Highway": {
+					case "0246.Highway": {
 						nodeType.prototype.onNodeMoved = function () {};
 
 						nodeType.prototype.onNodeCreated = function () {
@@ -726,6 +779,8 @@ import { ComfyWidgets } from "../../../scripts/widgets.js";
 
 									node_fit(this, query, this.widgets.filter(_ => _.name === "Update")[0]);
 								});
+							}, {
+								serialize: false
 							});
 
 							this.onConnectInput = function (
@@ -841,36 +896,36 @@ import { ComfyWidgets } from "../../../scripts/widgets.js";
 									- Multiple input and outputs together.
 						`;
 					} break;
-					case "Junction": {
+					case "0246.Junction": {
 						junction_impl(nodeType, nodeData, app, "_offset", LiteGraph.CIRCLE_SHAPE, LiteGraph.CIRCLE_SHAPE);
 					} break;
-					case "JunctionBatch": {
+					case "0246.JunctionBatch": {
 						// [TODO] Dynamically change shape when _mode is changed
 						junction_impl(nodeType, nodeData, app, "_offset", 6, 6);
 					} break;
-					case "Loop": {
+					case "0246.Loop": {
 						single_impl(nodeType, nodeData, app, LiteGraph.CIRCLE_SHAPE, []);
 					} break;
-					case "Count": {
+					case "0246.Count": {
 						single_impl(nodeType, nodeData, app, null, [
 							"_node", "input", 1, LiteGraph.CIRCLE_SHAPE
 						]);
 						setup_log(nodeType);
 					} break;
-					case "Hold": {
+					case "0246.Hold": {
 						single_impl(nodeType, nodeData, app, null, [
 							"_data_in", "input", 1, LiteGraph.CIRCLE_SHAPE,
 							"_data_out", "output", 2, 6
 						]);
 						setup_log(nodeType);
 					} break;
-					case "Random": {
+					case "0246.RandomInt": {
 						setup_log(nodeType);
 					} break;
-					case "Beautify": {
+					case "0246.Beautify": {
 						setup_log(nodeType);
 					} break;
-					case "Stringify": {
+					case "0246.Stringify": {
 						single_impl(nodeType, nodeData, app, LiteGraph.CIRCLE_SHAPE, []);
 					} break;
 				}

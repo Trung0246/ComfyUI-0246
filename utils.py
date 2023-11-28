@@ -1,6 +1,11 @@
 import subprocess
 import sys
 import ast
+import importlib.util
+import pathlib
+import contextlib
+import os
+import torch
 
 # Check for wrapt
 wrapt = None
@@ -59,6 +64,30 @@ class TautologyAll(dict):
 ######################################################################################
 ######################################## UTIL ########################################
 ######################################################################################
+
+@contextlib.contextmanager
+def temp_dir(new_dir):
+	old_dir = os.getcwd()
+	os.chdir(new_dir)
+	try:
+		yield
+	finally:
+		os.chdir(old_dir)
+
+def import_module(module_name, file_path, package_name = None):
+	try:
+		if module_name in sys.modules:
+			return sys.modules[module_name]
+		else:
+			spec = importlib.util.spec_from_file_location(module_name, pathlib.Path(file_path))
+			module = importlib.util.module_from_spec(spec)
+			if package_name is not None:
+				module.__package__ = package_name
+			sys.modules[module_name] = module
+			spec.loader.exec_module(module)
+			return module
+	except (FileNotFoundError, ModuleNotFoundError, OSError):
+		return None
 
 class RevisionDict(dict):
 	def __init__(self, *args, **kwargs):
@@ -209,7 +238,7 @@ def beautify_structure(data, indent=0, mode=0, stop=False):
 		match mode:
 			case 1:
 				try:
-					if isinstance(data, str):
+					if isinstance(data, str) or isinstance(data, torch.Tensor):
 						raise TypeError("stub")
 					iterator = iter(data) # Try to get an iterator from data.
 					if hasattr(data, '__len__'):

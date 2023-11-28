@@ -4,6 +4,7 @@ sys = __import__("sys")
 import random
 import builtins
 import json
+import pathlib
 
 # Self Code
 from . import utils as utils0246
@@ -15,6 +16,22 @@ import aiohttp.web
 from server import PromptServer
 import execution
 import nodes
+
+# ComfyUI 3rd Party
+ext = {}
+
+with utils0246.temp_dir(pathlib.Path(__file__).parent.parent.parent.parent.absolute() / "ComfyUI" / "custom_nodes"):
+
+	work_path = pathlib.Path.cwd()
+
+	sys.path.insert(0, work_path)
+
+	ext.update({
+		"was": utils0246.import_module("WAS_Node_Suite", "was-node-suite-comfyui/WAS_Node_Suite.py"),
+		"insp": utils0246.import_module("ComfyUI-Inspire-Pack", "ComfyUI-Inspire-Pack/__init__.py"),
+	})
+
+	sys.path.remove(work_path)
 
 ######################################################################################
 ######################################## IMPL ########################################
@@ -215,16 +232,10 @@ def gather_impl(_dict_list):
 
 	return new_dict
 
-def data_none_arr(data):
-	return [None] if not data else data
-
-def update_hold_db(key, data, mode):
-	# Helper function to handle the logic of updating the hold database
-	if key not in Hold.HOLD_DB or mode == "clear":
-		Hold.HOLD_DB[key] = []
+def update_hold_db(key, data):
 	if data is not None:
-		Hold.HOLD_DB[key].extend(data)
-	return data_none_arr(Hold.HOLD_DB[key])
+		Hold.HOLD_DB[key]["data"].extend(data)
+	return [None] if not Hold.HOLD_DB[key]["data"] else Hold.HOLD_DB[key]["data"]
 
 def len_zero_arr(data):
 	return 0 if data[0] is None else len(data)
@@ -524,7 +535,7 @@ class Count:
 
 ######################################################################################
 
-class Random:
+class RandomInt:
 	@classmethod
 	def INPUT_TYPES(s):
 		# Random uint64 int
@@ -536,15 +547,12 @@ class Random:
 				}),
 				"min": ("INT", {
 					"default": 0,
-					"min": 0,
-					# "max": 18446744073709551615
+					"min": -9007199254740991,
 					"max": 9007199254740991
 				}),
 				"max": ("INT", {
-					# "default": 18446744073709551615,
 					"default": 9007199254740991,
-					"min": 0,
-					# "max": 18446744073709551615
+					"min": -9007199254740991,
 					"max": 9007199254740991
 				}),
 				"batch_size": ("INT", {
@@ -553,10 +561,20 @@ class Random:
 					"max": sys.maxsize
 				}),
 			},
+			"optional": {
+				"seed": ("INT", {
+					"default": 0,
+					"min": -9007199254740991,
+					# "max": 18446744073709551615
+					"max": 9007199254740991
+				}),
+			},
 			"hidden": {
 				"_id": "UNIQUE_ID"
 			}
 		}
+
+	RANDOM_DB = {}
 	
 	RETURN_TYPES = ("INT", )
 	RETURN_NAMES = ("rand_int", )
@@ -564,54 +582,65 @@ class Random:
 	FUNCTION = "execute"
 	CATEGORY = "0246"
 
-	RANDOM_DB = {}
-	RANDOM_ID = 0
-
-	def execute(self, _id = None, val = None, min = None, max = None, batch_size = None, **kwargs):
-		if Random.RANDOM_ID != PROMPT_COUNT:
-			Random.RANDOM_DB = {}
-			Random.RANDOM_ID = PROMPT_COUNT
-
+	def execute(self, _id = None, val = None, min = None, max = None, seed = None, batch_size = None, **kwargs):
 		if min > max:
 			raise Exception("min is greater than max.")
 		
-		if _id not in Random.RANDOM_DB:
-			Random.RANDOM_DB[_id] = {}
+		if seed is not None:
+			random.seed(seed)
+		
+		if _id not in RandomInt.RANDOM_DB:
+			RandomInt.RANDOM_DB[_id] = {
+				"track": None
+			}
+
+		if RandomInt.RANDOM_DB[_id]["track"] != PROMPT_COUNT:
+			RandomInt.RANDOM_DB[_id]["track"] = PROMPT_COUNT
+
+			if seed is not None:
+				random.seed(seed)
+				RandomInt.RANDOM_DB[_id]["seed"] = seed
+				if "state" in RandomInt.RANDOM_DB[_id]:
+					del RandomInt.RANDOM_DB[_id]["state"]
+
+		if "state" in RandomInt.RANDOM_DB[_id]:
+			random.setstate(RandomInt.RANDOM_DB[_id]["state"])
 
 		# Initialize previous values and batch size if not present
-		if "prev" not in Random.RANDOM_DB[_id]:
-			Random.RANDOM_DB[_id]["prev"] = []
-		if "prev_batch_size" not in Random.RANDOM_DB[_id]:
-			Random.RANDOM_DB[_id]["prev_batch_size"] = None
+		if "prev" not in RandomInt.RANDOM_DB[_id]:
+			RandomInt.RANDOM_DB[_id]["prev"] = []
+		if "prev_batch_size" not in RandomInt.RANDOM_DB[_id]:
+			RandomInt.RANDOM_DB[_id]["prev_batch_size"] = None
 
 		# Check if new random values should be generated
-		generate_new = len(Random.RANDOM_DB[_id]["prev"]) == 0 or \
-			Random.RANDOM_DB[_id]["prev_batch_size"] != batch_size
+		generate_new = len(RandomInt.RANDOM_DB[_id]["prev"]) == 0 or \
+			RandomInt.RANDOM_DB[_id]["prev_batch_size"] != batch_size
 
 		# If val is greater than -1, return it as a single-element list
 		if val != "-1":
 			res = val.split(",")
 			for i in range(len(res)):
-				if i >= len(Random.RANDOM_DB[_id]["prev"]):
-					Random.RANDOM_DB[_id]["prev"].append(int(res[i]))
+				if i >= len(RandomInt.RANDOM_DB[_id]["prev"]):
+					RandomInt.RANDOM_DB[_id]["prev"].append(int(res[i]))
 				else:
-					Random.RANDOM_DB[_id]["prev"][i] = int(res[i])
-			return Random.RANDOM_DB[_id]["prev"]
+					RandomInt.RANDOM_DB[_id]["prev"][i] = int(res[i])
+			return RandomInt.RANDOM_DB[_id]["prev"]
 
 		# If val is -1 or we need to generate new random values, generate random numbers
 		if val == "-1" or generate_new:
 			res = [random.randint(min, max) for _ in range(batch_size)]
-			Random.RANDOM_DB[_id]["prev_batch_size"] = batch_size
+			RandomInt.RANDOM_DB[_id]["prev_batch_size"] = batch_size
+			RandomInt.RANDOM_DB[_id]["state"] = random.getstate()
 
 		# If val is -2 and we don't need new random values, increment previous values
 		if val == "-2" and not generate_new:
-			res = [x + 1 for x in Random.RANDOM_DB[_id]["prev"]]
+			res = [x + 1 for x in RandomInt.RANDOM_DB[_id]["prev"]]
 
 		# If val is -3 and we don't need new random values, decrement previous values
 		if val == "-3" and not generate_new:
-			res = [x - 1 for x in Random.RANDOM_DB[_id]["prev"]]
+			res = [x - 1 for x in RandomInt.RANDOM_DB[_id]["prev"]]
 
-		Random.RANDOM_DB[_id]["prev"] = res
+		RandomInt.RANDOM_DB[_id]["prev"] = res
 
 		return {
 			"ui": {
@@ -631,7 +660,7 @@ class Hold:
 	def INPUT_TYPES(s):
 		return {
 			"required": {
-				"_mode": (["keep", "clear"], ),
+				"_mode": (["keep", "save", "clear"], ),
 				"_key_id": ("STRING", {
 					"default": "",
 					"multiline": False
@@ -647,7 +676,6 @@ class Hold:
 		}
 	
 	HOLD_DB = {}
-	HOLD_ID = 0
 	
 	RETURN_TYPES = utils0246.ByPassTypeTuple(("*", ))
 	RETURN_NAMES = ("_data_out", )
@@ -659,17 +687,23 @@ class Hold:
 	def execute(self, _data_in = None, _id = None, _hold = None, _mode = None, _key_id = None, **kwargs):
 		mode = _mode[0] if _mode else None
 
-		# Check if Hold ID needs to be updated
-		if Hold.HOLD_ID != PROMPT_COUNT:
-			Hold.HOLD_DB.clear()
-			Hold.HOLD_ID = PROMPT_COUNT
+		if _id[0] not in Hold.HOLD_DB:
+			Hold.HOLD_DB[_id[0]] = {
+				"track": PROMPT_COUNT,
+				"data": []
+			}
 
-		# Prepare the base ui_text
-		ui_text = f"Track: {Hold.HOLD_ID}, Id: {_id[0]}"
+		if Hold.HOLD_DB[_id[0]]["track"] != PROMPT_COUNT:
+			Hold.HOLD_DB[_id[0]]["track"] = PROMPT_COUNT
+
+			if mode != "save":
+				Hold.HOLD_DB[_id[0]]["data"] = []
+
+		ui_text = f"Track: {Hold.HOLD_DB[_id[0]]['track']}, Id: {_id[0]}"
 
 		# Check if _key_id is specified and process accordingly
 		if _key_id and len(_key_id[0]) > 0:
-			result = update_hold_db(_key_id[0], _data_in, mode)
+			result = update_hold_db(_key_id[0], _data_in)
 			ui_text += f", Size: {len_zero_arr(result)}, Key: {_key_id[0]}"
 		# Check if _hold is specified and process accordingly
 		elif _hold and _hold[0]:
@@ -678,11 +712,14 @@ class Hold:
 		else:
 			# Update the outputs and HOLD_DB for _id if specified
 			if _id:
-				result = update_hold_db(_id[0], _data_in, mode)
-				BASE_EXECUTOR.outputs[_id[0]] = Hold.HOLD_DB[_id[0]]
+				result = update_hold_db(_id[0], _data_in)
+				BASE_EXECUTOR.outputs[_id[0]] = Hold.HOLD_DB[_id[0]]["data"]
 				ui_text += f", Size: {len(result)}"
 			else:
 				result = [None]
+		
+		if mode == "clear":
+			Hold.HOLD_DB[_id[0]]["data"] = []
 
 		return {
 			"ui": {
@@ -888,29 +925,31 @@ class Stringify:
 ########################################################################################
 
 NODE_CLASS_MAPPINGS = {
-	"Highway": Highway,
-	"Junction": Junction,
-	"JunctionBatch": JunctionBatch,
-	# "Mimic": Mimic,
-	"Random": Random,
-	"Count": Count,
-	"Hold": Hold,
-	"Loop": Loop,
-	"Beautify": Beautify,
-	"Stringify": Stringify
+	"0246.Highway": Highway,
+	"0246.Junction": Junction,
+	"0246.JunctionBatch": JunctionBatch,
+	# "0246.Mimic": Mimic,
+	"0246.RandomInt": RandomInt,
+	"0246.Count": Count,
+	"0246.Hold": Hold,
+	"0246.Loop": Loop,
+	"0246.Beautify": Beautify,
+	"0246.Stringify": Stringify,
+	# "0246.Convert": Convert,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-	"Highway": "Highway",
-	"Junction": "Junction",
-	"JunctionBatch": "Junction Batch",
-	# "Mimic": "Mimic",
-	"Random": "Random",
-	"Count": "Count",
-	"Hold": "Hold",
-	"Loop": "Loop",
-	"Beautify": "Beautify",
-	"Stringify": "Stringify"
+	"0246.Highway": "Highway",
+	"0246.Junction": "Junction",
+	"0246.JunctionBatch": "Junction Batch",
+	# "0246.Mimic": "Mimic",
+	"0246.RandomInt": "Random Int",
+	"0246.Count": "Count",
+	"0246.Hold": "Hold",
+	"0246.Loop": "Loop",
+	"0246.Beautify": "Beautify",
+	"0246.Stringify": "Stringify",
+	# "0246.Convert": "Convert",
 }
 
 print("\033[95m" + utils0246.HEAD_LOG + "Loaded all nodes and apis (/0246-parse)." + "\033[0m")
