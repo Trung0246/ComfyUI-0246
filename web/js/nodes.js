@@ -599,44 +599,44 @@ import { ComfyWidgets } from "../../../scripts/widgets.js";
 		name: "0246.Node",
 		nodeCreated(node) {
 			switch (node.comfyClass) {
-				case "Highway": {
+				case "0246.Highway": {
 					node.color = LGraphCanvas.node_colors.brown.color;
 					node.bgcolor = LGraphCanvas.node_colors.brown.bgcolor;
 				} break;
-				case "Junction": {
+				case "0246.Junction": {
 					node.color = LGraphCanvas.node_colors.blue.color;
 					node.bgcolor = LGraphCanvas.node_colors.blue.bgcolor;
 				} break;
-				case "JunctionBatch": {
+				case "0246.JunctionBatch": {
 					node.color = LGraphCanvas.node_colors.blue.color;
 					node.bgcolor = LGraphCanvas.node_colors.pale_blue.bgcolor;
 				} break;
-				case "Mimic": {
+				case "0246.Mimic": {
 					node.color = LGraphCanvas.node_colors.yellow.color;
 					node.bgcolor = LGraphCanvas.node_colors.red.bgcolor;
 				} break;
-				case "Loop": {
+				case "0246.Loop": {
 					node.color = LGraphCanvas.node_colors.yellow.color;
 					node.bgcolor = LGraphCanvas.node_colors.yellow.bgcolor;
 				} break;
-				case "Count": {
+				case "0246.Count": {
 					node.color = LGraphCanvas.node_colors.yellow.color;
 					node.bgcolor = LGraphCanvas.node_colors.green.bgcolor;
 				} break;
-				case "Hold": {
+				case "0246.Hold": {
 					node.color = LGraphCanvas.node_colors.yellow.color;
 					node.bgcolor = LGraphCanvas.node_colors.pale_blue.bgcolor;
 				} break;
-				case "Beautify": {
+				case "0246.Beautify": {
 					// Pink UwU
 					node.color = "#652069";
 					node.bgcolor = "#764378";
 				} break;
-				case "RandomInt": {
+				case "0246.RandomInt": {
 					node.color = LGraphCanvas.node_colors.green.color;
 					node.bgcolor = LGraphCanvas.node_colors.blue.bgcolor;
 				} break;
-				case "Stringify": {
+				case "0246.Stringify": {
 					node.color = LGraphCanvas.node_colors.green.color;
 					node.bgcolor = LGraphCanvas.node_colors.green.bgcolor;
 				} break;
