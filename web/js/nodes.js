@@ -5,7 +5,7 @@ import { ComfyWidgets } from "../../../scripts/widgets.js";
 
 (async () => {
 	window.setTimeout(() => {
-		app.graph.extra["0246_VERSION"] = "0.0.1"; // Only used when breaking changes happen
+		app.graph.extra["0246_VERSION"] = [0, 0, 1]; // Only used when breaking changes happen
 	}, 1500);
 
 	async function try_import(name) {
@@ -14,6 +14,16 @@ import { ComfyWidgets } from "../../../scripts/widgets.js";
 		} catch (e) {
 			return null;
 		}
+	}
+
+	function compare_version(a, b) {
+		for (let i = 0; i < a.length; ++ i) {
+			if (a[i] > b[i])
+				return 1;
+			if (a[i] < b[i])
+				return -1;
+		}
+		return 0;
 	}
 
 	function rgthree_exec(name, ...args) {
