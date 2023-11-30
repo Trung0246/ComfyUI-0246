@@ -153,6 +153,6 @@ Recursively display structural data information, especially useful when dealing 
 
 ##### TODO (may or may not get implemented)
 
-- Tutorial for `Loop`, `Count`, `Hold`, and `Random`.
+- Tutorial for `Loop`, `Count`, `Hold`, `Random`, and `Stringify`.
 - Force `Random` to create same number everytime if loaded from json workflow.
 - More testing.
