@@ -20,7 +20,7 @@ import nodes
 # ComfyUI 3rd Party
 ext = {}
 
-with utils0246.temp_dir(pathlib.Path(__file__).parent.parent.parent.parent.absolute() / "ComfyUI" / "custom_nodes"):
+with utils0246.temp_dir(pathlib.Path(__file__).parent.parent.parent.absolute() / "custom_nodes"):
 
 	work_path = pathlib.Path.cwd()
 
