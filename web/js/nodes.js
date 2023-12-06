@@ -117,7 +117,7 @@ import { ComfyWidgets } from "../../../scripts/widgets.js";
 	}
 
 	hijack(app, "loadGraphData", function (workflow) {
-		if (!workflow.extra["0246.VERSION"]) {
+		if (workflow && !workflow.extra["0246.VERSION"]) {
 			// Probably safe enough unless someone else attempting to reuse these. Ouch.
 			const patch_node_db = [
 				["Highway", "0246.Highway"],
