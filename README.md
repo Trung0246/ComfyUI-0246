@@ -35,7 +35,10 @@ Control Flow:
 - ### 2023-12-19
 
 Tons more nodes. Here's the simple workflow image that showcase everything within this update.
-I recommended you to play around with this.
+
+For any nodes related to `Script`, `*_order` widget will determine script execution order, which depends on [natsort](https://natsort.readthedocs.io/en/stable/api.html#the-ns-enum). How it being sorted can be customized by doing things like `INT, LOCALE` within the `_sort_mode` widget.
+
+I recommended you to play around with this sample workflow:
 
 <details>
     <p align="center">
