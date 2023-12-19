@@ -3,12 +3,42 @@ Random nodes for ComfyUI I made to solve my struggle with ComfyUI. Have varying 
 
 # Nodes list
 
+Piping:
 - `Highway`: yet another implementation but overkill version of pipe and reroute.
+- `HighwayBatch`: Batching version of `Highway`.
 - `Junction`: over-the-head data packing and unpacking sequentially.
 - `JunctionBatch`: if `Junction` and ComfyUI batching have a kid.
-- `Loop`: very hacky recursive repetition by messing with ComfyUI internals.
+- `Merge`: pipe and batch merging.
+
+Misc:
+- `BoxRange`: visualization of boxes. usefull for anything that requires boxes (which is `x`, `y`, `width`, `height`).
+    - Currently only `ConditioningSetAreaPercentage`. More will come in the future.
 - `Beautify`: the beautification of data for easy troubleshooting.
 - `Stringify`: anything to string, optionally together.
+- `RandomInt`: different from other implementation such that it generate number server side to works with `Loop`.
+- `Hub`: widget management to the max.
+
+Control Flow:
+- `Loop`: very hacky recursive repetition by messing with ComfyUI internals.
+- `Hold`
+
+"Execute anything" node:
+- `ScriptImbue`
+- `ScriptPlan`
+- `Script`
+
+---
+
+- ### 2023-12-19
+
+Tons more nodes. Here's the simple workflow image that showcase everything within this update.
+I recommended you to play around with this.
+
+<details>
+    <p align="center">
+        <img src="https://github.com/Trung0246/ComfyUI-0246/assets/11626920/4736e1a8-bcf1-4006-b8ad-ed7d59a194d0">
+    </p>
+</details>
 
 ---
 
@@ -23,6 +53,8 @@ More complex example of what could be done (using my personal workflow as exampl
 <p align="center">
     <img src="https://raw.githubusercontent.com/Trung0246/ComfyUI-0246/main/assets/Screenshot%202023-11-06%20002520.png">
 </p>
+
+Right click to reveal quick actions such as pin creation and `_query` automatic filling.
 
 The query syntax goes as follow:
 
@@ -153,6 +185,5 @@ Recursively display structural data information, especially useful when dealing 
 
 ##### TODO (may or may not get implemented)
 
-- Tutorial for `Loop`, `Count`, `Hold`, `Random`, and `Stringify`.
-- Force `Random` to create same number everytime if loaded from json workflow.
+- Tutorial for various nodes.
 - More testing.
