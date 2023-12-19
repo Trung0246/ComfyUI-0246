@@ -17,6 +17,7 @@ Misc:
 - `Stringify`: anything to string, optionally together.
 - `RandomInt`: different from other implementation such that it generate number server side to works with `Loop`.
 - `Hub`: widget management to the max.
+    - Image display does not work for now, alongside with other 3rd party custom. But it should generally stable.
 - `CastReroute`: basically like `Reroute` but have ability to specify custom type. Useful when dealing with `Highway`, `Junction` and such.
 
 Control Flow:
