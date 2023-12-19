@@ -1118,6 +1118,7 @@ class BoxRange:
 		match mode:
 			case 0:
 				return [
+					"_",
 					"ConditioningSetArea",
 					"ConditioningSetAreaPercentage",
 					"LatentCrop",

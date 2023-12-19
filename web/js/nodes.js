@@ -119,6 +119,25 @@ const HELP = {
 			<li>
 				Double click in top left to DECREASE Z-INDEX.
 			</li>
+			<li>
+				Hold SHIFT while clicking on the box again will prompt for specific range <code>[x, y, width, height]</code> or JS code string.
+				<ul>
+					<li>
+						If any is <code>null</code> then it will be filled with the current boundary data for that index.
+					</li>
+					<li>
+						If any is <code>"string"</code> then it will be implicitly assumed to be math expression and will be evaluated.
+					</li>
+					<li>
+						If entire thing is JS then it must return an array. There's some utilities function available.
+						<ul>
+							<li>
+								You can Ctrl-F to search for "safe_eval" within "nodes.js" and "utils.js" for more info on what's available.
+							</li>
+						</ul>
+					</li>
+				</ul>
+			</li>
 		</ul>
 	`.replace(/[\t\n]+/g, ''),
 	"hub": `
@@ -1329,23 +1348,122 @@ let defs, type_defs = new Set();
 				}
 			], function (node, widget, event, pos) {
 				// [TODO] Maybe also perform delete for this state?
+				let res;
 				if (lib0246.equal_array(widget.box_range.select_during, pos, false)) {
-					let select_list = [];
-					for (let i = 0; i < widget.box_range.boxes.length; ++ i)
-						if (lib0246.is_inside_rect(
-							pos[0], pos[1],
-							widget.box_range.boxes[i][8], widget.box_range.boxes[i][9],
-							widget.box_range.boxes[i][10], widget.box_range.boxes[i][11]
-						))
-							select_list.push(widget.box_range.boxes[i]);
+					if (event.shiftKey && widget.box_range.select.length > 0) {
+						let curr_box = widget.box_range.select[widget.box_range.select.length - 1];
+						app.canvas.prompt("[x, y, width, height]", JSON.stringify(curr_box.slice(0, 4)), (value) => {
+							try {
+								const res = JSON.parse(value);
+								if (res.length !== 4)
+									return;
+								for (let i = 0; i < 4; ++ i)
+									if (typeof res[i] === "string") {
+										try {
+											const BOUND_X = widget.flex.hold_mouse[0],
+												BOUND_Y = widget.flex.hold_mouse[1],
+												BOUND_W = widget.flex.hold_mouse[2],
+												BOUND_H = widget.flex.hold_mouse[3];
+											res[i] = Number(eval(res[i]));
+										} catch (e) {
+											lib0246.error_popup("Invalid box range math expression format.");
+											return;
+										}
+									} else if (!Number.isFinite(res[i]))
+										res[i] = widget.flex.hold_mouse[i];
+								if (lib0246.is_inside_rect_rect(
+									res[0], res[1], res[2], res[3],
+									widget.flex.hold_draw[0], widget.flex.hold_draw[1],
+									widget.flex.hold_draw[2], widget.flex.hold_draw[3]
+								)) {
+									curr_box[0] = res[0];
+									curr_box[1] = res[1];
+									curr_box[2] = res[2];
+									curr_box[3] = res[3];
+								} else
+									lib0246.error_popup("Provided range is outside of the boundary.");
+							} catch (e) {
+								const ratio_widget = node.widgets.find(w => w.name === "box_ratio");
+								let size_box = curr_box.slice(4, 8);
+								if (ratio_widget)
+									size_box = [0, 0, ratio_widget.value.data.width, ratio_widget.value.data.height];
+								try {
+									let old_onmessage = window.onmessage;
+									window.onmessage = () => {};
+									lib0246.safe_eval(`
+										function _ (x, y, w, h) {
+											return calc_flex_norm(
+												x, y, w, h,
+												${size_box[0]}, ${size_box[1]}, ${size_box[2]}, ${size_box[3]},
+												${widget.flex.hold_draw[0]}, ${widget.flex.hold_draw[1]},
+												${widget.flex.hold_draw[2]}, ${widget.flex.hold_draw[3]}
+											);
+										}
 
-					if (lib0246.equal_array(widget.box_range.select, select_list, true))
-						widget.box_range.select.push(widget.box_range.select.shift());
-					else
-						widget.box_range.select = select_list;
+										const CURR_X = ${size_box[0]},
+											CURR_Y = ${size_box[1]},
+											CURR_W = ${size_box[2]},
+											CURR_H = ${size_box[3]},
+											CODE = ${"`" + value + "`"};
+
+										return ${value};
+									`).then((res) => {
+										if (!Array.isArray(res) || res.length !== 4) {
+											lib0246.error_popup("Invalid box range data format. Expected [x, y, width, height].");
+											return;
+										}
+										if (lib0246.is_inside_rect_rect(
+											res[0], res[1], res[2], res[3],
+											widget.flex.hold_draw[0], widget.flex.hold_draw[1],
+											widget.flex.hold_draw[2], widget.flex.hold_draw[3]
+										)) {
+											curr_box[0] = res[0];
+											curr_box[1] = res[1];
+											curr_box[2] = res[2];
+											curr_box[3] = res[3];
+
+											curr_box[12] = res[0];
+											curr_box[13] = res[1];
+											curr_box[14] = res[2];
+											curr_box[15] = res[3];
+
+											curr_box[16] = size_box[0];
+											curr_box[17] = size_box[1];
+											curr_box[18] = size_box[2];
+											curr_box[19] = size_box[3];
+										} else
+											lib0246.error_popup("Provided range is outside of the boundary.");
+										window.onmessage = old_onmessage;
+										app.canvas.setDirty(true);
+									});
+								} catch (e) {
+									lib0246.error_popup(`Invalid box range expression format: ${e.message}`);
+									return;
+								}
+							}
+						}, event, true);
+						res = {
+							action: ""
+						};
+					} else {
+						let select_list = [];
+						for (let i = 0; i < widget.box_range.boxes.length; ++ i)
+							if (lib0246.is_inside_rect(
+								pos[0], pos[1],
+								widget.box_range.boxes[i][8], widget.box_range.boxes[i][9],
+								widget.box_range.boxes[i][10], widget.box_range.boxes[i][11]
+							))
+								select_list.push(widget.box_range.boxes[i]);
+
+						if (lib0246.equal_array(widget.box_range.select, select_list, true))
+							widget.box_range.select.push(widget.box_range.select.shift());
+						else
+							widget.box_range.select = select_list;
+					}
 				}
 				widget.box_range.select_during = null;
 				widget.box_range.delay_state = null;
+				return res;
 			}
 		],
 
@@ -1631,6 +1749,9 @@ let defs, type_defs = new Set();
 					curr_box[9] = curr_box[1];
 					curr_box[10] = curr_box[2];
 					curr_box[11] = curr_box[3];
+
+					// Remove index 12 to index 19
+					curr_box.splice(12, 8);
 				}
 
 				widget.box_range.begin_state = null;

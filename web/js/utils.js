@@ -547,3 +547,60 @@ export function snap(num, step) {
 export function rem(a, b) {
 	return (a % b + b) % b;
 }
+
+export async function safe_eval(code) {
+	// https://github.com/Prendus/secure-eval/blob/master/secure-eval.ts
+	const secureEvalIframe = document.createElement('iframe');
+	secureEvalIframe.setAttribute('sandbox', 'allow-scripts');
+	secureEvalIframe.setAttribute('style', 'display: none;');
+	secureEvalIframe.setAttribute('src', 'data:text/html;base64,' + btoa(`
+		<script type="module">
+			try {
+				${norm.toString()}
+				${lerp.toString()}
+				${is_inside_rect.toString()}
+				${is_inside_rect_rect.toString()}
+				${is_inside_circ.toString()}
+				${calc_resize.toString()}
+				${calc_flex_norm.toString()}
+				${calc_area.toString()}
+				${round.toString()}
+				${floor.toString()}
+				${snap.toString()}
+				${rem.toString()}
+				window.parent.postMessage({
+					type: 'secure-eval-iframe-result',
+					data: (function() {
+						${code}
+					})()
+				}, '*');
+			}
+			catch(error) {
+				window.parent.postMessage({
+					type: 'secure-eval-iframe-result',
+					error: error.toString()
+				}, '*');
+			}
+		</script>
+	`));
+
+	document.body.appendChild(secureEvalIframe);
+
+	return new Promise((resolve, reject) => {
+		const windowListener = event => {
+			if (event.data.type !== 'secure-eval-iframe-result')
+				return;
+			window.removeEventListener('message', windowListener);
+			document.body.removeChild(secureEvalIframe);
+			if (event.data.error)
+				reject(new Error(event.data.error));
+			else
+				resolve(event.data.data);
+		};
+
+		window.addEventListener('message', windowListener);
+		secureEvalIframe.addEventListener('load', () => {
+			secureEvalIframe.contentWindow.postMessage(code, '*');
+		});
+	});
+}
