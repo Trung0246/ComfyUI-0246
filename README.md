@@ -13,6 +13,7 @@ Piping:
 Misc:
 - `BoxRange`: visualization of boxes. usefull for anything that requires boxes (which is `x`, `y`, `width`, `height`).
     - Currently only `ConditioningSetAreaPercentage`. More will come in the future.
+    - Double click on each corner and discover what each will do.
 - `Beautify`: the beautification of data for easy troubleshooting.
 - `Stringify`: anything to string, optionally together.
 - `RandomInt`: different from other implementation such that it generate number server side to works with `Loop`.
