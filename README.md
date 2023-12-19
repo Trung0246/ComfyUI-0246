@@ -21,7 +21,7 @@ Misc:
 
 Control Flow:
 - `Loop`: very hacky recursive repetition by messing with ComfyUI internals.
-- `Hold`
+- `Hold`: hold data between each loop execution.
 
 "Execute anything" node:
 - `ScriptImbue`
