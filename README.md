@@ -17,6 +17,7 @@ Misc:
 - `Stringify`: anything to string, optionally together.
 - `RandomInt`: different from other implementation such that it generate number server side to works with `Loop`.
 - `Hub`: widget management to the max.
+- `CastReroute`: basically like `Reroute` but have abilityy to specify custom type. useful when dealing with `Highway`, `Junction` and such.
 
 Control Flow:
 - `Loop`: very hacky recursive repetition by messing with ComfyUI internals.
