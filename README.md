@@ -5,7 +5,7 @@ Random nodes for ComfyUI I made to solve my struggle with ComfyUI. Have varying 
 
 Piping:
 - `Highway`: yet another implementation but overkill version of pipe and reroute.
-- `HighwayBatch`: Batching version of `Highway`.
+- `HighwayBatch`: batching version of `Highway`.
 - `Junction`: over-the-head data packing and unpacking sequentially.
 - `JunctionBatch`: if `Junction` and ComfyUI batching have a kid.
 - `Merge`: pipe and batch merging.
@@ -33,7 +33,7 @@ Control Flow:
 
 # Update
 
-- ### 2023-12-19
+### 2023-12-19
 
 Tons more nodes. Here's the simple workflow image that showcase everything within this update.
 
