@@ -6,14 +6,20 @@ import pathlib
 import contextlib
 import os
 import torch
+import itertools
+import collections.abc
 
-# Check for wrapt
+# Check for libs
 wrapt = None
+natsort = None
 try:
 	wrapt = __import__("wrapt")
+	natsort = __import__("natsort")
 except:
 	subprocess.Popen([sys.executable, "-m", "pip", "install", "wrapt"]).wait()
+	subprocess.Popen([sys.executable, "-m", "pip", "install", "natsort"]).wait()
 	wrapt = __import__("wrapt")
+	natsort = __import__("natsort")
 
 BLACKLIST = [
 	"_way_in",
@@ -42,6 +48,22 @@ class ByPassTypeTuple(tuple):
 			return TautologyStr(item)
 		return item
 
+class WildDict(dict):
+	def __init__(self, *args, **kwargs):
+		self.update(*args, **kwargs)
+
+	def __contains__(self, item):
+		return True
+	
+class TautologyDictStr(dict):
+	def __init__(self, *args, **kwargs):
+		self.update(*args, **kwargs)
+
+	def __getitem__(self, index):
+		if isinstance(index, str) or isinstance(index, int):
+			return TautologyStr("")
+		return super().__getitem__(index)
+
 class TautologyRest(dict):
 	def __iter__(self):
 		yield False
@@ -53,6 +75,17 @@ class TautologyRest(dict):
 			return False
 		return True
 
+class ContradictRest(dict):
+	def __iter__(self):
+		yield True
+		while True:
+			yield False
+
+	def __getitem__(self, index):
+		if index == 0:
+			return True
+		return False
+
 class TautologyAll(dict):
 	def __iter__(self):
 		while True:
@@ -60,6 +93,14 @@ class TautologyAll(dict):
 
 	def __getitem__(self, index):
 		return True
+	
+class ContradictAll(dict):
+	def __iter__(self):
+		while True:
+			yield False
+
+	def __getitem__(self, index):
+		return False
 
 ######################################################################################
 ######################################## UTIL ########################################
@@ -116,6 +157,32 @@ class RevisionDict(dict):
 		for key in self.path_iter(path):
 			res.append(key[len(path):])
 		return res
+	
+	def path_iter_arr(self, path):
+		count = 0
+		while (*path, count) in self:
+			yield (*path, count)
+			count += 1
+	
+	def sort(self, path_order, path_data, mode):
+		order_keys = [key for key in self.keys() if key[:len(path_order)] == path_order]
+		data_keys = [key for key in self.keys() if key[:len(path_data)] == path_data]
+		order_values = [value.split(" ") for value in (self[key] for key in order_keys)]
+		order_sorted = natsort.natsorted(order_values, alg=mode)
+
+		def indices_func(i):
+			if i < len(order_values):
+				return order_values.index(order_sorted[i])
+			else:
+				return None
+				
+		def swap_func(curr, next):
+			self[data_keys[curr]], self[data_keys[next]] = self[data_keys[next]], self[data_keys[curr]]
+			self[order_keys[curr]], self[order_keys[next]] = self[order_keys[next]], self[order_keys[curr]]
+
+		swap_index(indices_func, swap_func)
+
+		return self
 
 class FlatIter:
 	def __init__(self, data):
@@ -170,6 +237,33 @@ def flat_zip(names, flat_iter: FlatIter):
 		current_name = names[name_idx]
 		yield current_name, (key, value)
 
+def dict_product(dict_list):
+	keys, values = zip(*dict_list.items())
+	return ({k: v for k, v in zip(keys, combination)} for combination in itertools.product(*values))
+
+def dict_slice(dict_list):
+	for i in range(max((len(v) for v in dict_list.values()), default=0)):
+		curr = dict()
+		for k, v in dict_list.items():
+			curr[k] = v[i] if i < len(v) else v[-1]
+		yield curr
+
+def transpose(iter, build):
+	if not isinstance(iter[0], collections.abc.Iterable):
+		for item in iter:
+			yield build((item, ))
+	else:
+		for item in zip(*iter):
+			yield build(item)
+
+def flat_iter(iter, layer = 0, func=lambda _: isinstance(_, collections.abc.Iterable), **kwargs):
+	__layer__ = kwargs.get("__layer__", 0)
+	for elem in iter:
+		if func(elem) and __layer__ < layer:
+			yield from flat_iter(elem, layer, func, __layer__=__layer__ + 1)
+		else:
+			yield elem, __layer__
+
 def hijack(scope, name, param_func, res_func = None, call_func = None, out_scope = None):
 	old_func = getattr(scope, name)
 	def new_func(*args, **kwargs):
@@ -205,6 +299,15 @@ def at_idx(head, rest, index):
 	if norm_index == 0:
 		return head
 	return rest[norm_index - 1]
+
+def len_zero_arr(data):
+	return 0 if data[0] is None else len(data)
+
+def append_replace(arr, index, value):
+	if index >= len(arr):
+		arr.append(value)
+	else:
+		arr[index] = value
 
 def beautify_structure(data, indent=0, mode=0, stop=False):
 	"""
@@ -261,7 +364,9 @@ def beautify_structure(data, indent=0, mode=0, stop=False):
 								continue
 
 							if isinstance(attr_value, (int, float, str, bool, type(None))):
-								res_str += f"{indent_str}  Data: {repr(data)}\n"
+								res_str += f"{indent_str}  Attribute: {attr}\n"
+								res_str += f"{indent_str}  Type: {type(attr_value).__name__}\n"
+								res_str += f"{indent_str}    Data: {repr(attr_value)}\n"
 							elif isinstance(attr_value, (dict, list, tuple, set)):
 								res_str += f"{indent_str}  Attribute: {attr}\n"
 								res_str += beautify_structure(attr_value, indent + 2, mode, True)
@@ -276,6 +381,40 @@ def beautify_structure(data, indent=0, mode=0, stop=False):
 				pass
 
 	return res_str
+
+def param(sign_args, sign_kwargs, data_args, data_kwargs, build_list, build_dict):
+	data_args_iter = iter(data_args)
+	return build_list(itertools.islice(data_args_iter, len(sign_args))), build_dict(itertools.chain(
+		zip(iter(sign_kwargs), data_args_iter),
+		((key, sign_kwargs[key]) for key in sign_kwargs),
+		((key, data_kwargs[key]) for key in data_kwargs)
+	))
+
+def norm(val, min, max):
+	return (val - min) / (max - min)
+
+def lerp(norm, min, max):
+	return min + (max - min) * norm
+
+def map(val, min, max, new_min, new_max):
+	return lerp(norm(val, min, max), new_min, new_max)
+
+def swap_index(index_func, swap_func):
+	visited = {}
+	i = 0
+	while True:
+		mapped_index = index_func(i)
+		if mapped_index is None:
+			break
+		if i not in visited:
+			current = i
+			next_index = mapped_index
+			while not visited.get(next_index, False):
+				swap_func(current, next_index)
+				visited[current] = True
+				current = next_index
+				next_index = index_func(current)
+		i += 1
 
 ######################################################################################
 ######################################## LANG ########################################
@@ -437,6 +576,8 @@ def parse_offset(input):
 	return (parsed_data, None)
 
 ######################################################################################
+
+# Some secret stuff here for "Alter" node (maybe next update)
 
 """
 # Assume we are dealing with KSampler
@@ -765,7 +906,7 @@ def parse_lang(input: str):
 				"type": "=",
 			})
 			state["idx"] += 1
-		elif token == ';':
+		elif token == ';' or state["idx"] == state["len"] - 1:
 			ast.append(state["res"])
 			state["res"] = []
 			state["stk"] = [state["res"]]
@@ -791,28 +932,4 @@ def parse_lang(input: str):
 # Trash that may be used later, don't mind me :)
 # https://pastebin.com/raw/Z3Y9HimQ
 # https://pastebin.com/raw/5kn6KKbT: The OG RevisionDict, if we needs it ever again
-
-# Put a COND_EXEC to remove the curr_id from the EXEC_QUEUE
-# def cond(exec_arr: list):
-# 	for i in range(len(exec_arr)):
-# 		if exec_arr[i][1] == curr_id:
-# 			del exec_arr[i]
-# 			return True
-# 	return False
-# COND_EXEC.append(cond)
-
-# else:
-# 	COND_EXEC.append(_event[0]["cond"](_prompt[0], _workflow[0], exec))
-
-# def cond(_prompt, _workflow, id_arr):
-# 	def inner_cond(exec_arr):
-# 		temp = Count.COUNT_DB[_id]
-# 		Count.COUNT_DB[_id] += 1
-# 		if temp < int(_event) - 1:
-# 			for curr_id in id_arr:
-# 				trace_node(_prompt, curr_id, _workflow)
-# 				exec_arr.append((0, curr_id))
-# 			return False
-# 		return True
-	
-# 	return inner_cond
+# https://pastebin.com/raw/17pwbLpr: Misc junk

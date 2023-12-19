@@ -1,20 +1,27 @@
 import { app } from "../../../scripts/app.js";
+import * as lib0246 from "./utils.js";
 
-function error_popup(msg) {
-	let dialog = new ComfyDialog();
-	dialog.show(`<p>${msg}</p>`);
+export function monitor_value(obj, key) {
+	let originalValue = obj[key];
+
+	Object.defineProperty(obj, key, {
+		get: function () {
+			return originalValue;
+		},
+		set: function (newValue) {
+			console.log(`${key} changed from ${originalValue} to ${newValue}`);
+			if (window.debug_flag) {
+				console.trace();
+				// debugger;
+			}
+			originalValue = newValue;
+		},
+		enumerable: true,
+		configurable: true
+	});
 }
 
-function hijack(obj, key, before_func, after_func) {
-	const old_func = obj[key] ?? (() => {});
-	obj[key] = function () {
-		before_func.apply(this, arguments);
-		old_func.apply(this, arguments);
-		after_func.apply(this, arguments);
-	};
-}
-
-function monitorArray(obj, key) {
+export function monitor_array(obj, key) {
 	let originalArray = obj[key];
 
 	function createLoggingArray(array) {
@@ -28,7 +35,7 @@ function monitorArray(obj, key) {
 					console.log(`${key}[${index}] changed from ${value} to ${newValue}`);
 					if (window.debug_flag) {
 						console.trace();
-						debugger;
+						// debugger;
 					}
 					value = newValue;
 				},
@@ -49,7 +56,7 @@ function monitorArray(obj, key) {
 			console.log(`${key} changed from [${originalArray}] to [${newArray}]`);
 			if (window.debug_flag) {
 				console.trace();
-				debugger;
+				// debugger;
 			}
 			originalArray = newArray.slice();
 			loggingArray = createLoggingArray(originalArray);
@@ -61,7 +68,7 @@ function monitorArray(obj, key) {
 	obj.___MARK___ = true;
 
 	let flag = false;
-	hijack(window, "structuredClone", (obj) => {
+	lib0246.hijack(window, "structuredClone", (obj) => {
 		if (obj && obj.___MARK___)
 			flag = true;
 	}, function (obj) {
@@ -273,29 +280,85 @@ function reroute_process(self) {
 
 			switch (code) {
 				case 0: {
-					error_popup(`Error when processing root: ${node.getTitle()}`);
+					lib0246.error_popup(`Error when processing root: ${node.getTitle()}`);
 				} break;
 				case 1: {
-					error_popup(`Error when processing leaf: ${node.getTitle()}`);
+					lib0246.error_popup(`Error when processing leaf: ${node.getTitle()}`);
 				} break;
 				case 2: {
-					error_popup(`Error when processing branch: ${node.getTitle()}`);
+					lib0246.error_popup(`Error when processing branch: ${node.getTitle()}`);
 				} break;
 			}
 		}
 	);
 }
 
+// Probably safe enough unless someone else attempting to reuse these. Ouch.
+const patch_node_db = [
+	["Highway", "0246.Highway"],
+	["Junction", "0246.Junction"],
+	["JunctionBatch", "0246.JunctionBatch"],
+	["Loop", "0246.Loop"],
+	["Count", "0246.Count"],
+	["Hold", "0246.Hold"],
+	["Beautify", "0246.Beautify"],
+	["Random", "0246.RandomInt"],
+	["Stringify", "0246.Stringify"],
+];
+
+lib0246.hijack(app, "loadGraphData", function (workflow) {
+	if (workflow && !workflow?.extra?.["0246.VERSION"]) {
+
+		for (let i = 0; i < workflow.nodes.length; ++ i)
+			for (let j = 0; j < patch_node_db.length; ++ j) {
+				if (workflow.nodes[i].type === patch_node_db[j][0]) {
+					console.warn(`[ComfyUI-0246] Patching node "${workflow.nodes[i].type}" to "${patch_node_db[j][1]}"`);
+					workflow.nodes[i].type = patch_node_db[j][1];
+					break;
+				} else if (workflow.nodes[i].type === patch_node_db[j][1])
+					break;
+			}
+	}
+}, () => {});
+
+let error_flag = false;
+lib0246.hijack(app, "showMissingNodesError", function (nodes) {
+	if (!error_flag)
+		for (let i = 0; i < nodes.length; ++ i)
+			for (let j = 0; j < patch_node_db.length; ++ j)
+				if (nodes[i] === patch_node_db[j][0]) {
+					lib0246.error_popup(lib0246.indent_str `
+						[ComfyUI-0246] Unfortunately I have to change node internal ID due to I'm being dumb for using generic name. Sorry for inconvenience.
+
+						If this error message shown then that mean automatic patching failed. Please replace each nodes manually :(
+
+						Affected node:
+
+						- Highway -> 0246.Highway
+						- Junction -> 0246.Junction
+						- JunctionBatch -> 0246.JunctionBatch
+						- Loop -> 0246.Loop
+						- Count -> 0246.Count
+						- Hold -> 0246.Hold
+						- Beautify -> 0246.Beautify
+						- Random -> 0246.RandomInt
+						- Stringify -> 0246.Stringify
+					`);
+					error_flag = true;
+					break;
+				}
+}, () => {});
+
 // Extremely hacky ways to fix issues with Reroute (rgthree). Maybe open issue about this?
 app.registerExtension({
 	name: "0246.Fixes",
 	async setup(app) {
+		app.graph.extra["0246.VERSION"] = [0, 0, 2]; // Only used when breaking changes happen
+
 		if (LiteGraph.Nodes.RerouteNode) {
 			// Hijack Reroute (rgthree) to do onConnectOutput and onConnectInput
-			const reroute = LiteGraph.Nodes.RerouteNode.prototype;
-
-			hijack(reroute, "onConnectionsChange", () => {}, function (type, index, connected, link_info) {
-				reroute_process(this);
+			lib0246.hijack(LiteGraph.Nodes.RerouteNode.prototype, "onConnectionsChange", () => {}, function (type, index, connected, link_info) {
+				reroute_process(this.self);
 			});
 
 			// Since native "Reroute" already did graph traversal, we don't need to hijack it
@@ -303,4 +366,4 @@ app.registerExtension({
 	}
 });
 
-// Junk: https://pastebin.com/raw/ibGnvzed
+// Junk: https://pastebin.com/raw/ibGnvzed, https://pastebin.com/raw/9WLKRhJp, https://pastebin.com/raw/AWK6EX0Z
