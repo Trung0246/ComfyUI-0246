@@ -1166,7 +1166,7 @@ class BoxRange:
 						return lambda **kwargs: None
 
 	RETURN_TYPES = lib0246.ByPassTypeTuple(("*", ))
-	RETURN_TYPES = lib0246.ByPassTypeTuple(("data", ))
+	RETURN_NAMES = lib0246.ByPassTypeTuple(("data", ))
 	INPUT_IS_LIST = True
 	OUTPUT_IS_LIST = (False, )
 	FUNCTION = "execute"
