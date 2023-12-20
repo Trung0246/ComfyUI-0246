@@ -363,6 +363,8 @@ let defs, type_defs = new Set();
 		"_script_out",
 		"_exec_mode",
 		"_sort_mode",
+		"_mode",
+		"_pad",
 		"..."
 	];
 
