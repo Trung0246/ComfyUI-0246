@@ -978,6 +978,8 @@ class Merge:
 					if curr[("kind")] == "junction":
 						if junc is None:
 							junc = lib0246.RevisionDict()
+							junc[("kind")] = "junction"
+							junc[("id")] = curr[("id")]
 						for type_name in curr.path_iter(("type", )):
 							total = curr.path_count(("data", type_name[1]))
 							for i in range(total):
@@ -988,6 +990,8 @@ class Merge:
 					else:
 						if way is None:
 							way = lib0246.RevisionDict()
+							way[("kind")] = "highway"
+							way[("id")] = curr[("id")]
 						for key_name in curr.path_iter(("type", )):
 							real_key = key_name[1]
 							while True:
