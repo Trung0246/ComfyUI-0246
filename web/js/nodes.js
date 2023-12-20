@@ -2969,6 +2969,8 @@ let defs, type_defs = new Set();
 									box_widget.flex.ratio = value.data.ratio;
 							}, () => {});
 
+							box_widget.flex.ratio = ratio_widget.value.data.ratio;
+
 							node.serialize_widgets = true;
 							node.setSize(node.computeSize());
 						});
