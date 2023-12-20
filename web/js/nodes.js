@@ -2307,90 +2307,93 @@ let defs, type_defs = new Set();
 	}
 
 	function ratio_process_calc(widget, mode, old_value) {
+		const data = widget.value.data,
+			lock = widget.value.lock,
+			opt = widget.options;
 		switch (Math.abs(mode)) {
 			case 1: {
-				if (widget.value.lock.height && !widget.value.lock.ratio) {
-					widget.value.data.height = widget.value.data.width / widget.value.data.ratio;
-					if (widget.value.data.height < widget.options.min) {
-						widget.value.data.height = widget.options.min;
-						widget.value.data.width = widget.value.data.height * widget.value.data.ratio;
-					} else if (widget.value.data.height > widget.options.max) {
-						widget.value.data.height = widget.options.max;
-						widget.value.data.width = widget.value.data.height * widget.value.data.ratio;
+				if (lock.height && !lock.ratio) {
+					data.height = data.width / data.ratio;
+					if (data.height < opt.min) {
+						data.height = opt.min;
+						data.width = data.height * data.ratio;
+					} else if (data.height > opt.max) {
+						data.height = opt.max;
+						data.width = data.height * data.ratio;
 					}
-				} else if (!widget.value.lock.height && widget.value.lock.ratio) {
-					widget.value.data.ratio = widget.value.data.width / widget.value.data.height;
-					if (widget.value.data.ratio < widget.options.min) {
-						widget.value.data.ratio = widget.options.min;
-						widget.value.data.width = widget.value.data.height * widget.value.data.ratio;
-					} else if (widget.value.data.ratio > widget.options.max) {
-						widget.value.data.ratio = widget.options.max;
-						widget.value.data.width = widget.value.data.height * widget.value.data.ratio;
+				} else if (!lock.height && lock.ratio) {
+					data.ratio = data.width / data.height;
+					if (data.ratio < opt.min) {
+						data.ratio = opt.min;
+						data.width = data.height * data.ratio;
+					} else if (data.ratio > opt.max) {
+						data.ratio = opt.max;
+						data.width = data.height * data.ratio;
 					}
 				} else {
-					widget.value.lock.height = false;
-					widget.value.lock.ratio = false;
-					widget.value.data.width = old_value;
+					lock.height = false;
+					lock.ratio = false;
+					data.width = old_value;
 				}
 			} break;
 			case 2: {
-				if (widget.value.lock.width && !widget.value.lock.ratio) {
-					widget.value.data.width = widget.value.data.height * widget.value.data.ratio;
-					if (widget.value.data.width < widget.options.min) {
-						widget.value.data.width = widget.options.min;
-						widget.value.data.height = widget.value.data.width / widget.value.data.ratio;
-					} else if (widget.value.data.width > widget.options.max) {
-						widget.value.data.width = widget.options.max;
-						widget.value.data.height = widget.value.data.width / widget.value.data.ratio;
+				if (lock.width && !lock.ratio) {
+					data.width = data.height * data.ratio;
+					if (data.width < opt.min) {
+						data.width = opt.min;
+						data.height = data.width / data.ratio;
+					} else if (data.width > opt.max) {
+						data.width = opt.max;
+						data.height = data.width / data.ratio;
 					}
-				} else if (!widget.value.lock.width && widget.value.lock.ratio) {
-					widget.value.data.ratio = widget.value.data.width / widget.value.data.height;
-					if (widget.value.data.ratio < widget.options.min) {
-						widget.value.data.ratio = widget.options.min;
-						widget.value.data.height = widget.value.data.width / widget.value.data.ratio;
-					} else if (widget.value.data.ratio > widget.options.max) {
-						widget.value.data.ratio = widget.options.max;
-						widget.value.data.height = widget.value.data.width / widget.value.data.ratio;
+				} else if (!lock.width && lock.ratio) {
+					data.ratio = data.width / data.height;
+					if (data.ratio < opt.min) {
+						data.ratio = opt.min;
+						data.height = data.width / data.ratio;
+					} else if (data.ratio > opt.max) {
+						data.ratio = opt.max;
+						data.height = data.width / data.ratio;
 					}
 				} else {
-					widget.value.lock.width = false;
-					widget.value.lock.ratio = false;
-					widget.value.data.height = old_value;
+					lock.width = false;
+					lock.ratio = false;
+					data.height = old_value;
 				}
 			} break;
 			case 3: {
-				if (!widget.value.lock.height && widget.value.lock.width) {
-					widget.value.data.width = widget.value.data.height * widget.value.data.ratio;
-					if (widget.value.data.width < widget.options.min) {
-						widget.value.data.width = widget.options.min;
-						widget.value.data.height = widget.value.data.width / widget.value.data.ratio;
-					} else if (widget.value.data.width > widget.options.max) {
-						widget.value.data.width = widget.options.max;
-						widget.value.data.height = widget.value.data.width / widget.value.data.ratio;
+				if (!lock.height && lock.width) {
+					data.width = data.height * data.ratio;
+					if (data.width < opt.min) {
+						data.width = opt.min;
+						data.height = data.width / data.ratio;
+					} else if (data.width > opt.max) {
+						data.width = opt.max;
+						data.height = data.width / data.ratio;
 					}
-				} else if (!widget.value.lock.width && widget.value.lock.height) {
-					widget.value.data.height = widget.value.data.width / widget.value.data.ratio;
-					if (widget.value.data.height < widget.options.min) {
-						widget.value.data.height = widget.options.min;
-						widget.value.data.width = widget.value.data.height * widget.value.data.ratio;
-					} else if (widget.value.data.height > widget.options.max) {
-						widget.value.data.height = widget.options.max;
-						widget.value.data.width = widget.value.data.height * widget.value.data.ratio;
+				} else if (!lock.width && lock.height) {
+					data.height = data.width / data.ratio;
+					if (data.height < opt.min) {
+						data.height = opt.min;
+						data.width = data.height * data.ratio;
+					} else if (data.height > opt.max) {
+						data.height = opt.max;
+						data.width = data.height * data.ratio;
 					}
 				} else {
-					widget.value.lock.height = false;
-					widget.value.lock.width = false;
-					widget.value.data.ratio = old_value;
+					lock.height = false;
+					lock.width = false;
+					data.ratio = old_value;
 				}
 			} break;
 		}
 
-		if (!Number.isFinite(widget.value.data.width))
-			widget.value.data.width = 0;
-		if (!Number.isFinite(widget.value.data.height))
-			widget.value.data.height = 0;
-		if (!Number.isFinite(widget.value.data.ratio))
-			widget.value.data.ratio = 0;
+		if (!Number.isFinite(data.width))
+			data.width = 0;
+		if (!Number.isFinite(data.height))
+			data.height = 0;
+		if (!Number.isFinite(data.ratio))
+			data.ratio = 0;
 	}
 
 	function ratio_notify(node, widget, name, mode, old_value, value, pos, event) {
@@ -2778,7 +2781,7 @@ let defs, type_defs = new Set();
 			lib0246.hijack(app.canvas, "drawNodeWidgets", function () {
 				const node = arguments[0];
 				FLEX_DB.set(node, true);
-				if (node.hub) {
+				if (node.comfyClass === "0246.Hub") {
 					node.hub.temp_y = node.hub.temp_y ?? {};
 					const io_height = Math.max(node?.inputs?.length ?? 0, node?.outputs?.length ?? 0) * 24;
 					node.hub.curr_y = io_height;
@@ -2826,6 +2829,13 @@ let defs, type_defs = new Set();
 								} else if (curr_widget.computedHeight) {
 									node.hub.curr_y += curr_widget.computedHeight + 4;
 									compute_height += curr_widget.computedHeight;
+								} else if (curr_widget.openpose) {
+									node.hub.curr_y += node.size[0];
+								} else if (curr_widget.painter_wrap) {
+									node.hub.curr_y += Math.max((
+										curr_widget.painter_toolbox = curr_widget.painter_toolbox ?? document.querySelector("div.painter_drawning_box")
+									).clientHeight / app.canvas.ds.scale + 4, node.size[0]);
+									app.canvas.setDirty(true);
 								} else if (curr_widget.computeSize) {
 									const curr_height = curr_widget.computeSize(node.size[0], node)[1]; // compute_height, raw_height - io_height + flex_height
 									node.hub.curr_y += curr_height + 4;
@@ -2837,7 +2847,7 @@ let defs, type_defs = new Set();
 			}, function () {
 				const node = arguments[0];
 				FLEX_DB.set(node, false);
-				if (node.hub) {
+				if (node.comfyClass === "0246.Hub") {
 					let curr_size = node.computeSize();
 					for (let i = 0; i < node.widgets.length; ++ i) {
 						if (node.hub.temp_y[i] !== undefined)
@@ -2923,11 +2933,11 @@ let defs, type_defs = new Set();
 				} break;
 				case "0246.ScriptPlan": {
 					node.color = "#660029";
-					node.bgcolor = LGraphCanvas.node_colors.green.bgcolor;
+					node.bgcolor = lib0246.mix_color_hue(LGraphCanvas.node_colors.green.bgcolor, "#660029");
 				} break;
 				case "0246.Script": {
-					node.color = "#660029";
-					node.bgcolor = "#4d4d00";
+					node.color = lib0246.mix_color_hue(LGraphCanvas.node_colors.green.color, "#660029");
+					node.bgcolor = lib0246.mix_color_hue(LGraphCanvas.node_colors.green.bgcolor, "#660029");
 				} break;
 				case "0246.Hub": {
 					node.color = "#1a1a1a";
