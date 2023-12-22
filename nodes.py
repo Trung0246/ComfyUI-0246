@@ -62,10 +62,17 @@ def highway_impl(_prompt, _id, _workflow, _way_in, _query, kwargs):
 	res = []
 
 	for elem in _type["out"]:
-		name = elem["name"][1:]
 
-		if functools.reduce(lambda data, path: None if data is None else data.get(path, None), ["outputs", name, "links"], _prompt[_id]) is None:
+		try:
+			curr_node = next(_ for _ in _workflow["workflow"]["nodes"] if str(_["id"]) == _id)
+			curr_output = next(_ for _ in curr_node["outputs"] if _["name"] == elem["full_name"])
+
+			if curr_output is None or curr_output.get("links") is None:
+				continue
+		except StopIteration:
 			continue
+		
+		name = elem["name"][1:]
 
 		if (
 			("data", name) in _way_in
