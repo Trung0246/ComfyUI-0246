@@ -71,16 +71,14 @@ def highway_impl(_prompt, _id, _workflow, _way_in, _query, kwargs):
 				continue
 		except StopIteration:
 			continue
-		
+
 		name = elem["name"][1:]
 
-		if (
-			("data", name) in _way_in
-			# elem["type"] == _way_in[("type", name)] # [TODO] Maybe relax the rule a bit?
-		) or elem["type"] == "*":
-			res.append(_way_in[("data", name)])
-		else:
-			raise Exception(f"Output \"{name}\" is not defined or is not of type \"{elem['type']}\". Expected \"{_way_in[('type', name)]}\".")
+		if ("data", name) in _way_in:
+			if elem["type"] == "*" or elem["type"] == _way_in[("type", name)]:
+				res.append(_way_in[("data", name)])
+			else:
+				raise Exception(f"Output \"{name}\" is not defined or is not of type \"{elem['type']}\". Expected \"{_way_in[('type', name)]}\".")
 
 	_way_in[("kind")] = "highway"
 	_way_in[("id")] = _id
