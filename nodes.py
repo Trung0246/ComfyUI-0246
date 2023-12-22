@@ -1687,15 +1687,6 @@ class Convert:
 			"result": [sys.modules["was-node-suite-comfyui.WAS_Node_Suite"].WDB.getDict("custom_tokens")]
 		}
 
-######################################################################################
-
-class ScriptPlanEnact:
-	# For things that require text-based expression, such as string combine, conditioning combine, etc.
-	# Which allows each operators to associate with a node or func.
-		# => Require 4 widgets: ops, node, add button, and current code.
-	# But how do we specify which parameters for which?
-	pass
-
 ########################################################################################
 ######################################## EXPORT ########################################
 ########################################################################################
