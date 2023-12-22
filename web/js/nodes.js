@@ -3,6 +3,10 @@ import { api } from "../../../scripts/api.js";
 import { ComfyWidgets } from "../../../scripts/widgets.js";
 import { GroupNodeHandler } from "../../../extensions/core/groupNode.js";
 
+import { JSONEditor } from "https://cdn.jsdelivr.net/npm/vanilla-jsoneditor/standalone.js";
+
+console.log(JSONEditor);
+
 import * as lib0246 from "./utils.js";
 
 const HELP = {
@@ -197,7 +201,7 @@ const HELP = {
 	`.replace(/[\t\n]+/g, ''),
 };
 
-let defs, type_defs = new Set();
+let defs, node_defs = [], type_defs = new Set();
 
 (async () => {
 	function rgthree_exec(name, ...args) {
@@ -218,10 +222,12 @@ let defs, type_defs = new Set();
 	lib0246.hijack(app, "registerNodesFromDefs", async function (_defs) {
 		defs = _defs;
 
-		for (let key in defs)
+		for (let key in defs) {
+			node_defs.push(key);
 			for (let idx in defs[key].output)
 				if (!Array.isArray(defs[key].output[idx]))
 					type_defs.add(defs[key].output[idx]);
+		}
 
 		type_defs = [...type_defs.values()];
 	}, () => {});
@@ -3095,7 +3101,8 @@ let defs, type_defs = new Set();
 					case "0246.Hub": {
 						const Hub = nodeType,
 							HUB_PARENT = Symbol("hub_parent"),
-							HUB_SOLE = 7;
+							HUB_SOLE = 7,
+							PIPE_COMBO = ["HIGHWAY_PIPE", "JUNCTION_PIPE"];
 
 						// [TODO] Force tracked node render by hijack app.canvas.computeVisibleNodes and
 							// change getBounding of each nodes to be within app.canvas.visible_area
@@ -3105,7 +3112,7 @@ let defs, type_defs = new Set();
 
 							const prim_widget = node.addWidget("combo", "base:prim", "INT", () => {}, {
 								serialize: false,
-								values: ["INT", "FLOAT", "STRING", "BOOLEAN"]
+								values: ["INT", "FLOAT", "STRING", "BOOLEAN", "__PIPE__", "__BATCH__", "__SCRIPT_DATA__"]
 							});
 							node.addWidget("button", "Add Sole Primitive Widget", null, () => {
 								node.hubPushWidgetPrim(prim_widget.value);
@@ -3133,7 +3140,7 @@ let defs, type_defs = new Set();
 							
 							const node_widget = node.addWidget("combo", "base:node", "KSampler", () => {}, {
 								serialize: false,
-								values: Object.keys(defs)
+								values: node_defs
 							});
 							node.addWidget("button", "Add Sole Primitive Widgets from Node", null, () => {
 								node.hubPushWidgetNode(node_widget.value);
@@ -3205,23 +3212,33 @@ let defs, type_defs = new Set();
 							if (node.outputs && node.outputs.length > 0) {
 								let count = 0, widget;
 								for (let name in node.hub.data.sole_type) {
-									const proc_name = name.split(":"),
-										type_data = node.hub.data.sole_type[name].slice(3, 6);
+									const proc_name = node.hub.data.sole_type[name], // name.split(":"),
+										type_data = proc_name.slice(3, 6);
 									switch (proc_name[2]) {
 										case "int": {
-											widget = node.hubPushWidgetPrim("INT", ...type_data, name);
+											widget = node.hubPushWidgetPrim("INT", type_data, name);
 										} break;
 										case "float": {
-											widget = node.hubPushWidgetPrim("FLOAT", ...type_data, name);
+											widget = node.hubPushWidgetPrim("FLOAT", type_data, name);
 										} break;
 										case "string": {
-											widget = node.hubPushWidgetPrim("STRING", ...type_data, name);
+											widget = node.hubPushWidgetPrim("STRING", type_data, name);
 										} break;
 										case "boolean": {
-											widget = node.hubPushWidgetPrim("BOOLEAN", ...type_data, name);
+											widget = node.hubPushWidgetPrim("BOOLEAN", type_data, name);
 										} break;
 										case "combo": {
-											widget = node.hubPushWidgetCombo(...type_data, name);
+											switch (proc_name[3]) {
+												case "__PIPE__": {
+													widget = node.hubPushWidgetComboRaw(PIPE_COMBO, proc_name[3], type_data, name);
+												} break;
+												case "__SCRIPT_DATA__": {
+													widget = node.hubPushWidgetComboRaw(node_defs, proc_name[3], type_data, name);
+												} break;
+												default: {
+													widget = node.hubPushWidgetCombo(...type_data, name);
+												} break;
+											}
 										} break;
 									}
 									widget.value = data.widgets_values[HUB_SOLE + 2 + (count ++)];
@@ -3329,19 +3346,27 @@ let defs, type_defs = new Set();
 										options: {}
 									}, "boolean", "BOOLEAN", ...args);
 								} break;
+								case "__PIPE__": {
+									return this.hubPushWidgetComboRaw(PIPE_COMBO, type, ...args);
+								} break;
+								case "__SCRIPT_DATA__": {
+									return this.hubPushWidgetComboRaw(node_defs, type, ...args);
+								} break;
 							}
 						};
 
 						Hub.prototype.hubPushWidgetCombo = function (node_name, part_name, pin_name, full_name) {
-							const combo_data = defs[node_name].input[part_name][pin_name][0];
+							return this.hubPushWidgetComboRaw(defs[node_name].input[part_name][pin_name][0], "COMBO", [node_name, part_name, pin_name], full_name);
+						};
 
+						Hub.prototype.hubPushWidgetComboRaw = function (combo_data, combo_type, extra_name, full_name) {
 							return this.hubPushWidget({
 								type: "combo",
 								value: combo_data[0],
 								options: {
 									values: combo_data
 								},
-							}, "combo", "COMBO", node_name, part_name, pin_name, full_name);
+							}, "combo", combo_type, extra_name, full_name);
 						};
 
 						Hub.prototype.hubPushWidgetNode = function (node_name, full_name) {
@@ -3355,7 +3380,7 @@ let defs, type_defs = new Set();
 								}
 						};
 
-						Hub.prototype.hubPushWidget = function (widget, id_type, pin_type, node_name, part_name, pin_name, full_name) {
+						Hub.prototype.hubPushWidget = function (widget, id_type, pin_type, extra_name = [], full_name = "") {
 							if (!this.hub.sole_space) {
 								this.hub.sole_space = SPACE_TITLE_WIDGET();
 								this.widgets.splice(HUB_SOLE + 1, 0, this.hub.sole_space);
@@ -3364,14 +3389,14 @@ let defs, type_defs = new Set();
 							this.widgets.splice(HUB_SOLE + 2 + this.hub.sole_widget.length, 0, widget);
 							this.hub.sole_widget.push(widget);
 
-							if (typeof full_name === "string")
+							if (full_name.length > 0)
 								widget.name = full_name;
 							else {
 								this.hub.data.sole_name[id_type] = this.hub.data.sole_name[id_type] ?? 0;
 
 								let list_name = [
 									"sole", String(this.hub.data.sole_name[id_type] ++),
-									id_type, node_name, part_name, pin_name, pin_type
+									id_type, ...extra_name, pin_type
 								];
 
 								full_name = list_name.reduce((a, b) =>

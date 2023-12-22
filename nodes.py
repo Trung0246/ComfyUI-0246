@@ -54,19 +54,22 @@ def highway_impl(_prompt, _id, _workflow, _way_in, _query, kwargs):
 
 	# Time to let the magic play out
 
-	for param, key in zip(_type["in"], list(kwargs)):
-		name = param["name"][1:]
-		_way_in[("data", name)] = kwargs[key]
-		_way_in[("type", name)] = param["type"]
+	for key in kwargs:
+		param = next((param for param in _type["in"] if param["full_name"] == key), None)
+		_way_in[("data", param["name"][1:])] = kwargs[key]
+		_way_in[("type", param["name"][1:])] = param["type"]
 
 	res = []
 
 	for elem in _type["out"]:
 		name = elem["name"][1:]
 
+		if functools.reduce(lambda data, path: None if data is None else data.get(path, None), ["outputs", name, "links"], _prompt[_id]) is None:
+			continue
+
 		if (
-			("data", name) in _way_in and
-			elem["type"] == _way_in[("type", name)] # [TODO] Maybe relax the rule a bit?
+			("data", name) in _way_in
+			# elem["type"] == _way_in[("type", name)] # [TODO] Maybe relax the rule a bit?
 		) or elem["type"] == "*":
 			res.append(_way_in[("data", name)])
 		else:
@@ -1349,12 +1352,12 @@ class ScriptImbue:
 			case _:
 				pass
 
-		return (pipe_in, ScriptData({
+		return (pipe_in, None if pin_func is None else ScriptData({
 			"id": _id,
 			"func": pin_func,
 			"order": script_pin_order,
 			"kind": "wrap"
-		}), ScriptData({
+		}), None if res_func is None else ScriptData({
 			"id": _id,
 			"func": res_func,
 			"order": script_res_order,
@@ -1372,10 +1375,6 @@ class ScriptPlan:
 				"script_func": (["_"], ),
 				"script_exec_mode": (["node", "func", "func_list"], ),
 				"script_rule_mode": (["slice", "cycle"], ),
-				"script_chain_type": ("STRING", {
-					"default": "",
-					"multiline": False
-				}),
 			},
 			"hidden": {
 				"_id": "UNIQUE_ID",
@@ -1537,13 +1536,16 @@ class Script:
 				if _script_in[key](script=_script_in, inst=inst, pin=pin, res=None):
 					inst["id"].append(_script_in[("script", "id", key[2])])
 
-			_script_in[("script", "rule")](
-				script=_script_in, inst=inst, pin=pin, res=res,
-				func=functools.partial(
-					_script_in.get(("script", "exec"), lambda *args, **kwargs: None),
-					script=_script_in, inst=inst
+			if ("script", "rule") in _script_in:
+				_script_in[("script", "rule")](
+					script=_script_in, inst=inst, pin=pin, res=res,
+					func=functools.partial(
+						_script_in.get(("script", "exec"), lambda *args, **kwargs: None),
+						script=_script_in, inst=inst
+					)
 				)
-			)
+			else:
+				_script_in[("script", "exec")](script=_script_in, inst=inst, pin=pin, res=res)
 
 			inst["id"].clear()
 			inst["id"].append(_id)
@@ -1562,84 +1564,6 @@ class Script:
 				"text": [""]
 			},
 			"result": [_script_in, *res]
-		}
-
-######################################################################################
-
-def check_module():
-	res = []
-	if sys.modules["was-node-suite-comfyui.WAS_Node_Suite"] is not None:
-		res.extend([
-			"-----[WAS Node Suite]-----",
-			"0246-Highway-Str | WAS-DB-Token-Str",
-			"WAS-DB-Token-Str | 0246-Highway-Str",
-
-			"0246-Highway | WAS-DB",
-			"WAS-DB | 0246-Highway",
-		])
-	if sys.modules["ComfyUI-Inspire-Pack.inspire"] is not None:
-		res.extend([
-			"-----[Inspire Pack]-----",
-			"0246-Highway | Inspire-Cache",
-			"Inspire-Cache | 0246-Highway",
-			"0246-Junction | Inspire-Cache",
-			"Inspire-Cache | 0246-Junction",
-		])
-	if sys.modules["ComfyUI-Impact-Pack"] is not None:
-		res.extend([
-			"-----[Impact Pack]-----",
-		])
-	if sys.modules["ComfyUI_tinyterraNodes"] is not None:
-		res.extend([
-			"-----[tinyterraNodes]-----",
-		])
-
-		# PIPE_LINE
-		# PIPE_LINE_SDXL
-		# BASIC_PIPE
-		# DETAILER_PIPE
-		# RGTHREE PIPE
-
-	if len(res) == 0:
-		res.append("UNKNOWN")
-	return res
-
-# [WIP] Some secret unfinished node
-class Convert:
-	@classmethod
-	def INPUT_TYPES(s):
-		return {
-			"required": {
-				"_func": (check_module(), ),
-				"_mode": (["batch", "pluck"], ),
-			},
-			"optional": {
-				"_data_in": lib0246.ByPassTypeTuple(("*", )),
-			},
-			"hidden": {
-				"_prompt": "PROMPT",
-				"_id": "UNIQUE_ID",
-				"_workflow": "EXTRA_PNGINFO"
-			}
-		}
-	
-	RETURN_TYPES = lib0246.ByPassTypeTuple(("*", ))
-	RETURN_NAMES = lib0246.ByPassTypeTuple(("_data_out", ))
-	INPUT_IS_LIST = True
-	FUNCTION = "execute"
-	CATEGORY = "0246"
-
-	def execute(self, _func = None, _mode = None, **kwargs):
-		# inspire_module = sys.modules["ComfyUI-Inspire-Pack.inspire.backend_support"]
-		# print(id(inspire_module))
-		# print(id(ext["insp"].inspire.backend_support.cache))
-		# print(dir(inspire_module))
-
-		return {
-			"ui": {
-				"text": [""]
-			},
-			"result": [sys.modules["was-node-suite-comfyui.WAS_Node_Suite"].WDB.getDict("custom_tokens")]
 		}
 
 ######################################################################################
@@ -1681,6 +1605,96 @@ class Hub:
 			},
 			"result": [res[i] for i in range(len(res))]
 		}
+
+######################################################################################
+######################################## TODO ########################################
+######################################################################################
+
+def check_module():
+	res = []
+	if sys.modules["was-node-suite-comfyui.WAS_Node_Suite"] is not None:
+		res.extend([
+			"-----[WAS Node Suite]-----",
+			"0246-Highway-Str | WAS-DB-Token-Str",
+			"WAS-DB-Token-Str | 0246-Highway-Str",
+
+			"0246-Highway | WAS-DB",
+			"WAS-DB | 0246-Highway",
+		])
+	if sys.modules["ComfyUI-Inspire-Pack.inspire"] is not None:
+		res.extend([
+			"-----[Inspire Pack]-----",
+			"0246-Highway | Inspire-Cache",
+			"Inspire-Cache | 0246-Highway",
+			"0246-Junction | Inspire-Cache",
+			"Inspire-Cache | 0246-Junction",
+		])
+	if sys.modules["ComfyUI-Impact-Pack"] is not None:
+		res.extend([
+			"-----[Impact Pack]-----",
+		])
+	if sys.modules["ComfyUI_tinyterraNodes"] is not None:
+		res.extend([
+			"-----[tinyterraNodes]-----",
+		])
+
+		# PIPE_LINE
+		# PIPE_LINE_SDXL
+		# BASIC_PIPE
+		# DETAILER_PIPE
+		# RGTHREE PIPE
+
+	if len(res) == 0:
+		res.append("UNKNOWN")
+	return res
+
+class Convert:
+	# [WIP] Some secret unfinished node
+	
+	@classmethod
+	def INPUT_TYPES(s):
+		return {
+			"required": {
+				"_func": (check_module(), ),
+				"_mode": (["batch", "pluck"], ),
+			},
+			"optional": {
+				"_data_in": lib0246.ByPassTypeTuple(("*", )),
+			},
+			"hidden": {
+				"_prompt": "PROMPT",
+				"_id": "UNIQUE_ID",
+				"_workflow": "EXTRA_PNGINFO"
+			}
+		}
+	
+	RETURN_TYPES = lib0246.ByPassTypeTuple(("*", ))
+	RETURN_NAMES = lib0246.ByPassTypeTuple(("_data_out", ))
+	INPUT_IS_LIST = True
+	FUNCTION = "execute"
+	CATEGORY = "0246"
+
+	def execute(self, _func = None, _mode = None, **kwargs):
+		# inspire_module = sys.modules["ComfyUI-Inspire-Pack.inspire.backend_support"]
+		# print(id(inspire_module))
+		# print(id(ext["insp"].inspire.backend_support.cache))
+		# print(dir(inspire_module))
+
+		return {
+			"ui": {
+				"text": [""]
+			},
+			"result": [sys.modules["was-node-suite-comfyui.WAS_Node_Suite"].WDB.getDict("custom_tokens")]
+		}
+
+######################################################################################
+
+class ScriptPlanEnact:
+	# For things that require text-based expression, such as string combine, conditioning combine, etc.
+	# Which allows each operators to associate with a node or func.
+		# => Require 4 widgets: ops, node, add button, and current code.
+	# But how do we specify which parameters for which?
+	pass
 
 ########################################################################################
 ######################################## EXPORT ########################################
