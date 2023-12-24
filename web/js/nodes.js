@@ -3112,7 +3112,7 @@ let defs, node_defs = [], type_defs = new Set();
 
 							const prim_widget = node.addWidget("combo", "base:prim", "INT", () => {}, {
 								serialize: false,
-								values: ["INT", "FLOAT", "STRING", "BOOLEAN", "__PIPE__", "__BATCH__", "__SCRIPT_DATA__"]
+								values: ["INT", "FLOAT", "STRING", "BOOLEAN"]
 							});
 							node.addWidget("button", "Add Sole Primitive Widget", null, () => {
 								node.hubPushWidgetPrim(prim_widget.value);
