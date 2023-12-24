@@ -1591,8 +1591,6 @@ class Hub:
 			if pin["name"] in kwargs:
 				if pin["name"].startswith("sole"):
 					curr_type = curr_extra["0246.HUB_DATA"][_id[0]]["sole_type"][pin["name"]][-1]
-					if curr_type in Hub.SPECIAL:
-						continue
 					curr_index = next(i for i, _ in enumerate(curr_nodes[self_index]["outputs"]) if _["name"] == pin["name"])
 					name_data[curr_index] = pin["name"]
 					match curr_type:
