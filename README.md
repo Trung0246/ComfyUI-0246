@@ -43,6 +43,8 @@ Tons more nodes. Here's the simple workflow image that showcase everything withi
 
 For any nodes related to `Script`, `*_order` widget will determine script execution order, which depends on [natsort](https://natsort.readthedocs.io/en/stable/api.html#the-ns-enum). How it being sorted can be customized by doing things like `INT, LOCALE` within the `_sort_mode` widget.
 
+Warning: The recent changes I have changed how Highway and Junction tracking types. Therefore the best way to mitigrate this is to just copy the `_query` or `_offset`, create a new Highway or Junction, paste the string then reconnect everything over. I've probably find a way to automate this.
+
 I recommended you to play around with this sample workflow:
 
 <details>
