@@ -2,10 +2,9 @@ import { app } from "../../../scripts/app.js";
 import { api } from "../../../scripts/api.js";
 import { ComfyWidgets } from "../../../scripts/widgets.js";
 import { GroupNodeHandler } from "../../../extensions/core/groupNode.js";
+import * as comfy_widget from "../../../extensions/core/widgetInputs.js";
 
 import { JSONEditor } from "https://cdn.jsdelivr.net/npm/vanilla-jsoneditor/standalone.js";
-
-console.log(JSONEditor);
 
 import * as lib0246 from "./utils.js";
 
@@ -238,16 +237,6 @@ let defs, node_defs = [], type_defs = new Set();
 	/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-	function init_type(node) {
-		node.addCustomWidget({
-			name: "_type",
-			computeSize: () => [0, -4],
-			async serializeValue (node, index_str) {
-				return serialize_type(node);
-			}
-		});
-	}
-
 	async function init_update_raw(node, widget, callback) {
 		if (node.__update || !node.__hash_update)
 			node.__hash_update = lib0246.random_id();
@@ -282,34 +271,6 @@ let defs, node_defs = [], type_defs = new Set();
 				return await init_update_raw(node, this, callback);
 			}
 		});
-	}
-
-	function serialize_type(node) {
-		let data = {
-			in: [],
-			out: []
-		}
-		if (node.inputs)
-			for (let i = 0; i < node.inputs.length; ++ i) {
-				if (BLACKLIST.includes(node.inputs[i].name))
-					continue;
-				data.in.push({
-					name: node.inputs[i].orig_name,
-					full_name: node.inputs[i].name,
-					type: node.inputs[i].type,
-				});
-			}
-		if (node.outputs)
-			for (let i = 0; i < node.outputs.length; ++ i) {
-				if (BLACKLIST.includes(node.outputs[i].name))
-					continue;
-				data.out.push({
-					name: node.outputs[i].orig_name,
-					full_name: node.outputs[i].name,
-					type: node.outputs[i].type,
-				});
-			}
-		return data;
 	}
 
 	function link_shift_up(node, arr, index, flag, link_callback) {
@@ -480,8 +441,6 @@ let defs, node_defs = [], type_defs = new Set();
 		nodeType.prototype.onNodeMoved = function () {};
 
 		nodeType.prototype.onNodeCreated = function () {
-			init_type(this);
-
 			init_update(this, "_query");
 
 			const query = this.widgets.find(w => w.name === "_query");
@@ -502,6 +461,22 @@ let defs, node_defs = [], type_defs = new Set();
 					this.self.outputs[i].name = LEGACY_BLACKLIST.next[i];
 				}
 				last_query = data.widgets_values[0];
+			});
+
+			lib0246.hijack(this, "clone", () => {}, function () {
+				const node = this.res;
+				// Clean up when copy paste or template load
+				for (let i = 0; i < node.inputs.length; ++ i)
+					if (!BLACKLIST.includes(node.inputs[i].name)) {
+						node.inputs[i].name = app.graph.extra["0246.__NAME__"][this.self.id]["inputs"][i]["name"];
+						node.inputs[i].type = "*";
+					}
+				for (let i = 0; i < node.outputs.length; ++ i)
+					if (!BLACKLIST.includes(node.outputs[i].name)) {
+						node.outputs[i].name = app.graph.extra["0246.__NAME__"][this.self.id]["outputs"][i]["name"];
+						node.outputs[i].type = "*";
+					}
+				node.computeSize();
 			});
 
 			this.addWidget("button", "Update", null, () => {
@@ -582,9 +557,9 @@ let defs, node_defs = [], type_defs = new Set();
 				}
 				
 				let curr_pin = this.inputs[this_target_slot_index];
-				if (curr_pin.orig_type === "*")
+				if (app.graph.extra["0246.__NAME__"][this.id]["inputs"][this_target_slot_index]["type"] === "*")
 					curr_pin.type = other_origin_slot_obj.type;
-				curr_pin.name = `${curr_pin.orig_name}:${curr_pin.type}`;
+				curr_pin.name = `${app.graph.extra["0246.__NAME__"][this.id]["inputs"][this_target_slot_index]["name"]}:${curr_pin.type}`;
 
 				return true;
 			};
@@ -605,7 +580,7 @@ let defs, node_defs = [], type_defs = new Set();
 
 				let curr_pin = this.outputs[this_origin_slot_index];
 
-				if (curr_pin.orig_type === "*") {
+				if (app.graph.extra["0246.__NAME__"][this.id]["outputs"][this_origin_slot_index]["type"] === "*") {
 					if (other_target_node.__outputType) // Reroute
 						curr_pin.type = other_target_node.__outputType;
 					else if (other_target_node.defaultConnectionsLayout) // Reroute (rgthree)
@@ -616,25 +591,13 @@ let defs, node_defs = [], type_defs = new Set();
 						curr_pin.type = other_target_slot_obj.type;
 				}
 
-				curr_pin.name = `${curr_pin.type}:${curr_pin.orig_name}`;
+				curr_pin.name = `${curr_pin.type}:${app.graph.extra["0246.__NAME__"][this.id]["outputs"][this_origin_slot_index]["name"]}`;
 
 				return true;
 			};
 
 			this.onConnectionsChange = function (type, index, connected, link_info) {
 				if (link_info === null) {
-					// Clean up when copy paste or template load
-					for (let i = 0; i < this.inputs.length; ++ i)
-						if (!BLACKLIST.includes(this.inputs[i].name)) {
-							this.inputs[i].name = this.inputs[i].orig_name;
-							this.inputs[i].type = "*";
-						}
-					for (let i = 0; i < this.outputs.length; ++ i)
-						if (!BLACKLIST.includes(this.outputs[i].name)) {
-							this.outputs[i].name = this.outputs[i].orig_name;
-							this.outputs[i].type = "*";
-						}
-					this.computeSize();
 					return;
 				}
 
@@ -643,14 +606,14 @@ let defs, node_defs = [], type_defs = new Set();
 						case 1: {
 							if (BLACKLIST.includes(this.inputs[link_info.target_slot].name) || link_info.replaced)
 								return;
-							this.inputs[link_info.target_slot].name = this.inputs[link_info.target_slot].orig_name;
-							if (this.inputs[link_info.target_slot].orig_type === "*")
+							this.inputs[link_info.target_slot].name = app.graph.extra["0246.__NAME__"][this.id]["inputs"][link_info.target_slot]["name"];
+							if (app.graph.extra["0246.__NAME__"][this.id]["inputs"][link_info.target_slot]["type"] === "*")
 								this.inputs[link_info.target_slot].type = "*";
 						} break;
 						case 2: {
 							if (this.outputs[link_info.origin_slot].links.length === 0 && !BLACKLIST.includes(this.outputs[link_info.origin_slot].name)) {
-								this.outputs[link_info.origin_slot].name = this.outputs[link_info.origin_slot].orig_name;
-								if (this.outputs[link_info.origin_slot].orig_type === "*")
+								this.outputs[link_info.origin_slot].name = app.graph.extra["0246.__NAME__"][this.id]["outputs"][link_info.origin_slot]["name"];
+								if (app.graph.extra["0246.__NAME__"][this.id]["outputs"][link_info.origin_slot]["type"] === "*")
 									this.outputs[link_info.origin_slot].type = "*";
 							}
 						} break;
@@ -758,9 +721,6 @@ let defs, node_defs = [], type_defs = new Set();
 
 	function junction_impl(nodeType, nodeData, app, name, shape_in, shape_out) {
 		nodeType.prototype.onNodeCreated = function () {
-		
-			init_type(this);
-		
 			if (typeof name === "string")
 				init_update(this, name);
 
@@ -867,9 +827,6 @@ let defs, node_defs = [], type_defs = new Set();
 
 	function single_impl_input(nodeType, nodeData, app, shape_in, pin_list) {
 		nodeType.prototype.onNodeCreated = function () {
-		
-			init_type(this);
-
 			const real = {
 				input: 0,
 			};
@@ -976,7 +933,7 @@ let defs, node_defs = [], type_defs = new Set();
 				if (!BLACKLIST.includes(node.inputs[i].name) && node.inputs[i].link !== null)
 					prev.push({
 						flag: false,
-						name: node.inputs[i].orig_name,
+						name: app.graph.extra["0246.__NAME__"][node.id]["inputs"][i]["name"],
 						node_id: app.graph.links[node.inputs[i].link].origin_id,
 						slot_id: app.graph.links[node.inputs[i].link].origin_slot,
 					});
@@ -990,8 +947,14 @@ let defs, node_defs = [], type_defs = new Set();
 			callback(node, prev, false);
 
 			for (let i = 0; i < node.inputs.length; ++ i) {
-				node.inputs[i].orig_name = node.inputs[i].name;
-				node.inputs[i].orig_type = node.inputs[i].type;
+				app.graph.extra["0246.__NAME__"] = app.graph.extra["0246.__NAME__"] ?? {};
+				app.graph.extra["0246.__NAME__"][node.id] = app.graph.extra["0246.__NAME__"][node.id] ?? {
+					inputs: {},
+					outputs: {},
+				};
+				app.graph.extra["0246.__NAME__"][node.id].inputs[i] = app.graph.extra["0246.__NAME__"][node.id].inputs[i] ?? {};
+				app.graph.extra["0246.__NAME__"][node.id].inputs[i].name = node.inputs[i].name;
+				app.graph.extra["0246.__NAME__"][node.id].inputs[i].type = node.inputs[i].type;
 				if (!BLACKLIST.includes(node.inputs[i].name))
 					node.inputs[i].shape = shape_in;
 			}
@@ -1003,7 +966,7 @@ let defs, node_defs = [], type_defs = new Set();
 					for (let j = 0; j < node.outputs[i].links.length; ++ j)
 						prev.push({
 							flag: true,
-							name: node.outputs[i].orig_name,
+							name: app.graph.extra["0246.__NAME__"][node.id]["outputs"][i]["name"],
 							node_id: app.graph.links[node.outputs[i].links[j]].target_id,
 							slot_id: app.graph.links[node.outputs[i].links[j]].target_slot,
 						});
@@ -1017,8 +980,14 @@ let defs, node_defs = [], type_defs = new Set();
 			callback(node, prev, true);
 
 			for (let i = 0; i < node.outputs.length; ++ i) {
-				node.outputs[i].orig_name = node.outputs[i].name;
-				node.outputs[i].orig_type = node.outputs[i].type;
+				app.graph.extra["0246.__NAME__"] = app.graph.extra["0246.__NAME__"] ?? {};
+				app.graph.extra["0246.__NAME__"][node.id] = app.graph.extra["0246.__NAME__"][node.id] ?? {
+					inputs: {},
+					outputs: {},
+				};
+				app.graph.extra["0246.__NAME__"][node.id].outputs[i] = app.graph.extra["0246.__NAME__"][node.id].outputs[i] ?? {};
+				app.graph.extra["0246.__NAME__"][node.id].outputs[i].name = node.outputs[i].name;
+				app.graph.extra["0246.__NAME__"][node.id].outputs[i].type = node.outputs[i].type;
 				if (!BLACKLIST.includes(node.outputs[i].name))
 					node.outputs[i].shape = shape_out;
 			}
@@ -1029,7 +998,7 @@ let defs, node_defs = [], type_defs = new Set();
 			// Check if input/output still exists
 			if (prev[i].flag) {
 				for (let j = 0; j < node.outputs.length; ++ j)
-					if (node.outputs[j].orig_name.slice(0) === prev[i].name.slice(0)) {
+					if (app.graph.extra["0246.__NAME__"][node.id]["outputs"][j]["name"].slice(0) === prev[i].name.slice(0)) {
 						node.connect(
 							j,
 							prev[i].node_id,
@@ -1039,7 +1008,7 @@ let defs, node_defs = [], type_defs = new Set();
 					}
 			} else {
 				for (let j = 0; j < node.inputs.length; ++ j)
-					if (node.inputs[j].orig_name.slice(1) === prev[i].name.slice(1)) {
+					if (app.graph.extra["0246.__NAME__"][node.id]["inputs"][j]["name"].slice(1) === prev[i].name.slice(1)) {
 						app.graph.getNodeById(prev[i].node_id).connect(
 							prev[i].slot_id,
 							node,
@@ -2460,8 +2429,6 @@ let defs, node_defs = [], type_defs = new Set();
 
 				let mode = 0, old_value;
 
-				console.log(event.dragging);
-
 				if (event.type === "pointerdown") {
 					if (lib0246.is_inside_rect(
 						pos[0], pos[1],
@@ -2706,6 +2673,65 @@ let defs, node_defs = [], type_defs = new Set();
 		return widget.name;
 	}
 
+	const WIDGET_PIN = Symbol("widget_pin"),
+		PIPE_COMBO = ["HIGHWAY_PIPE", "JUNCTION_PIPE"];
+
+	function hub_combo_pin_type_func(value, canvas, node, pos, event) {
+		this[WIDGET_PIN].type = value;
+		for (let i = 0; this[WIDGET_PIN].links && i < this[WIDGET_PIN].links.length; ++ i) {
+			const link = app.graph.links[this[WIDGET_PIN].links[i]],
+				target_node = app.graph.getNodeById(link.target_id),
+				pin = target_node.inputs[link.target_slot];
+			if (!(pin.type === value || pin.type === "*"))
+				target_node.disconnectInput(link.target_slot);
+		}
+	}
+
+	const HUB_PARENT = Symbol("hub_parent"),
+		HUB_SOLE = 7,
+		PASS_DATA = Symbol("pass_data");
+
+	function hub_setup_widget(node, data, id) {
+		for (let node_id of app.graph.extra["0246.HUB_DATA"][id].node_list)
+			node.hubPushNode(app.graph.getNodeById(node_id), true);
+
+		if (node.outputs && node.outputs.length > 0) {
+			let count = 0, widget;
+			for (let name in node.hub.data.sole_type) {
+				const proc_name = node.hub.data.sole_type[name], // name.split(":"),
+					type_data = proc_name.slice(3, 6);
+				switch (proc_name[2]) {
+					case "int": {
+						widget = node.hubPushWidgetPrim("INT", type_data, name);
+					} break;
+					case "float": {
+						widget = node.hubPushWidgetPrim("FLOAT", type_data, name);
+					} break;
+					case "string": {
+						widget = node.hubPushWidgetPrim("STRING", type_data, name);
+					} break;
+					case "boolean": {
+						widget = node.hubPushWidgetPrim("BOOLEAN", type_data, name);
+					} break;
+					case "combo": {
+						switch (proc_name[3]) {
+							case "__BATCH__": {
+								widget = node.hubPushWidgetComboRaw(type_defs, proc_name[3], hub_combo_pin_type_func, type_data, name);
+							} break;
+							case "__PIPE__": {
+								widget = node.hubPushWidgetComboRaw(PIPE_COMBO, proc_name[3], hub_combo_pin_type_func, type_data, name);
+							} break;
+							default: {
+								widget = node.hubPushWidgetCombo(...type_data, name);
+							} break;
+						}
+					} break;
+				}
+				widget.value = data.widgets_values[HUB_SOLE + 2 + (count ++)];
+			}
+		}
+	}
+
 	/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2717,7 +2743,17 @@ let defs, node_defs = [], type_defs = new Set();
 				const reroute_class = lib0246.clone_class(LiteGraph.registered_node_types.Reroute);
 
 				reroute_class.prototype.onNodeCreated = function() {
-					this.onConnectionsChange = () => {};
+					const DATA_TEMP = [];
+
+					lib0246.hijack(this, "onConnectionsChange", function () {
+						DATA_TEMP[0] = this.self.inputs[0].type;
+						DATA_TEMP[1] = this.self.outputs[0].type;
+						DATA_TEMP[2] = this.self.size[0];
+					}, function () {
+						this.self.inputs[0].type = DATA_TEMP[0];
+						this.self.outputs[0].type = DATA_TEMP[1];
+						this.self.size[0] = DATA_TEMP[2];
+					});
 
 					const type_widget = this.addWidget("combo", "", "*", function(value, widget, node) {
 						let curr_input_node = node.getInputNode(0),
@@ -2753,20 +2789,24 @@ let defs, node_defs = [], type_defs = new Set();
 
 					// Prevent error
 					// [TODO] Set widget from output/input pin if exist, else just empty object
-					this.inputs[0].widget = {};
+					// this.inputs[0].widget = {};
+
+					this.serialize_widgets = true;
 
 					this.setSize(prev_size);
+
+					lib0246.hijack(this, "onConnectOutput", function () {
+						console.log("onConnectOutput");
+					}, () => {});
+
+					lib0246.hijack(this, "onConnectInput", function () {
+						console.log("onConnectInput");
+					}, () => {});
 				};
 
 				lib0246.hijack(reroute_class.prototype, "onDrawForeground", function () {
 					process_reroute(this.self);
 				}, () => {});
-
-				lib0246.hijack(reroute_class.prototype, "configure", () => {}, function (data) {
-					process_reroute(this.self, data.inputs[0].type);
-					if (this.self?.outputs?.[0]?.links?.length > 0)
-						this.self.inputs[0].widget = app.graph.links[this.self.outputs[0].links[0]].target_node?.inputs[app.graph.links[this.self.outputs[0].links[0]].target_slot].widget ?? {};
-				});
 
 				LiteGraph.registerNodeType(
 					"0246.CastReroute",
@@ -3099,10 +3139,7 @@ let defs, node_defs = [], type_defs = new Set();
 						single_impl_input(nodeType, nodeData, app, LiteGraph.CIRCLE_SHAPE, []);
 					} break;
 					case "0246.Hub": {
-						const Hub = nodeType,
-							HUB_PARENT = Symbol("hub_parent"),
-							HUB_SOLE = 7,
-							PIPE_COMBO = ["HIGHWAY_PIPE", "JUNCTION_PIPE"];
+						const Hub = nodeType;
 
 						// [TODO] Force tracked node render by hijack app.canvas.computeVisibleNodes and
 							// change getBounding of each nodes to be within app.canvas.visible_area
@@ -3112,7 +3149,11 @@ let defs, node_defs = [], type_defs = new Set();
 
 							const prim_widget = node.addWidget("combo", "base:prim", "INT", () => {}, {
 								serialize: false,
-								values: ["INT", "FLOAT", "STRING", "BOOLEAN"]
+								values: [
+									"INT", "FLOAT", "STRING", "BOOLEAN",
+									"__BATCH__", "__PIPE__"
+									// "__SCRIPT_DATA_WRAP__", "__SCRIPT_DATA_EXEC__"
+								]
 							});
 							node.addWidget("button", "Add Sole Primitive Widget", null, () => {
 								node.hubPushWidgetPrim(prim_widget.value);
@@ -3165,7 +3206,7 @@ let defs, node_defs = [], type_defs = new Set();
 
 							lib0246.hijack(node, "connect", function (slot, target_node, target_slot) {
 								const output_data = this.self.hub.data.sole_type[this.self.outputs[slot].name];
-								if (output_data[2] === "combo") {
+								if (output_data[2] === "combo" && app.graph.extra["0246.HUB_DATA"][this.self.id].sole_type[this.self.outputs[slot].name].length === 7) {
 									Hub.nodeData = Hub.nodeData ?? {};
 									Hub.nodeData.output = Hub.nodeData.output ?? {};
 									Hub.nodeData.output[slot] = defs[output_data[3]].input[output_data[4]][output_data[5]][0];
@@ -3174,6 +3215,18 @@ let defs, node_defs = [], type_defs = new Set();
 								const output_data = this.self.hub.data.sole_type[this.self.outputs[slot].name];
 								if (output_data[2] === "combo")
 									delete Hub.nodeData.output[slot];
+							});
+
+							lib0246.hijack(node, "clone", () => {}, function () {
+								for (let i = 0; i < node.widgets.length; ++ i) {
+									this.res.widgets[i] = this.res.widgets[i] ?? {};
+									this.res.widgets[i].value = structuredClone(node.widgets[i].value);
+								}
+								lib0246.hijack(this.res, "serialize", () => {}, function () {
+									this.res.__id__ = node.id;
+									// Technically we don't need to call serialize, but only need to update widget values
+									node.widgets_values = node.serialize().widgets_values;
+								});
 							});
 
 							node.size[0] = 350;
@@ -3201,49 +3254,23 @@ let defs, node_defs = [], type_defs = new Set();
 
 							node.hub.sole_widget = [];
 							node.hub.sole_space = null;
+
+							if (node[PASS_DATA]) {
+								Object.assign(node.hub.data, structuredClone(app.graph.extra["0246.HUB_DATA"][node[PASS_DATA].__id__]));
+								node[PASS_DATA].widgets_values = structuredClone(app.graph.getNodeById(node[PASS_DATA].__id__).widgets_values);
+								hub_setup_widget(node, node[PASS_DATA], node[PASS_DATA].__id__);
+
+								delete node[PASS_DATA];
+							}
 						});
 
 						lib0246.hijack(Hub.prototype, "onConfigure", () => {}, function (data) {
 							const node = this.self;
 
-							for (let node_id of app.graph.extra["0246.HUB_DATA"][node.id].node_list)
-								node.hubPushNode(app.graph.getNodeById(node_id), true);
-
-							if (node.outputs && node.outputs.length > 0) {
-								let count = 0, widget;
-								for (let name in node.hub.data.sole_type) {
-									const proc_name = node.hub.data.sole_type[name], // name.split(":"),
-										type_data = proc_name.slice(3, 6);
-									switch (proc_name[2]) {
-										case "int": {
-											widget = node.hubPushWidgetPrim("INT", type_data, name);
-										} break;
-										case "float": {
-											widget = node.hubPushWidgetPrim("FLOAT", type_data, name);
-										} break;
-										case "string": {
-											widget = node.hubPushWidgetPrim("STRING", type_data, name);
-										} break;
-										case "boolean": {
-											widget = node.hubPushWidgetPrim("BOOLEAN", type_data, name);
-										} break;
-										case "combo": {
-											switch (proc_name[3]) {
-												case "__PIPE__": {
-													widget = node.hubPushWidgetComboRaw(PIPE_COMBO, proc_name[3], type_data, name);
-												} break;
-												case "__SCRIPT_DATA__": {
-													widget = node.hubPushWidgetComboRaw(node_defs, proc_name[3], type_data, name);
-												} break;
-												default: {
-													widget = node.hubPushWidgetCombo(...type_data, name);
-												} break;
-											}
-										} break;
-									}
-									widget.value = data.widgets_values[HUB_SOLE + 2 + (count ++)];
-								}
-							}
+							if (node.id)
+								hub_setup_widget(node, data, node.id);
+							else
+								node[PASS_DATA] = data;
 						});
 
 						lib0246.hijack(Hub.prototype, "onRemoved", function () {
@@ -3346,27 +3373,32 @@ let defs, node_defs = [], type_defs = new Set();
 										options: {}
 									}, "boolean", "BOOLEAN", ...args);
 								} break;
-								case "__PIPE__": {
-									return this.hubPushWidgetComboRaw(PIPE_COMBO, type, ...args);
+								case "__BATCH__": {
+									return this.hubPushWidgetComboRaw(type_defs, type, hub_combo_pin_type_func, ...args);
 								} break;
-								case "__SCRIPT_DATA__": {
-									return this.hubPushWidgetComboRaw(node_defs, type, ...args);
+								case "__PIPE__": {
+									return this.hubPushWidgetComboRaw(PIPE_COMBO, type, hub_combo_pin_type_func, ...args);
 								} break;
 							}
 						};
 
 						Hub.prototype.hubPushWidgetCombo = function (node_name, part_name, pin_name, full_name) {
-							return this.hubPushWidgetComboRaw(defs[node_name].input[part_name][pin_name][0], "COMBO", [node_name, part_name, pin_name], full_name);
+							return this.hubPushWidgetComboRaw(defs[node_name].input[part_name][pin_name][0], "COMBO", () => {}, [node_name, part_name, pin_name], full_name);
 						};
 
-						Hub.prototype.hubPushWidgetComboRaw = function (combo_data, combo_type, extra_name, full_name) {
-							return this.hubPushWidget({
+						Hub.prototype.hubPushWidgetComboRaw = function (combo_data, combo_type, func, extra_name, full_name) {
+							const widget = this.hubPushWidget({
 								type: "combo",
 								value: combo_data[0],
+								callback: func ?? (() => {}),
 								options: {
 									values: combo_data
 								},
 							}, "combo", combo_type, extra_name, full_name);
+							window.setTimeout(() => {
+								widget.callback(widget.value, app.canvas, this, null, null);
+							}, 0);
+							return widget;
 						};
 
 						Hub.prototype.hubPushWidgetNode = function (node_name, full_name) {
@@ -3376,7 +3408,7 @@ let defs, node_defs = [], type_defs = new Set();
 									if (Array.isArray(curr_type))
 										this.hubPushWidgetCombo(node_name, part_name, pin_name, full_name);
 									else
-										this.hubPushWidgetPrim(curr_type, node_name, part_name, pin_name, full_name);
+										this.hubPushWidgetPrim(curr_type, [node_name, part_name, pin_name], full_name);
 								}
 						};
 
@@ -3389,9 +3421,14 @@ let defs, node_defs = [], type_defs = new Set();
 							this.widgets.splice(HUB_SOLE + 2 + this.hub.sole_widget.length, 0, widget);
 							this.hub.sole_widget.push(widget);
 
-							if (full_name.length > 0)
+							if (full_name.length > 0) {
 								widget.name = full_name;
-							else {
+								for (let i = 0; i < this.outputs.length; ++ i)
+									if (this.outputs[i].name === full_name) {
+										widget[WIDGET_PIN] = this.outputs[i];
+										break;
+									}
+							} else {
 								this.hub.data.sole_name[id_type] = this.hub.data.sole_name[id_type] ?? 0;
 
 								let list_name = [
@@ -3405,7 +3442,7 @@ let defs, node_defs = [], type_defs = new Set();
 									a + ":" + b
 								);
 
-								this.addOutput(widget.name = full_name, pin_type);
+								widget[WIDGET_PIN] = this.addOutput(widget.name = full_name, pin_type);
 								this.hub.data.sole_type[full_name] = list_name;
 							}
 
@@ -3576,17 +3613,12 @@ let defs, node_defs = [], type_defs = new Set();
 					case "0246.Script": {
 						junction_impl(nodeType, nodeData, app, null, LiteGraph.GRID_SHAPE, LiteGraph.GRID_SHAPE);
 					} break;
-					case "0246.ScriptPlan": {
-						lib0246.hijack(nodeType.prototype, "onNodeCreated", () => {}, function () {
-							const chain_widget = this.self.widgets.find(w => w.name === "script_chain_type");
-							chain_widget.options = chain_widget.options ?? {};
-							chain_widget.options.multiline = true;
-						});
-					} break;
 				}
 			}
 		},
 	});
 
 	// var curr_node = LiteGraph.createNode(LiteGraph.getNodeTypesInCategory(LiteGraph.getNodeTypesCategories()[2])[2].type);
+
+	// [TODO] Make Highway and Junction works with GroupNode; Cast Reroute keep type on configure
 })();

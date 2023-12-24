@@ -933,3 +933,10 @@ def parse_lang(input: str):
 # https://pastebin.com/raw/Z3Y9HimQ
 # https://pastebin.com/raw/5kn6KKbT: The OG RevisionDict, if we needs it ever again
 # https://pastebin.com/raw/17pwbLpr: Misc junk
+# https://pastebin.com/raw/vnreX3uJ
+
+# JS:
+# https://pastebin.com/raw/ibGnvzed
+# https://pastebin.com/raw/9WLKRhJp
+# https://pastebin.com/raw/AWK6EX0Z
+# https://pastebin.com/raw/fhpJqfJw: OG type widget implementation

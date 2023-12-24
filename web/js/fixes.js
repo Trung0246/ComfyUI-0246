@@ -365,5 +365,3 @@ app.registerExtension({
 		}
 	}
 });
-
-// Junk: https://pastebin.com/raw/ibGnvzed, https://pastebin.com/raw/9WLKRhJp, https://pastebin.com/raw/AWK6EX0Z

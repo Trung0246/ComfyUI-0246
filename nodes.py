@@ -31,15 +31,13 @@ import nodes
 ######################################## IMPL ########################################
 ######################################################################################
 
-def highway_impl(_prompt, _id, _workflow, _way_in, _query, kwargs):
+def highway_impl(_prompt, _id, _workflow, _way_in, kwargs):
 	if isinstance(_prompt, list):
 		_prompt = _prompt[0]
 	if isinstance(_id, list):
 		_id = _id[0]
 	if isinstance(_workflow, list):
 		_workflow = _workflow[0]
-
-	_type = _prompt[_id]["inputs"]["_type"]
 
 	if isinstance(_way_in, list):
 		_way_in = _way_in[0]
@@ -53,32 +51,25 @@ def highway_impl(_prompt, _id, _workflow, _way_in, _query, kwargs):
 	# _way_in.purge(_way_in.find(lambda item: item.id == _id))
 
 	# Time to let the magic play out
+		
+	curr_node = next(_ for _ in _workflow["workflow"]["nodes"] if str(_["id"]) == _id)
 
-	for key in kwargs:
-		param = next((param for param in _type["in"] if param["full_name"] == key), None)
-		_way_in[("data", param["name"][1:])] = kwargs[key]
-		_way_in[("type", param["name"][1:])] = param["type"]
+	for i, curr_input in enumerate(curr_node["inputs"]):
+		if curr_input["name"] in kwargs:
+			name = _workflow["workflow"]["extra"]["0246.__NAME__"][_id]["inputs"][str(i)]["name"][1:]
+			_way_in[("data", name)] = kwargs[curr_input["name"]]
+			_way_in[("type", name)] = curr_input["type"]
 
 	res = []
 
-	for elem in _type["out"]:
-
-		try:
-			curr_node = next(_ for _ in _workflow["workflow"]["nodes"] if str(_["id"]) == _id)
-			curr_output = next(_ for _ in curr_node["outputs"] if _["name"] == elem["full_name"])
-
-			if curr_output is None or curr_output.get("links") is None:
-				continue
-		except StopIteration:
-			continue
-
-		name = elem["name"][1:]
-
-		if ("data", name) in _way_in:
-			if elem["type"] == "*" or elem["type"] == _way_in[("type", name)]:
-				res.append(_way_in[("data", name)])
-			else:
-				raise Exception(f"Output \"{name}\" is not defined or is not of type \"{elem['type']}\". Expected \"{_way_in[('type', name)]}\".")
+	for i, curr_output in enumerate(curr_node["outputs"]):
+		if curr_output.get("links") and curr_output["name"] not in lib0246.BLACKLIST:
+			name = _workflow["workflow"]["extra"]["0246.__NAME__"][_id]["outputs"][str(i)]["name"][1:]
+			if ("data", name) in _way_in:
+				if curr_output["type"] == "*" or curr_output["type"] == _way_in[("type", name)]:
+					res.append(_way_in[("data", name)])
+				else:
+					raise Exception(f"Output \"{name}\" is not defined or is not of type \"{curr_output['type']}\". Expected \"{_way_in[('type', name)]}\".")
 
 	_way_in[("kind")] = "highway"
 	_way_in[("id")] = _id
@@ -118,8 +109,6 @@ def junction_impl(self, _id, _prompt, _workflow, _junc_in, _offset = None, _in_m
 	if isinstance(_workflow, list):
 		_workflow = _workflow[0]
 
-	_type = _prompt[_id]["inputs"]["_type"]
-
 	if _junc_in is None:
 		_junc_in = lib0246.RevisionDict()
 	else:
@@ -129,14 +118,16 @@ def junction_impl(self, _id, _prompt, _workflow, _junc_in, _offset = None, _in_m
 	# _junc_in.purge(_junc_in.find(lambda item: item.id == _id))
 
 	# Pack all data from _junc_in and kwargs together with a specific format
+		
+	curr_node = next(_ for _ in _workflow["workflow"]["nodes"] if str(_["id"]) == _id)
 
 	if _in_mode:
 		flat_iter = lib0246.FlatIter(kwargs)
-		for param, (key, value) in lib0246.flat_zip(_type["in"], flat_iter):
-			pack_loop(_junc_in, param["type"], value)
+		for param, (key, value) in lib0246.flat_zip(list(filter(lambda _: _["name"] not in lib0246.BLACKLIST, curr_node["inputs"])), flat_iter):
+			junction_pack_loop(_junc_in, param["type"], value)
 	else:
-		for param, key in zip(_type["in"], list(kwargs)):
-			pack_loop(_junc_in, param["type"], kwargs[key])
+		for param, key in zip(list(filter(lambda _: _["name"] not in lib0246.BLACKLIST, curr_node["inputs"])), list(kwargs)):
+			junction_pack_loop(_junc_in, param["type"], kwargs[key])
 
 	# Parse the offset string
 
@@ -181,8 +172,8 @@ def junction_impl(self, _id, _prompt, _workflow, _junc_in, _offset = None, _in_m
 
 	if _out_mode:
 		done_type = {}
-		for elem in _type["out"]:
-			if elem["full_name"] in lib0246.BLACKLIST:
+		for elem in curr_node["outputs"]:
+			if elem["name"] in lib0246.BLACKLIST:
 				continue
 
 			if elem["type"] in done_type:
@@ -192,7 +183,7 @@ def junction_impl(self, _id, _prompt, _workflow, _junc_in, _offset = None, _in_m
 			
 			total = _junc_in.path_count(("data", elem["type"]))
 			if total == 0:
-				raise Exception(f"Type \"{elem['type']}\" of output \"{elem['full_name']}\" does not available in junction.")
+				raise Exception(f"Type \"{elem['type']}\" of output \"{elem['name']}\" does not available in junction.")
 			
 			offset = _junc_in[("index", elem["type"])]
 
@@ -221,13 +212,13 @@ def junction_impl(self, _id, _prompt, _workflow, _junc_in, _offset = None, _in_m
 		for key in _junc_in.path_iter(("type", )):
 			track[key[1]] = 0
 
-		for elem in _type["out"]:
-			if elem["full_name"] in lib0246.BLACKLIST:
+		for elem in curr_node["outputs"]:
+			if elem["name"] in lib0246.BLACKLIST:
 				continue
 
 			total = _junc_in.path_count(("data", elem["type"]))
 			if total == 0:
-				raise Exception(f"Type \"{elem['type']}\" of output \"{elem['full_name']}\" does not available in junction.")
+				raise Exception(f"Type \"{elem['type']}\" of output \"{elem['name']}\" does not available in junction.")
 			
 			offset = _junc_in[("index", elem["type"])]
 			real_index = track[elem["type"]] + offset
@@ -251,19 +242,10 @@ def gather_junction_impl(_dict_list, _id):
 	
 	if isinstance(_id, list):
 		_id = _id[0]
-
-	count_track = {}
-
+		
 	for _dict in _dict_list:
-		for type_name in _dict.path_iter(("type", )):
-			if type_name[1] not in count_track:
-				count_track[type_name[1]] = 0
-				new_dict[("type", type_name[1])] = type_name[1]
-			total = _dict.path_count(("data", type_name[1]))
-			for i in range(total):
-				new_dict[("data", type_name[1], i + count_track[type_name[1]])] = _dict[("data", type_name[1], i)]
-			new_dict[("index", type_name[1])] = 0
-			count_track[type_name[1]] += total
+		for tuple_key in _dict.path_iter(("data", )):
+			junction_pack_loop(new_dict, tuple_key[1], _dict[tuple_key])
 
 	new_dict[("kind")] = "junction"
 	new_dict[("id")] = _id
@@ -302,7 +284,7 @@ def update_hold_db(key, data):
 		Hold.HOLD_DB[key]["data"].extend(data)
 	return [None] if not Hold.HOLD_DB[key]["data"] else Hold.HOLD_DB[key]["data"]
 
-def pack_loop(_junc_in, name, value):
+def junction_pack_loop(_junc_in, name, value):
 	_junc_in[("type", name)] = type(value).__name__
 	count = _junc_in.path_count(("data", name))
 	_junc_in[("data", name, count)] = value
@@ -499,7 +481,7 @@ class Highway:
 
 	# Do not remove the "useless" _query parameter, since data need to be consumed for expanding
 	def execute(self, _id = None, _prompt = None, _workflow = None, _way_in = None, _query = None, **kwargs):
-		return highway_impl(_prompt, _id, _workflow, _way_in, _query, kwargs)
+		return highway_impl(_prompt, _id, _workflow, _way_in, kwargs)
 	
 	@classmethod
 	def IS_CHANGED(self, _query, _id = None, _prompt = None, _workflow = None, _way_in = None, *args, **kwargs):
@@ -535,7 +517,7 @@ class HighwayBatch:
 	CATEGORY = "0246"
 
 	def execute(self, _id = None, _prompt = None, _workflow = None, _way_in = None, _query = None, **kwargs):
-		return highway_impl(_prompt, _id, _workflow, gather_highway_impl(_way_in, _id), _query, kwargs)
+		return highway_impl(_prompt, _id, _workflow, gather_highway_impl(_way_in, _id), kwargs)
 	
 	@classmethod
 	def IS_CHANGED(self, _query, _id = None, _prompt = None, _workflow = None, _way_in = None, *args, **kwargs):
@@ -912,11 +894,12 @@ class Loop:
 	FUNCTION = "execute"
 	CATEGORY = "0246"
 
+	LOOP_DB = {}
+
 	def execute(self, _id = None, _prompt = None, _workflow = None, _event = None, _mode = None, _update = None, **kwargs):
 		global BASE_EXECUTOR
 		global PROMPT_ID
 		if not _event[0]["bool"]:
-			exec = [_id[0]]
 
 			# [TODO] Less shitty way to remove _event from inputs
 			try:
@@ -928,13 +911,18 @@ class Loop:
 			trace_node(_prompt[0], _id[0], _workflow[0], _shallow = False, _input = True) # , lambda curr_id: exec.append(curr_id) if curr_id not in exec else None)
 
 			if _mode[0] == "sweep":
-				while len(exec) > 0:
-					curr_id = exec.pop(0)
-					if BASE_EXECUTOR.outputs.get(curr_id) is not None:
-						del BASE_EXECUTOR.outputs[curr_id]
-					success, error, ex = execution.recursive_execute(PromptServer.instance, _prompt[0], BASE_EXECUTOR.outputs, curr_id, {"extra_pnginfo": _workflow[0]}, set(), PROMPT_ID, BASE_EXECUTOR.outputs_ui, BASE_EXECUTOR.object_storage)
-					if success is not True:
-						raise ex
+				if _id[0] in Loop.LOOP_DB:
+					Loop.LOOP_DB[_id[0]] += 1
+				else:
+					Loop.LOOP_DB[_id[0]] = 1
+					while Loop.LOOP_DB[_id[0]] > 0:
+						Loop.LOOP_DB[_id[0]] -= 1
+						if _id[0] in BASE_EXECUTOR.outputs:
+							del BASE_EXECUTOR.outputs[_id[0]]
+						success, error, ex = execution.recursive_execute(PromptServer.instance, _prompt[0], BASE_EXECUTOR.outputs, _id[0], {"extra_pnginfo": _workflow[0]}, set(), PROMPT_ID, BASE_EXECUTOR.outputs_ui, BASE_EXECUTOR.object_storage)
+						if success is not True:
+							raise ex
+					del Loop.LOOP_DB[_id[0]]
 
 		return (True, )
 
@@ -968,7 +956,6 @@ class Merge:
 		way = None
 		junc = None
 		batch = []
-		junc_count = 0
 		batch_count = 0
 
 		for key in kwargs:
@@ -989,10 +976,9 @@ class Merge:
 							junc[("kind")] = "junction"
 							junc[("id")] = curr[("id")]
 						for type_name in curr.path_iter(("type", )):
-							total = curr.path_count(("data", type_name[1]))
-							for i in range(total):
-								junc[("data", type_name[1], junc_count)] = curr[("data", type_name[1], i)]
-								junc_count += 1
+							total = junc.path_count(("data", type_name[1]))
+							for i in range(curr.path_count(("data", type_name[1]))):
+								junc[("data", type_name[1], total + i)] = curr[("data", type_name[1], i)]
 							junc[("index", type_name[1])] = 0
 							junc[("type", type_name[1])] = type(curr[("data", type_name[1], 0)]).__name__
 					else:
@@ -1319,18 +1305,12 @@ class ScriptImbue:
 						res.clear()
 						res.append([lib0246.RevisionDict()])
 
-						type_track = {}
 						for curr_data in old_res:
 							for type_name, curr_elem in zip(output_type, curr_data):
-								res[0][0][("type", type_name)] = type(curr_elem).__name__
-								res[0][0][("index", type_name)] = 0
-								if type_name not in type_track:
-									type_track[type_name] = 0
-								res[0][0][("data", type_name, type_track[type_name])] = curr_elem
-								type_track[type_name] += 1
-						
+								junction_pack_loop(res[0][0], type_name, curr_elem)
 						res[0][0][("kind")] = "junction"
 						res[0][0][("id")] = _id
+
 						return True
 					return False
 				res_func = temp_func
@@ -1521,11 +1501,12 @@ class Script:
 			# INT FLOAT UNSIGNED SIGNED REAL NOEXP NUMAFTER PATH COMPATIBILITYNORMALIZE
 			# LOCALE LOCALEALPHA LOCALENUM IGNORECASE LOWERCASEFIRST GROUPLETTERS CAPITALFIRST
 			# UNGROUPLETTERS NANLAST PRESORT
+
 			_script_in.sort(
 				("script", "order"), ("script", "wrap"),
 				functools.reduce(
 					lambda x, y: x | y,
-					map(lambda _: getattr(natsort.ns, _), _sort_mode.split(" "))
+					map(lambda _: getattr(natsort.ns, _.strip().upper()), _sort_mode.split(" "))
 				)
 			)
 
@@ -1587,109 +1568,82 @@ class Hub:
 	
 	RETURN_TYPES = lib0246.TautologyDictStr()
 	INPUT_IS_LIST = True
-	OUTPUT_IS_LIST = lib0246.ContradictAll()
+	OUTPUT_IS_LIST = lib0246.TautologyAll()
 	FUNCTION = "execute"
 	CATEGORY = "0246"
+
+	SPECIAL = ["__PIPE__", "__BATCH__"]
 
 	def execute(self, _id = None, _prompt = None, _workflow = None, **kwargs):
 		# [TODO] Maybe set OUTPUT_IS_LIST depends on widget?
 			# And allow dumping "node:..."?
 
-		res = {}
+		res_data = {}
+		temp_data = {}
+		type_data = {}
+		name_data = {}
 
-		for key in kwargs:
-			for elem in kwargs[key]:
-				if key.startswith("sole"):
-					curr_nodes = _workflow[0]["workflow"]["nodes"]
-					node_index = next(i for i, _ in enumerate(curr_nodes) if _["id"] == int(_id[0]))
-					res[next(i for i, _ in enumerate(curr_nodes[node_index]["outputs"]) if _["name"] == key)] = elem
+		curr_nodes = _workflow[0]["workflow"]["nodes"]
+		self_index = next(i for i, _ in enumerate(curr_nodes) if _["id"] == int(_id[0]))
+		curr_extra = _workflow[0]["workflow"]["extra"]
 
-		return {
-			"ui": {
-				"text": [""]
-			},
-			"result": [res[i] for i in range(len(res))]
-		}
+		for i, pin in enumerate(curr_nodes[self_index]["outputs"]):
+			if pin["name"] in kwargs:
+				if pin["name"].startswith("sole"):
+					curr_type = curr_extra["0246.HUB_DATA"][_id[0]]["sole_type"][pin["name"]][-1]
+					if curr_type in Hub.SPECIAL:
+						continue
+					curr_index = next(i for i, _ in enumerate(curr_nodes[self_index]["outputs"]) if _["name"] == pin["name"])
+					name_data[curr_index] = pin["name"]
+					match curr_type:
+						case "__BATCH__" | "__PIPE__":
+							temp_data[curr_index] = kwargs[pin["name"]][0]
+						case _:
+							res_data[curr_index] = kwargs[pin["name"]]
+							type_data[curr_index] = curr_type
+			else:
+				res_data[i] = [None]
 
-######################################################################################
-######################################## TODO ########################################
-######################################################################################
-
-def check_module():
-	res = []
-	if sys.modules["was-node-suite-comfyui.WAS_Node_Suite"] is not None:
-		res.extend([
-			"-----[WAS Node Suite]-----",
-			"0246-Highway-Str | WAS-DB-Token-Str",
-			"WAS-DB-Token-Str | 0246-Highway-Str",
-
-			"0246-Highway | WAS-DB",
-			"WAS-DB | 0246-Highway",
-		])
-	if sys.modules["ComfyUI-Inspire-Pack.inspire"] is not None:
-		res.extend([
-			"-----[Inspire Pack]-----",
-			"0246-Highway | Inspire-Cache",
-			"Inspire-Cache | 0246-Highway",
-			"0246-Junction | Inspire-Cache",
-			"Inspire-Cache | 0246-Junction",
-		])
-	if sys.modules["ComfyUI-Impact-Pack"] is not None:
-		res.extend([
-			"-----[Impact Pack]-----",
-		])
-	if sys.modules["ComfyUI_tinyterraNodes"] is not None:
-		res.extend([
-			"-----[tinyterraNodes]-----",
-		])
-
-		# PIPE_LINE
-		# PIPE_LINE_SDXL
-		# BASIC_PIPE
-		# DETAILER_PIPE
-		# RGTHREE PIPE
-
-	if len(res) == 0:
-		res.append("UNKNOWN")
-	return res
-
-class Convert:
-	# [WIP] Some secret unfinished node
-	
-	@classmethod
-	def INPUT_TYPES(s):
-		return {
-			"required": {
-				"_func": (check_module(), ),
-				"_mode": (["batch", "pluck"], ),
-			},
-			"optional": {
-				"_data_in": lib0246.ByPassTypeTuple(("*", )),
-			},
-			"hidden": {
-				"_prompt": "PROMPT",
-				"_id": "UNIQUE_ID",
-				"_workflow": "EXTRA_PNGINFO"
-			}
-		}
-	
-	RETURN_TYPES = lib0246.ByPassTypeTuple(("*", ))
-	RETURN_NAMES = lib0246.ByPassTypeTuple(("_data_out", ))
-	INPUT_IS_LIST = True
-	FUNCTION = "execute"
-	CATEGORY = "0246"
-
-	def execute(self, _func = None, _mode = None, **kwargs):
-		# inspire_module = sys.modules["ComfyUI-Inspire-Pack.inspire.backend_support"]
-		# print(id(inspire_module))
-		# print(id(ext["insp"].inspire.backend_support.cache))
-		# print(dir(inspire_module))
+		# Loop through each temp
+		for index_temp in temp_data:
+			match curr_extra["0246.HUB_DATA"][_id[0]]["sole_type"][name_data[index_temp]][-1]:
+				case "__BATCH__":
+					res_data[index_temp] = []
+					for index_type in type_data:
+						# if type_data[index_type] == kwargs[name_data[index_temp]][0]:
+						if type_data[index_type] == temp_data[index_temp]:
+							res_data[index_temp].extend(res_data[index_type])
+				case "__PIPE__":
+					if temp_data[index_temp] == "HIGHWAY_PIPE":
+						temp_res_data = lib0246.RevisionDict()
+						for index_type in type_data:
+							curr_list = curr_extra["0246.HUB_DATA"][_id[0]]["sole_type"][name_data[index_type]]
+							name = curr_list[5] if len(curr_list) == 7 else index_type
+							temp_res_data[("data", name)] = res_data[index_type]
+							temp_res_data[("type", name)] = curr_list[-1]
+						temp_res_data[("kind")] = "highway"
+						temp_res_data[("id")] = _id[0]
+						res_data[index_temp] = [temp_res_data]
+					elif temp_data[index_temp] == "JUNCTION_PIPE":
+						temp_res_data = lib0246.RevisionDict()
+						for index_type in type_data:
+							for value in res_data[index_type]:
+								junction_pack_loop(
+									temp_res_data,
+									curr_extra["0246.HUB_DATA"][_id[0]]["sole_type"][name_data[index_type]][-1],
+									value,
+								)
+						temp_res_data[("kind")] = "junction"
+						temp_res_data[("id")] = _id[0]
+						res_data[index_temp] = [temp_res_data]
+					else:
+						raise Exception(f"Invalid pipe type \"{temp_data[index_temp]}\".")
 
 		return {
 			"ui": {
 				"text": [""]
 			},
-			"result": [sys.modules["was-node-suite-comfyui.WAS_Node_Suite"].WDB.getDict("custom_tokens")]
+			"result": [res_data[i] for i in range(len(res_data))]
 		}
 
 ########################################################################################
