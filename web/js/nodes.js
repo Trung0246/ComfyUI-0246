@@ -606,14 +606,14 @@ let defs, node_defs = [], type_defs = new Set();
 						case 1: {
 							if (BLACKLIST.includes(this.inputs[link_info.target_slot].name) || link_info.replaced)
 								return;
-							this.inputs[link_info.target_slot].name = app.graph.extra["0246.__NAME__"][this.id]["inputs"][link_info.target_slot]["name"];
-							if (app.graph.extra["0246.__NAME__"][this.id]["inputs"][link_info.target_slot]["type"] === "*")
+							this.inputs[link_info.target_slot].name = app.graph.extra["0246.__NAME__"]?.[this.id]["inputs"][link_info.target_slot]["name"] ?? this.inputs[link_info.target_slot].name;
+							if (app.graph.extra["0246.__NAME__"]?.[this.id]["inputs"][link_info.target_slot]["type"] === "*" || !app.graph.extra["0246.__NAME__"])
 								this.inputs[link_info.target_slot].type = "*";
 						} break;
 						case 2: {
 							if (this.outputs[link_info.origin_slot].links.length === 0 && !BLACKLIST.includes(this.outputs[link_info.origin_slot].name)) {
-								this.outputs[link_info.origin_slot].name = app.graph.extra["0246.__NAME__"][this.id]["outputs"][link_info.origin_slot]["name"];
-								if (app.graph.extra["0246.__NAME__"][this.id]["outputs"][link_info.origin_slot]["type"] === "*")
+								this.outputs[link_info.origin_slot].name = app.graph.extra["0246.__NAME__"]?.[this.id]["outputs"][link_info.origin_slot]["name"] ?? this.outputs[link_info.origin_slot].name;
+								if (app.graph.extra["0246.__NAME__"]?.[this.id]["outputs"][link_info.origin_slot]["type"] === "*" || !app.graph.extra["0246.__NAME__"])
 									this.outputs[link_info.origin_slot].type = "*";
 							}
 						} break;
@@ -933,7 +933,7 @@ let defs, node_defs = [], type_defs = new Set();
 				if (!BLACKLIST.includes(node.inputs[i].name) && node.inputs[i].link !== null)
 					prev.push({
 						flag: false,
-						name: app.graph.extra["0246.__NAME__"][node.id]["inputs"][i]["name"],
+						name: app.graph.extra["0246.__NAME__"]?.[node.id]["inputs"][i]["name"] ?? null,
 						node_id: app.graph.links[node.inputs[i].link].origin_id,
 						slot_id: app.graph.links[node.inputs[i].link].origin_slot,
 					});
@@ -966,7 +966,7 @@ let defs, node_defs = [], type_defs = new Set();
 					for (let j = 0; j < node.outputs[i].links.length; ++ j)
 						prev.push({
 							flag: true,
-							name: app.graph.extra["0246.__NAME__"][node.id]["outputs"][i]["name"],
+							name: app.graph.extra["0246.__NAME__"]?.[node.id]["outputs"][i]["name"] ?? null,
 							node_id: app.graph.links[node.outputs[i].links[j]].target_id,
 							slot_id: app.graph.links[node.outputs[i].links[j]].target_slot,
 						});
@@ -997,7 +997,13 @@ let defs, node_defs = [], type_defs = new Set();
 		for (let i = 0; i < prev.length; ++ i) {
 			// Check if input/output still exists
 			if (prev[i].flag) {
-				for (let j = 0; j < node.outputs.length; ++ j)
+				if (prev[i].name === null)
+					node.connect(
+						i,
+						prev[i].node_id,
+						prev[i].slot_id
+					);
+				else for (let j = 0; j < node.outputs.length; ++ j) {
 					if (app.graph.extra["0246.__NAME__"][node.id]["outputs"][j]["name"].slice(0) === prev[i].name.slice(0)) {
 						node.connect(
 							j,
@@ -1006,8 +1012,15 @@ let defs, node_defs = [], type_defs = new Set();
 						);
 						break;
 					}
+				}
 			} else {
-				for (let j = 0; j < node.inputs.length; ++ j)
+				if (prev[i].name === null)
+					app.graph.getNodeById(prev[i].node_id).connect(
+						prev[i].slot_id,
+						node,
+						i
+					);
+				else for (let j = 0; j < node.inputs.length; ++ j) {
 					if (app.graph.extra["0246.__NAME__"][node.id]["inputs"][j]["name"].slice(1) === prev[i].name.slice(1)) {
 						app.graph.getNodeById(prev[i].node_id).connect(
 							prev[i].slot_id,
@@ -1016,6 +1029,7 @@ let defs, node_defs = [], type_defs = new Set();
 						);
 						break;
 					}
+				}
 			}
 		}
 	}

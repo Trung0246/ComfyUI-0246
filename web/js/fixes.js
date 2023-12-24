@@ -306,20 +306,34 @@ const patch_node_db = [
 	["Stringify", "0246.Stringify"],
 ];
 
-lib0246.hijack(app, "loadGraphData", function (workflow) {
-	if (workflow && !workflow?.extra?.["0246.VERSION"]) {
+let PATCH_SIG = [];
 
-		for (let i = 0; i < workflow.nodes.length; ++ i)
-			for (let j = 0; j < patch_node_db.length; ++ j) {
-				if (workflow.nodes[i].type === patch_node_db[j][0]) {
-					console.warn(`[ComfyUI-0246] Patching node "${workflow.nodes[i].type}" to "${patch_node_db[j][1]}"`);
-					workflow.nodes[i].type = patch_node_db[j][1];
-					break;
-				} else if (workflow.nodes[i].type === patch_node_db[j][1])
-					break;
-			}
+lib0246.hijack(app, "loadGraphData", function (workflow) {
+	if (workflow) {
+		if (!workflow?.extra?.["0246.VERSION"])
+			for (let i = 0; i < workflow.nodes.length; ++ i)
+				for (let j = 0; j < patch_node_db.length; ++ j) {
+					if (workflow.nodes[i].type === patch_node_db[j][0]) {
+						console.warn(`[ComfyUI-0246] Patching node "${workflow.nodes[i].type}" to "${patch_node_db[j][1]}"`);
+						workflow.nodes[i].type = patch_node_db[j][1];
+						break;
+					} else if ((workflow.nodes[i].type === "0246.Highway" || workflow.nodes[i].type === "0246.HighwayBatch") && !PATCH_SIG.includes(1))
+						PATCH_SIG.push(1);
+					else if (workflow.nodes[i].type === patch_node_db[j][1])
+						break;
+		}
 	}
-}, () => {});
+}, function (workflow) {
+	if (PATCH_SIG.includes(1))
+		for (let i = 0; i < app.graph._nodes.length; ++ i)
+			if (app.graph._nodes[i].type === "0246.Highway" || app.graph._nodes[i].type === "0246.HighwayBatch") {
+				for (let j = 0; j < app.graph._nodes[i].widgets.length; ++ j)
+					if (app.graph._nodes[i].widgets[j].name === "Update") {
+						app.graph._nodes[i].widgets[j].callback();
+						break;
+					}
+			}
+});
 
 let error_flag = false;
 lib0246.hijack(app, "showMissingNodesError", function (nodes) {
@@ -353,7 +367,9 @@ lib0246.hijack(app, "showMissingNodesError", function (nodes) {
 app.registerExtension({
 	name: "0246.Fixes",
 	async setup(app) {
-		app.graph.extra["0246.VERSION"] = [0, 0, 2]; // Only used when breaking changes happen
+		window.setTimeout(() => {
+			app.graph.extra["0246.VERSION"] = app.graph.extra["0246.VERSION"] ?? [0, 0, 3]; // Only used when breaking changes happen
+		}, 0);
 
 		if (LiteGraph.Nodes.RerouteNode) {
 			// Hijack Reroute (rgthree) to do onConnectOutput and onConnectInput

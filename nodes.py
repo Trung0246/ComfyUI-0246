@@ -1577,6 +1577,9 @@ class Hub:
 	def execute(self, _id = None, _prompt = None, _workflow = None, **kwargs):
 		# [TODO] Maybe set OUTPUT_IS_LIST depends on widget?
 			# And allow dumping "node:..."?
+		
+		# [TODO] Change __BATCH__ to __BATCH_PRIM__
+			# Which means we have to touch fixes.js
 
 		res_data = {}
 		temp_data = {}
@@ -1608,7 +1611,6 @@ class Hub:
 				case "__BATCH__":
 					res_data[index_temp] = []
 					for index_type in type_data:
-						# if type_data[index_type] == kwargs[name_data[index_temp]][0]:
 						if type_data[index_type] == temp_data[index_temp]:
 							res_data[index_temp].extend(res_data[index_type])
 				case "__PIPE__":
@@ -1636,6 +1638,9 @@ class Hub:
 						res_data[index_temp] = [temp_res_data]
 					else:
 						raise Exception(f"Invalid pipe type \"{temp_data[index_temp]}\".")
+					
+		if len(res_data) == 0:
+			raise Exception("No output.")
 
 		return {
 			"ui": {
