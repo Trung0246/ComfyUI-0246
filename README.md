@@ -47,7 +47,7 @@ I recommended you to play around with this sample workflow:
 
 <details>
     <p align="center">
-        <img src="https://github.com/Trung0246/ComfyUI-0246/assets/11626920/4736e1a8-bcf1-4006-b8ad-ed7d59a194d0">
+        <img src="https://github.com/Trung0246/ComfyUI-0246/assets/11626920/2863057c-f69d-4a60-8157-3916946ed956">
     </p>
 </details>
 
