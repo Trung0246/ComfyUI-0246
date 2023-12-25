@@ -200,7 +200,7 @@ const HELP = {
 	`.replace(/[\t\n]+/g, ''),
 };
 
-let defs, node_defs = [], type_defs = new Set();
+let defs, node_defs = [], combo_defs = [], type_defs = new Set();
 
 (async () => {
 	function rgthree_exec(name, ...args) {
@@ -226,6 +226,10 @@ let defs, node_defs = [], type_defs = new Set();
 			for (let idx in defs[key].output)
 				if (!Array.isArray(defs[key].output[idx]))
 					type_defs.add(defs[key].output[idx]);
+			for (let idx in defs[key].input)
+				for (let type in defs[key].input[idx])
+					if (Array.isArray(defs[key].input[idx][type][0]))
+						combo_defs.push([key, idx, type]);
 		}
 
 		type_defs = [...type_defs.values()];
@@ -597,23 +601,24 @@ let defs, node_defs = [], type_defs = new Set();
 			};
 
 			this.onConnectionsChange = function (type, index, connected, link_info) {
-				if (link_info === null) {
+				if (link_info === null)
 					return;
-				}
 
 				if (!connected) {
 					switch (type) {
 						case 1: {
 							if (BLACKLIST.includes(this.inputs[link_info.target_slot].name) || link_info.replaced)
 								return;
-							this.inputs[link_info.target_slot].name = app.graph.extra["0246.__NAME__"]?.[this.id]["inputs"][link_info.target_slot]["name"] ?? this.inputs[link_info.target_slot].name;
-							if (app.graph.extra["0246.__NAME__"]?.[this.id]["inputs"][link_info.target_slot]["type"] === "*" || !app.graph.extra["0246.__NAME__"])
+							const curr_data = app.graph.extra?.["0246.__NAME__"]?.[this.id]?.["inputs"]?.[link_info.target_slot];
+							this.inputs[link_info.target_slot].name = curr_data?.["name"] ?? this.inputs[link_info.target_slot].name;
+							if (curr_data?.["type"] === "*" || !app.graph.extra["0246.__NAME__"])
 								this.inputs[link_info.target_slot].type = "*";
 						} break;
 						case 2: {
 							if (this.outputs[link_info.origin_slot].links.length === 0 && !BLACKLIST.includes(this.outputs[link_info.origin_slot].name)) {
-								this.outputs[link_info.origin_slot].name = app.graph.extra["0246.__NAME__"]?.[this.id]["outputs"][link_info.origin_slot]["name"] ?? this.outputs[link_info.origin_slot].name;
-								if (app.graph.extra["0246.__NAME__"]?.[this.id]["outputs"][link_info.origin_slot]["type"] === "*" || !app.graph.extra["0246.__NAME__"])
+								const curr_data = app.graph.extra?.["0246.__NAME__"]?.[this.id]?.["outputs"]?.[link_info.origin_slot];
+								this.outputs[link_info.origin_slot].name = curr_data?.["name"] ?? this.outputs[link_info.origin_slot].name;
+								if (curr_data?.["type"] === "*" || !app.graph.extra["0246.__NAME__"])
 									this.outputs[link_info.origin_slot].type = "*";
 							}
 						} break;
@@ -868,9 +873,9 @@ let defs, node_defs = [], type_defs = new Set();
 	function raw_setup_log(self) {
 		self.log_widget = ComfyWidgets["STRING"](self, "output", ["STRING", { multiline: true }], app).widget;
 		self.log_widget.inputEl.readOnly = true;
-		self.log_widget.serializeValue = async (node, index) => {
+		self.log_widget.serializeValue = async (node, index_str) => {
 			if (node.widgets_values)
-				node.widgets_values[index] = "";
+				node.widgets_values[Number(index_str)] = "";
 			return "";
 		};
 	}
@@ -933,9 +938,10 @@ let defs, node_defs = [], type_defs = new Set();
 				if (!BLACKLIST.includes(node.inputs[i].name) && node.inputs[i].link !== null)
 					prev.push({
 						flag: false,
-						name: app.graph.extra["0246.__NAME__"]?.[node.id]["inputs"][i]["name"] ?? null,
+						name: app.graph.extra?.["0246.__NAME__"]?.[node.id]?.["inputs"]?.[i]?.["name"] ?? null,
 						node_id: app.graph.links[node.inputs[i].link].origin_id,
 						slot_id: app.graph.links[node.inputs[i].link].origin_slot,
+						this_id: i
 					});
 			}
 
@@ -966,9 +972,10 @@ let defs, node_defs = [], type_defs = new Set();
 					for (let j = 0; j < node.outputs[i].links.length; ++ j)
 						prev.push({
 							flag: true,
-							name: app.graph.extra["0246.__NAME__"]?.[node.id]["outputs"][i]["name"] ?? null,
+							name: app.graph.extra?.["0246.__NAME__"]?.[node.id]?.["outputs"]?.[i]?.["name"] ?? null,
 							node_id: app.graph.links[node.outputs[i].links[j]].target_id,
 							slot_id: app.graph.links[node.outputs[i].links[j]].target_slot,
+							this_id: i
 						});
 			}
 
@@ -999,7 +1006,7 @@ let defs, node_defs = [], type_defs = new Set();
 			if (prev[i].flag) {
 				if (prev[i].name === null)
 					node.connect(
-						i,
+						prev[i].this_id,
 						prev[i].node_id,
 						prev[i].slot_id
 					);
@@ -1018,7 +1025,7 @@ let defs, node_defs = [], type_defs = new Set();
 					app.graph.getNodeById(prev[i].node_id).connect(
 						prev[i].slot_id,
 						node,
-						i
+						prev[i].this_id
 					);
 				else for (let j = 0; j < node.inputs.length; ++ j) {
 					if (app.graph.extra["0246.__NAME__"][node.id]["inputs"][j]["name"].slice(1) === prev[i].name.slice(1)) {
@@ -2691,7 +2698,8 @@ let defs, node_defs = [], type_defs = new Set();
 		PIPE_COMBO = ["HIGHWAY_PIPE", "JUNCTION_PIPE"];
 
 	function hub_combo_pin_type_func(value, canvas, node, pos, event) {
-		this[WIDGET_PIN].type = value;
+		if (this[WIDGET_PIN].type !== "COMBO")
+			this[WIDGET_PIN].type = value;
 		for (let i = 0; this[WIDGET_PIN].links && i < this[WIDGET_PIN].links.length; ++ i) {
 			const link = app.graph.links[this[WIDGET_PIN].links[i]],
 				target_node = app.graph.getNodeById(link.target_id),
@@ -2704,6 +2712,10 @@ let defs, node_defs = [], type_defs = new Set();
 	const HUB_PARENT = Symbol("hub_parent"),
 		HUB_SOLE = 7,
 		PASS_DATA = Symbol("pass_data");
+
+	async function hub_serialize_batch_combo(node, index_str) {
+		return node.widgets[Number(index_str)].value.join(":");
+	}
 
 	function hub_setup_widget(node, data, id) {
 		for (let node_id of app.graph.extra["0246.HUB_DATA"][id].node_list)
@@ -2729,8 +2741,11 @@ let defs, node_defs = [], type_defs = new Set();
 					} break;
 					case "combo": {
 						switch (proc_name[3]) {
-							case "__BATCH__": {
+							case "__BATCH_PRIM__": {
 								widget = node.hubPushWidgetComboRaw(type_defs, proc_name[3], hub_combo_pin_type_func, type_data, name);
+							} break;
+							case "__BATCH_COMBO__": {
+								widget = node.hubPushWidgetComboRaw(combo_defs, proc_name[3], hub_combo_pin_type_func, type_data, name, hub_serialize_batch_combo);
 							} break;
 							case "__PIPE__": {
 								widget = node.hubPushWidgetComboRaw(PIPE_COMBO, proc_name[3], hub_combo_pin_type_func, type_data, name);
@@ -3165,7 +3180,7 @@ let defs, node_defs = [], type_defs = new Set();
 								serialize: false,
 								values: [
 									"INT", "FLOAT", "STRING", "BOOLEAN",
-									"__BATCH__", "__PIPE__"
+									"__BATCH_PRIM__", "__BATCH_COMBO__", "__PIPE__"
 									// "__SCRIPT_DATA_WRAP__", "__SCRIPT_DATA_EXEC__"
 								]
 							});
@@ -3177,15 +3192,7 @@ let defs, node_defs = [], type_defs = new Set();
 							
 							const combo_widget = node.addWidget("combo", "base:combo", ["KSampler", "required", "sampler_name"], () => {}, {
 								serialize: false,
-								values: (function () {
-									let res = [];
-									for (let key in defs)
-										for (let input in defs[key].input)
-											for (let type in defs[key].input[input])
-												if (Array.isArray(defs[key].input[input][type][0]))
-													res.push([key, input, type]);
-									return res;
-								})()
+								values: combo_defs
 							});
 							node.addWidget("button", "Add Sole Combo Widget", null, () => {
 								node.hubPushWidgetCombo(...combo_widget.value);
@@ -3220,10 +3227,16 @@ let defs, node_defs = [], type_defs = new Set();
 
 							lib0246.hijack(node, "connect", function (slot, target_node, target_slot) {
 								const output_data = this.self.hub.data.sole_type[this.self.outputs[slot].name];
-								if (output_data[2] === "combo" && app.graph.extra["0246.HUB_DATA"][this.self.id].sole_type[this.self.outputs[slot].name].length === 7) {
+								if (output_data[2] === "combo") {
 									Hub.nodeData = Hub.nodeData ?? {};
 									Hub.nodeData.output = Hub.nodeData.output ?? {};
-									Hub.nodeData.output[slot] = defs[output_data[3]].input[output_data[4]][output_data[5]][0];
+									const curr_type = app.graph.extra["0246.HUB_DATA"][this.self.id].sole_type[this.self.outputs[slot].name];
+									if (curr_type.length === 7)
+										Hub.nodeData.output[slot] = defs[output_data[3]].input[output_data[4]][output_data[5]][0];
+									else if (curr_type[3] === "__BATCH_COMBO__") {
+										const curr_value = this.self.widgets.find(_ => _.name === this.self.outputs[slot].name).value;
+										Hub.nodeData.output[slot] = defs[curr_value[0]].input[curr_value[1]][curr_value[2]][0];
+									}
 								}
 							}, function (slot, target_node, target_slot) {
 								const output_data = this.self.hub.data.sole_type[this.self.outputs[slot].name];
@@ -3387,8 +3400,11 @@ let defs, node_defs = [], type_defs = new Set();
 										options: {}
 									}, "boolean", "BOOLEAN", ...args);
 								} break;
-								case "__BATCH__": {
+								case "__BATCH_PRIM__": {
 									return this.hubPushWidgetComboRaw(type_defs, type, hub_combo_pin_type_func, ...args);
+								} break;
+								case "__BATCH_COMBO__": {
+									return this.hubPushWidgetComboRaw(combo_defs, type, hub_combo_pin_type_func, args[0], args[1], hub_serialize_batch_combo);
 								} break;
 								case "__PIPE__": {
 									return this.hubPushWidgetComboRaw(PIPE_COMBO, type, hub_combo_pin_type_func, ...args);
@@ -3400,7 +3416,7 @@ let defs, node_defs = [], type_defs = new Set();
 							return this.hubPushWidgetComboRaw(defs[node_name].input[part_name][pin_name][0], "COMBO", () => {}, [node_name, part_name, pin_name], full_name);
 						};
 
-						Hub.prototype.hubPushWidgetComboRaw = function (combo_data, combo_type, func, extra_name, full_name) {
+						Hub.prototype.hubPushWidgetComboRaw = function (combo_data, combo_type, func, extra_name, full_name, serialize_func) {
 							const widget = this.hubPushWidget({
 								type: "combo",
 								value: combo_data[0],
@@ -3409,6 +3425,8 @@ let defs, node_defs = [], type_defs = new Set();
 									values: combo_data
 								},
 							}, "combo", combo_type, extra_name, full_name);
+							if (serialize_func && serialize_func.constructor.name === "AsyncFunction")
+								widget.serializeValue = serialize_func;
 							window.setTimeout(() => {
 								widget.callback(widget.value, app.canvas, this, null, null);
 							}, 0);
@@ -3456,7 +3474,7 @@ let defs, node_defs = [], type_defs = new Set();
 									a + ":" + b
 								);
 
-								widget[WIDGET_PIN] = this.addOutput(widget.name = full_name, pin_type);
+								widget[WIDGET_PIN] = this.addOutput(widget.name = full_name, pin_type === "__BATCH_COMBO__" ? "COMBO" : pin_type);
 								this.hub.data.sole_type[full_name] = list_name;
 							}
 

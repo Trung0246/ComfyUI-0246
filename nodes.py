@@ -1572,15 +1572,12 @@ class Hub:
 	FUNCTION = "execute"
 	CATEGORY = "0246"
 
-	SPECIAL = ["__PIPE__", "__BATCH__"]
+	SPECIAL = ["__PIPE__", "__BATCH_PRIM__", "__BATCH_COMBO__"]
 
 	def execute(self, _id = None, _prompt = None, _workflow = None, **kwargs):
 		# [TODO] Maybe set OUTPUT_IS_LIST depends on widget?
 			# And allow dumping "node:..."?
 		
-		# [TODO] Change __BATCH__ to __BATCH_PRIM__
-			# Which means we have to touch fixes.js
-
 		res_data = {}
 		temp_data = {}
 		type_data = {}
@@ -1597,7 +1594,7 @@ class Hub:
 					curr_index = next(i for i, _ in enumerate(curr_nodes[self_index]["outputs"]) if _["name"] == pin["name"])
 					name_data[curr_index] = pin["name"]
 					match curr_type:
-						case "__BATCH__" | "__PIPE__":
+						case "__BATCH_PRIM__" | "__BATCH_COMBO__" | "__PIPE__":
 							temp_data[curr_index] = kwargs[pin["name"]][0]
 						case _:
 							res_data[curr_index] = kwargs[pin["name"]]
@@ -1605,13 +1602,17 @@ class Hub:
 			else:
 				res_data[i] = [None]
 
-		# Loop through each temp
 		for index_temp in temp_data:
 			match curr_extra["0246.HUB_DATA"][_id[0]]["sole_type"][name_data[index_temp]][-1]:
-				case "__BATCH__":
+				case "__BATCH_PRIM__":
 					res_data[index_temp] = []
 					for index_type in type_data:
 						if type_data[index_type] == temp_data[index_temp]:
+							res_data[index_temp].extend(res_data[index_type])
+				case "__BATCH_COMBO__":
+					res_data[index_temp] = []
+					for index_type in type_data:
+						if name_data[index_type].endswith(temp_data[index_temp] + ":COMBO"):
 							res_data[index_temp].extend(res_data[index_type])
 				case "__PIPE__":
 					if temp_data[index_temp] == "HIGHWAY_PIPE":
