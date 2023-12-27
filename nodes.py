@@ -299,24 +299,28 @@ def trace_node(_prompt, _id, _workflow, _shallow = False, _input = False):
 				id_stk.append(_prompt[_id]["inputs"][key][0])
 	else:
 		id_stk.append(_id)
+
+	id_res = set()
 	
 	while len(id_stk) > 0:
 		curr_id = id_stk.pop(0)
-		if curr_id in BASE_EXECUTOR.outputs:
-			del BASE_EXECUTOR.outputs[curr_id]
-		for node in _workflow["workflow"]["nodes"]:
-			if node["id"] == int(curr_id):
-				if node.get("outputs"):
-					for output in node["outputs"]:
-						if output.get("links"):
-							for link in output["links"]:
-								linked_node_id = find_input_node(_workflow["workflow"]["nodes"], link)
-								if linked_node_id is not None:
-									if _shallow:
-										if linked_node_id in BASE_EXECUTOR.outputs:
-											del BASE_EXECUTOR.outputs[linked_node_id]
-									else:
-										id_stk.append(str(linked_node_id))
+		if curr_id not in id_res:
+			id_res.add(curr_id)
+			for node in _workflow["workflow"]["nodes"]:
+				if node["id"] == int(curr_id):
+					if node.get("outputs"):
+						for output in node["outputs"]:
+							if output.get("links"):
+								for link in output["links"]:
+									linked_node_id = find_input_node(_workflow["workflow"]["nodes"], link)
+									if linked_node_id is not None:
+										if _shallow:
+											if linked_node_id in BASE_EXECUTOR.outputs:
+												del BASE_EXECUTOR.outputs[linked_node_id]
+										else:
+											id_stk.append(str(linked_node_id))
+
+	return id_res
 
 def find_input_node(nodes, link):
 	for node in nodes:
@@ -639,6 +643,7 @@ class Count:
 	
 	RETURN_TYPES = ("INT", "EVENT_TYPE")
 	RETURN_NAMES = ("_count_int", "_count_event")
+	INPUT_IS_LIST = True
 	FUNCTION = "execute"
 	CATEGORY = "0246"
 
@@ -647,20 +652,20 @@ class Count:
 		if Count.COUNT_ID != PROMPT_ID:
 			Count.COUNT_DB = {}
 			Count.COUNT_ID = PROMPT_ID
-		if _id not in Count.COUNT_DB:
-			Count.COUNT_DB[_id] = 0
-		temp = Count.COUNT_DB[_id]
-		Count.COUNT_DB[_id] += 1
+		if _id[0] not in Count.COUNT_DB:
+			Count.COUNT_DB[_id[0]] = 0
+		temp = Count.COUNT_DB[_id[0]]
+		Count.COUNT_DB[_id[0]] += 1
 
 		return {
 			"ui": {
-				"text": [[f"Count: {temp}, Track: {Count.COUNT_ID}"]]
+				"text": [f"Count: {temp}, Track: {Count.COUNT_ID}"]
 			},
 			"result": (temp, {
 				"data": {
-					"id": _id,
+					"id": _id[0],
 				},
-				"bool": temp >= int(_event),
+				"bool": temp >= int(_event[0]),
 			})
 		}
 
@@ -796,7 +801,7 @@ class Hold:
 	def INPUT_TYPES(s):
 		return {
 			"required": {
-				"_mode": (["keep", "save", "clear"], ),
+				"_mode": (["keep", "save", "clear", "ignore"], ),
 				"_key_id": ("STRING", {
 					"default": "",
 					"multiline": False
@@ -839,6 +844,8 @@ class Hold:
 
 		# Check if _key_id is specified and process accordingly
 		if _key_id and len(_key_id[0]) > 0:
+			if mode == "clear":
+				Hold.HOLD_DB[_key_id[0]]["data"] = []
 			result = update_hold_db(_key_id[0], _data_in)
 			ui_text += f"Size: {lib0246.len_zero_arr(result)}, Key: {_key_id[0]}, "
 		# Check if _hold is specified and process accordingly
@@ -848,15 +855,12 @@ class Hold:
 		else:
 			# Update the outputs and HOLD_DB for _id if specified
 			if _id:
-				result = update_hold_db(_id[0], _data_in)
+				result = update_hold_db(_id[0], None if (mode == "ignore" and len(Hold.HOLD_DB[_id[0]]["data"]) > 0) else _data_in)
 				BASE_EXECUTOR.outputs[_id[0]] = Hold.HOLD_DB[_id[0]]["data"]
 				ui_text += f"Size: {len(result)}, "
 			else:
 				ui_text += f"None, "
 				result = [None]
-		
-		if mode == "clear":
-			Hold.HOLD_DB[_id[0]]["data"] = []
 
 		ui_text += f"Track: {Hold.HOLD_DB[_id[0]]['track']}"
 
@@ -906,23 +910,28 @@ class Loop:
 				del BASE_EXECUTOR.outputs[_prompt[0][_id[0]]["inputs"]["_event"][0]]
 			except KeyError:
 				pass
-			
-			# Not the most efficient. The better way is to find all nodes that are connected to inputs and this loop node
-			trace_node(_prompt[0], _id[0], _workflow[0], _shallow = False, _input = True) # , lambda curr_id: exec.append(curr_id) if curr_id not in exec else None)
 
 			if _mode[0] == "sweep":
-				if _id[0] in Loop.LOOP_DB:
-					Loop.LOOP_DB[_id[0]] += 1
+				if (PROMPT_ID, _id[0]) in Loop.LOOP_DB:
+					Loop.LOOP_DB[(PROMPT_ID, _id[0])]["count"] += 1
+					for curr_id in Loop.LOOP_DB[(PROMPT_ID, _id[0])]["exec"]:
+						if curr_id in BASE_EXECUTOR.outputs:
+							del BASE_EXECUTOR.outputs[curr_id]
 				else:
-					Loop.LOOP_DB[_id[0]] = 1
-					while Loop.LOOP_DB[_id[0]] > 0:
-						Loop.LOOP_DB[_id[0]] -= 1
-						if _id[0] in BASE_EXECUTOR.outputs:
-							del BASE_EXECUTOR.outputs[_id[0]]
+					# Not the most efficient. The better way is to find all nodes that are connected to inputs and this loop node
+					Loop.LOOP_DB[(PROMPT_ID, _id[0])] = {
+						"count": 1,
+						"exec": trace_node(_prompt[0], _id[0], _workflow[0], _shallow = False, _input = True) # , lambda curr_id: exec.append(curr_id) if curr_id not in exec else None)
+					}
+					while Loop.LOOP_DB[(PROMPT_ID, _id[0])]["count"] > 0:
+						Loop.LOOP_DB[(PROMPT_ID, _id[0])]["count"] -= 1
+						for curr_id in Loop.LOOP_DB[(PROMPT_ID, _id[0])]["exec"]:
+							if curr_id in BASE_EXECUTOR.outputs:
+								del BASE_EXECUTOR.outputs[curr_id]
 						success, error, ex = execution.recursive_execute(PromptServer.instance, _prompt[0], BASE_EXECUTOR.outputs, _id[0], {"extra_pnginfo": _workflow[0]}, set(), PROMPT_ID, BASE_EXECUTOR.outputs_ui, BASE_EXECUTOR.object_storage)
 						if success is not True:
 							raise ex
-					del Loop.LOOP_DB[_id[0]]
+					del Loop.LOOP_DB[(PROMPT_ID, _id[0])]
 
 		return (True, )
 
@@ -1650,11 +1659,29 @@ class Hub:
 			"result": [res_data[i] for i in range(len(res_data))]
 		}
 
+######################################################################################
+######################################## TODO ########################################
+######################################################################################
+
+# class ScriptExpr:
+	# For things that require text-based expression, such as string combine, conditioning combine, etc.
+	# Which allows each operators to associate with a node or func.
+		# => Require 4 widgets: ops, node, add button, and current code.
+	# But how do we specify which parameters for which?
+	# pass
+
+######################################################################################
+
+# class Alter:
+	# Use parse_lang to shift around highway and junction data (including script)
+	# pass
+
 ########################################################################################
 ######################################## EXPORT ########################################
 ########################################################################################
 
-# [TODO] "Adapt" node with parse_lang to shift around highway and junction data (including script)
+# [TODO] "Meta" node to show information about highway or junction
+# [TODO] "RandomInt" node can have linger seed if batch len is different
 
 NODE_CLASS_MAPPINGS = {
 	"0246.Highway": Highway,
@@ -1674,6 +1701,7 @@ NODE_CLASS_MAPPINGS = {
 	"0246.ScriptPlan": ScriptPlan,
 	"0246.Script": Script,
 	"0246.Hub": Hub,
+	# "0246.Pick": Pick,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -1694,6 +1722,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
 	"0246.ScriptPlan": "Script Plan",
 	"0246.Script": "Script",
 	"0246.Hub": "Hub",
+	# "0246.Pick": "Pick",
 }
 
 print("\033[95m" + lib0246.HEAD_LOG + "Loaded all nodes and apis (/0246-parse)." + "\033[0m")

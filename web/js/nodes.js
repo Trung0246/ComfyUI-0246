@@ -3645,6 +3645,9 @@ let defs, node_defs = [], combo_defs = [], type_defs = new Set();
 					case "0246.Script": {
 						junction_impl(nodeType, nodeData, app, null, LiteGraph.GRID_SHAPE, LiteGraph.GRID_SHAPE);
 					} break;
+					case "0246.Pick": {
+						junction_impl(nodeType, nodeData, app, null, LiteGraph.GRID_SHAPE, LiteGraph.GRID_SHAPE);
+					} break;
 				}
 			}
 		},
@@ -3652,5 +3655,24 @@ let defs, node_defs = [], combo_defs = [], type_defs = new Set();
 
 	// var curr_node = LiteGraph.createNode(LiteGraph.getNodeTypesInCategory(LiteGraph.getNodeTypesCategories()[2])[2].type);
 
-	// [TODO] Make Highway and Junction works with GroupNode; Cast Reroute keep type on configure
+	/*
+		[TODO] Make Highway and Junction works with GroupNode; Cast Reroute keep type on configure
+		[TODO] Select, Unselect all for Hub
+
+		[TODO] Cloud node
+		- Output: batch of strings
+		- Flex widget for render multiple text boxes
+			- Two DOM text box:
+				- Show current text content of selected text box
+				- Show entire text content
+			- Must represent:
+				- 
+	//*/
+
+	/*
+		[TODO] Fix the bug that when copying Highway, the new node ID when added does not have the old 0246.__NAME__ being cloned over
+		[TODO] Take advantage of an extra state of BoxRange size widget such that: lock (area must be same), unlock (area can be different)
+			- Only affect the current value that are being changed
+			- Why? SDXL requires that any ratio must have same area size as 1024x1024
+	//*/
 })();
