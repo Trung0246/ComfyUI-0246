@@ -1111,7 +1111,7 @@ class BoxRange:
 	def INPUT_TYPES(s):
 		return {
 			"required": lib0246.WildDict({
-				"script_node": (list(BoxRange.SUPPORT(0)), ),
+				"script_method": (list(BoxRange.SUPPORT(0)), ),
 				"script_order": ("STRING", {
 					"default": "box",
 					"multiline": False
@@ -1123,23 +1123,22 @@ class BoxRange:
 		}
 	
 	@classmethod
-	def SUPPORT(s, mode, node = None, box_range = None, box_ratio = None):
+	def SUPPORT(s, mode, method = None, box_range = None, box_ratio = None):
 		# Designed to allow easy monkey patch for 3rd party
 		match mode:
 			case 0:
 				return [
 					"_",
-					"ConditioningSetArea",
-					"ConditioningSetAreaPercentage",
-					"LatentCrop",
-					"LatentComposite"
+					"(x, y)",
+					"%(x, y)",
+					"(width, height)",
+					"%(width, height)",
+					"(x, y, width, height)",
+					"%(x, y, width, height)",
 				]
 			case 1:
-				match node:
-					case "ConditioningSetArea":
-						raise Exception("ConditioningSetArea is not supported yet for BoxRange.")
-						return lambda **kwargs: None
-					case "ConditioningSetAreaPercentage":
+				match method:
+					case "%(x, y, width, height)":
 						def temp_func(pin, res, **kwargs):
 							if res is None:
 								pin["x"] = []
@@ -1161,15 +1160,8 @@ class BoxRange:
 								return True
 							return False
 						return temp_func
-					case "LatentCrop":
-						raise Exception("LatentCrop is not supported yet for BoxRange.")
-						return lambda **kwargs: None
-					case "LatentComposite":
-						raise Exception("LatentComposite is not supported yet for BoxRange.")
-						return lambda **kwargs: None
 					case _:
-						raise Exception("Invalid node for BoxRange.")
-						return lambda **kwargs: None
+						raise Exception(f"\"{method}\" is not supported yet for BoxRange.")
 
 	RETURN_TYPES = lib0246.ByPassTypeTuple(("*", ))
 	RETURN_NAMES = lib0246.ByPassTypeTuple(("data", ))
@@ -1178,18 +1170,18 @@ class BoxRange:
 	FUNCTION = "execute"
 	CATEGORY = "0246"
 
-	def execute(self, _id = None, script_node = None, script_order = None, box_range = {}, box_ratio = {}):
-		if isinstance(script_node, list):
-			script_node = script_node[0]
+	def execute(self, _id = None, script_method = None, script_order = None, box_range = {}, box_ratio = {}):
+		if isinstance(script_method, list):
+			script_method = script_method[0]
 		if isinstance(script_order, list):
 			script_order = script_order[0]
 		if isinstance(box_range, list):
 			box_range = box_range[0]
 
-		if script_node != "_":
+		if script_method != "_":
 			return (ScriptData({
 				"id": _id,
-				"func": BoxRange.SUPPORT(1, script_node, box_range, box_ratio),
+				"func": BoxRange.SUPPORT(1, script_method, box_range, box_ratio),
 				"order": script_order,
 				"kind": "wrap"
 			}), )
@@ -1199,7 +1191,7 @@ class BoxRange:
 		}, )
 	
 	@classmethod
-	def IS_CHANGED(self, script_node = None, script_order = None, box_range = {}, box_ratio = {}, *args, **kwargs):
+	def IS_CHANGED(self, script_method = None, script_order = None, box_range = {}, box_ratio = {}, *args, **kwargs):
 		if isinstance(box_range, list):
 			box_range = box_range[0]
 		return box_range

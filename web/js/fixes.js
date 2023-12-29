@@ -318,8 +318,8 @@ const patch_node_db_0_0_3 = [
 let PATCH_SIG = [];
 
 function patch_script(workflow) {
-	for (let i = 0; i < workflow.nodes.length; ++ i)
-		for (let j = 0; j < patch_node_db_0_0_3.length; ++ j)
+	for (let i = 0; i < workflow.nodes.length; ++ i) {
+		for (let j = 0; j < patch_node_db_0_0_3.length; ++ j) {
 			if (workflow.nodes[i].type === patch_node_db_0_0_3[j][0]) {
 				console.warn(`[ComfyUI-0246] Patching node "${workflow.nodes[i].type}" to "${patch_node_db_0_0_3[j][1]}"`);
 				workflow.nodes[i].type = patch_node_db_0_0_3[j][1];
@@ -333,6 +333,8 @@ function patch_script(workflow) {
 				break;
 			} else if (workflow.nodes[i].type === patch_node_db_0_0_3[j][1])
 				break;
+		}
+	}
 }
 
 lib0246.hijack(app, "loadGraphData", function (workflow) {
@@ -376,6 +378,12 @@ lib0246.hijack(app, "loadGraphData", function (workflow) {
 			workflow.extra["0246.VERSION"][2] === 3
 		)
 			patch_script(workflow);
+
+		for (let i = 0; i < workflow.nodes.length; ++ i)
+			if (workflow.nodes[i].type === "0246.BoxRange") {
+				if (workflow.nodes[i].widgets_values[0] === "ConditioningSetAreaPercentage")
+					workflow.nodes[i].widgets_values[0] = "%(x, y, width, height)";
+			}
 	}
 }, function (workflow) {
 	if (PATCH_SIG.includes(1))
