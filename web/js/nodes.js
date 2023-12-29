@@ -2262,7 +2262,7 @@ let defs, node_defs = [], combo_defs = [], type_defs = new Set();
 		ctx.closePath();
 	}
 
-	function draw_number_lock(widget, ctx, x, y, widget_width, widget_height, left_margin, right_margin, text_margin, lock_margin, text, index, text_flag) {
+	function draw_number_lock(widget, ctx, x, y, widget_width, widget_height, left_margin, right_margin, text_margin, lock_margin, text_raw, text_real, lock, text_flag) {
 		ctx.textAlign = "left";
 		ctx.strokeStyle = LiteGraph.WIDGET_OUTLINE_COLOR;
 		ctx.fillStyle = LiteGraph.WIDGET_BGCOLOR;
@@ -2291,17 +2291,17 @@ let defs, node_defs = [], combo_defs = [], type_defs = new Set();
 				ctx.fill();
 			}
 			ctx.fillStyle = LiteGraph.WIDGET_SECONDARY_TEXT_COLOR;
-			ctx.fillText(`${widget.label ?? widget.name} (${text}: ${lib0246.snap(widget.value.data[index], widget.options.snap)})`, x + left_margin + text_margin + lock_margin + 5, y + widget_height * 0.7);
+			ctx.fillText(`${widget.label ?? widget.name} (${text_real})`, x + left_margin + text_margin + lock_margin + 5, y + widget_height * 0.7);
 			ctx.fillStyle = LiteGraph.WIDGET_TEXT_COLOR;
 			ctx.textAlign = "right";
 			ctx.fillText(
-				Number(widget.value.data[index]).toFixed(widget.options.precision ?? 3),
+				text_raw,
 				x + widget_width - right_margin - text_margin - 20,
 				y + widget_height * 0.7
 			);
 		}
 		
-		draw_lock(ctx, x + left_margin, y, widget_height, widget_height, widget.value.lock[index]);
+		draw_lock(ctx, x + left_margin, y, widget_height, widget_height, lock);
 	}
 
 	function ratio_process_calc(widget, mode, old_value) {
@@ -2310,7 +2310,17 @@ let defs, node_defs = [], combo_defs = [], type_defs = new Set();
 			opt = widget.options;
 		switch (Math.abs(mode)) {
 			case 1: {
-				if (lock.height && !lock.ratio) {
+				if (lock.height && lock.width && lock.ratio) {
+					data.height = old_value * data.height / data.width;
+					if (data.height < opt.min) {
+						data.height = opt.min;
+						data.width = data.height * data.ratio;
+					} else if (data.height > opt.max) {
+						data.height = opt.max;
+						data.width = data.height * data.ratio;
+					}
+					data.ratio = data.width / data.height;
+				} else if (lock.height && !lock.ratio) {
 					data.height = data.width / data.ratio;
 					if (data.height < opt.min) {
 						data.height = opt.min;
@@ -2335,7 +2345,17 @@ let defs, node_defs = [], combo_defs = [], type_defs = new Set();
 				}
 			} break;
 			case 2: {
-				if (lock.width && !lock.ratio) {
+				if (lock.height && lock.width && lock.ratio) {
+					data.width = old_value * data.width / data.height;
+					if (data.width < opt.min) {
+						data.width = opt.min;
+						data.height = data.width / data.ratio;
+					} else if (data.width > opt.max) {
+						data.width = opt.max;
+						data.height = data.width / data.ratio;
+					}
+					data.ratio = data.width / data.height;
+				} else if (lock.width && !lock.ratio) {
 					data.width = data.height * data.ratio;
 					if (data.width < opt.min) {
 						data.width = opt.min;
@@ -2360,7 +2380,12 @@ let defs, node_defs = [], combo_defs = [], type_defs = new Set();
 				}
 			} break;
 			case 3: {
-				if (!lock.height && lock.width) {
+				if (
+					(lock.height && lock.width && lock.ratio) ||
+					(!lock.height && !lock.width && !lock.ratio)
+				) {
+					data.ratio = old_value;
+				} else if (!lock.height && lock.width) {
 					data.width = data.height * data.ratio;
 					if (data.width < opt.min) {
 						data.width = opt.min;
@@ -2394,11 +2419,36 @@ let defs, node_defs = [], combo_defs = [], type_defs = new Set();
 			data.ratio = 0;
 	}
 
-	function ratio_notify(node, widget, name, mode, old_value, value, pos, event) {
+	function ratio_notify(node, widget, name, mode, old_value, value, pos, event, w_f, h_f) {
 		if (/^[0-9+\-*/()\s]+|\d+\.\d+$/.test(value))
 			try {
-				widget.value.data[name] = Number(eval(value));
-				ratio_process_calc(widget, mode, old_value);
+				const res = Number(eval(value));
+				if (w_f) {
+					widget.value.data.width = res / widget.value.data.height;
+					if (widget.value.data.width < widget.options.min) {
+						widget.value.data.width = widget.options.min;
+						widget.value.data.height = widget.value.data.width / widget.value.data.ratio;
+					} else if (widget.value.data.width > widget.options.max) {
+						widget.value.data.width = widget.options.max;
+						widget.value.data.height = widget.value.data.width / widget.value.data.ratio;
+					}
+					widget.value.data.ratio = widget.value.data.width / widget.value.data.height;
+					app.canvas.setDirty(true);
+				} else if (h_f) {
+					widget.value.data.height = res / widget.value.data.width;
+					if (widget.value.data.height < widget.options.min) {
+						widget.value.data.height = widget.options.min;
+						widget.value.data.width = widget.value.data.height * widget.value.data.ratio;
+					} else if (widget.value.data.height > widget.options.max) {
+						widget.value.data.height = widget.options.max;
+						widget.value.data.width = widget.value.data.height * widget.value.data.ratio;
+					}
+					widget.value.data.ratio = widget.value.data.width / widget.value.data.height;
+					app.canvas.setDirty(true);
+				} else {
+					widget.value.data[name] = res;
+					ratio_process_calc(widget, mode, old_value);
+				}
 				if (widget.options && widget.options.property && node.properties[widget.options.property] !== undefined)
 					node.setProperty(widget.options.property, value);
 				widget?.callback?.(widget.value, widget, node, pos, event);
@@ -2435,9 +2485,24 @@ let defs, node_defs = [], combo_defs = [], type_defs = new Set();
 				this.temp_h = widget_height;
 				this.temp_y = y;
 
-				draw_number_lock(this, ctx, 0, y, calc_width, widget_height, margin, 0, text_margin, lock_margin, "W", "width", show_text);
-				draw_number_lock(this, ctx, calc_width, y, calc_width, widget_height, 0, 0, text_margin, lock_margin, "R", "ratio", show_text);
-				draw_number_lock(this, ctx, calc_width * 2, y, calc_width, widget_height, 0, margin, text_margin, lock_margin, "H", "height", show_text);
+				draw_number_lock(
+					this, ctx, 0, y, calc_width, widget_height, margin, 0, text_margin, lock_margin,
+					lib0246.floor(widget.value.data.width, widget.options.precision ?? 3),
+					`W: ${lib0246.snap(widget.value.data.width, widget.options.snap)}`,
+					widget.value.lock.width, show_text
+				);
+				draw_number_lock(
+					this, ctx, calc_width, y, calc_width, widget_height, 0, 0, text_margin, lock_margin,
+					lib0246.floor(widget.value.data.ratio, widget.options.precision ?? 3),
+					`A: ${lib0246.floor(widget.value.data.width * widget.value.data.height, widget.options.precision ?? 3)}`,
+					widget.value.lock.ratio, show_text
+				);
+				draw_number_lock(
+					this, ctx, calc_width * 2, y, calc_width, widget_height, 0, margin, text_margin, lock_margin,
+					lib0246.floor(widget.value.data.height, widget.options.precision ?? 3),
+					`H: ${lib0246.snap(widget.value.data.height, widget.options.snap)}`,
+					widget.value.lock.height, show_text
+				);
 
 				ctx.restore();
 			},
@@ -2542,9 +2607,13 @@ let defs, node_defs = [], combo_defs = [], type_defs = new Set();
 							this.value.data.ratio = Math.max(this.options.min, Math.min(this.options.max, this.value.data.ratio + event.deltaX * 0.001 * this.options.step));
 							this.drag_flag = true;
 						} else if (event.type === "pointerup")
-							if (!this.drag_flag)
-								app.canvas.prompt("Ratio", this.value.data.ratio, (value) => ratio_notify(node, this, "ratio", mode, old_value, value, pos, event), event);
-							else
+							if (!this.drag_flag) {
+								const w_f = this.value.lock.ratio && this.value.lock.width && this.value.lock.height,
+									h_f = !this.value.lock.ratio && !this.value.lock.width && !this.value.lock.height;
+								app.canvas.prompt(w_f ? "Area (width)" : h_f ? "Area (height)" : "Ratio", this.value.data.ratio, (value) => ratio_notify(
+									node, this, "ratio", mode, old_value, value, pos, event, w_f, h_f
+								), event);
+							} else
 								this.drag_flag = false;
 					} else if (lib0246.is_inside_rect(
 						pos[0], pos[1],
@@ -3004,11 +3073,11 @@ let defs, node_defs = [], combo_defs = [], type_defs = new Set();
 					node.color = LGraphCanvas.node_colors.green.color;
 					node.bgcolor = LGraphCanvas.node_colors.green.bgcolor;
 				} break;
-				case "0246.ScriptImbue": {
+				case "0246.ScriptNode": {
 					node.color = lib0246.mix_color_hue(LGraphCanvas.node_colors.green.color, "#660029");
 					node.bgcolor = "#4d001f";
 				} break;
-				case "0246.ScriptPlan": {
+				case "0246.ScriptRule": {
 					node.color = "#660029";
 					node.bgcolor = lib0246.mix_color_hue(LGraphCanvas.node_colors.green.bgcolor, "#660029");
 				} break;
@@ -3645,34 +3714,8 @@ let defs, node_defs = [], combo_defs = [], type_defs = new Set();
 					case "0246.Script": {
 						junction_impl(nodeType, nodeData, app, null, LiteGraph.GRID_SHAPE, LiteGraph.GRID_SHAPE);
 					} break;
-					case "0246.Pick": {
-						junction_impl(nodeType, nodeData, app, null, LiteGraph.GRID_SHAPE, LiteGraph.GRID_SHAPE);
-					} break;
 				}
 			}
 		},
 	});
-
-	// var curr_node = LiteGraph.createNode(LiteGraph.getNodeTypesInCategory(LiteGraph.getNodeTypesCategories()[2])[2].type);
-
-	/*
-		[TODO] Make Highway and Junction works with GroupNode; Cast Reroute keep type on configure
-		[TODO] Select, Unselect all for Hub
-
-		[TODO] Cloud node
-		- Output: batch of strings
-		- Flex widget for render multiple text boxes
-			- Two DOM text box:
-				- Show current text content of selected text box
-				- Show entire text content
-			- Must represent:
-				- 
-	//*/
-
-	/*
-		[TODO] Fix the bug that when copying Highway, the new node ID when added does not have the old 0246.__NAME__ being cloned over
-		[TODO] Take advantage of an extra state of BoxRange size widget such that: lock (area must be same), unlock (area can be different)
-			- Only affect the current value that are being changed
-			- Why? SDXL requires that any ratio must have same area size as 1024x1024
-	//*/
 })();

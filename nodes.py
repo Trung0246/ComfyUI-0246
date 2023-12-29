@@ -31,7 +31,7 @@ import nodes
 ######################################## IMPL ########################################
 ######################################################################################
 
-def highway_impl(_prompt, _id, _workflow, _way_in, kwargs):
+def highway_impl(_prompt, _id, _workflow, _way_in, flag, kwargs):
 	if isinstance(_prompt, list):
 		_prompt = _prompt[0]
 	if isinstance(_id, list):
@@ -57,7 +57,7 @@ def highway_impl(_prompt, _id, _workflow, _way_in, kwargs):
 	for i, curr_input in enumerate(curr_node["inputs"]):
 		if curr_input["name"] in kwargs:
 			name = _workflow["workflow"]["extra"]["0246.__NAME__"][_id]["inputs"][str(i)]["name"][1:]
-			_way_in[("data", name)] = kwargs[curr_input["name"]]
+			_way_in[("data", name)] = lib0246.RevisionBatch(*kwargs[curr_input["name"]]) if flag else kwargs[curr_input["name"]]
 			_way_in[("type", name)] = curr_input["type"]
 
 	res = []
@@ -485,7 +485,7 @@ class Highway:
 
 	# Do not remove the "useless" _query parameter, since data need to be consumed for expanding
 	def execute(self, _id = None, _prompt = None, _workflow = None, _way_in = None, _query = None, **kwargs):
-		return highway_impl(_prompt, _id, _workflow, _way_in, kwargs)
+		return highway_impl(_prompt, _id, _workflow, _way_in, False, kwargs)
 	
 	@classmethod
 	def IS_CHANGED(self, _query, _id = None, _prompt = None, _workflow = None, _way_in = None, *args, **kwargs):
@@ -521,7 +521,7 @@ class HighwayBatch:
 	CATEGORY = "0246"
 
 	def execute(self, _id = None, _prompt = None, _workflow = None, _way_in = None, _query = None, **kwargs):
-		return highway_impl(_prompt, _id, _workflow, gather_highway_impl(_way_in, _id), kwargs)
+		return highway_impl(_prompt, _id, _workflow, gather_highway_impl(_way_in, _id), True, kwargs)
 	
 	@classmethod
 	def IS_CHANGED(self, _query, _id = None, _prompt = None, _workflow = None, _way_in = None, *args, **kwargs):
@@ -701,9 +701,9 @@ class RandomInt:
 			"optional": {
 				"seed": ("INT", {
 					"default": 0,
-					"min": -9007199254740991,
+					"min": -1125899906842624,
 					# "max": 18446744073709551615
-					"max": 9007199254740991
+					"max": 1125899906842624
 				}),
 			},
 			"hidden": {
@@ -719,16 +719,6 @@ class RandomInt:
 	OUTPUT_IS_LIST = (True, )
 	FUNCTION = "execute"
 	CATEGORY = "0246"
-
-	def rand_cond(db, batch_size):
-		return len(db["prev"]) == 0 or db["prev_batch_size"] != batch_size
-
-	def rand_gen(db, min, max, seed, mode, batch_size):
-		if seed != db["seed"] or mode == "force":
-			db["inst"].seed(seed)
-			db["seed"] = seed
-		db["prev"] = [db["inst"].randint(min, max) for _ in range(batch_size)]
-		db["prev_batch_size"] = batch_size
 
 	def execute(self, _id = None, val = None, min = None, max = None, seed = None, batch_size = None, mode = None, **kwargs):
 		if min[0] > max[0]:
@@ -749,12 +739,14 @@ class RandomInt:
 		if db["track"] != PROMPT_ID:
 			db["track"] = PROMPT_ID
 			db["flag"] = 0
-			if mode[0] == "keep":
+			if mode[0] == "keep" or db["prev_batch_size"] != batch_size[0]:
 				db["prev"].clear()
 				db["prev_batch_size"] = 0
 				mode[0] = "force"
 
-		raw = val[0].split(",")
+		raw: list = val[0].split(",")
+		if len(raw) > batch_size[0]:
+			raw = raw[:batch_size[0]]
 
 		for i in range(len(raw)):
 			raw[i] = raw[i].strip()
@@ -858,6 +850,8 @@ class Hold:
 				result = update_hold_db(_id[0], None if (mode == "ignore" and len(Hold.HOLD_DB[_id[0]]["data"]) > 0) else _data_in)
 				BASE_EXECUTOR.outputs[_id[0]] = Hold.HOLD_DB[_id[0]]["data"]
 				ui_text += f"Size: {len(result)}, "
+				if mode == "clear":
+					Hold.HOLD_DB[_id[0]]["data"] = []
 			else:
 				ui_text += f"None, "
 				result = [None]
@@ -999,8 +993,17 @@ class Merge:
 							real_key = key_name[1]
 							while True:
 								if ("data", real_key) not in way:
-									way[("type", real_key)] = type(curr[("data", key_name[1])]).__name__
+									# way[("type", real_key)] = type(curr[("data", key_name[1])]).__name__
+									way[("type", real_key)] = curr[("type", key_name[1])]
 									way[("data", real_key)] = curr[("data", key_name[1])]
+									break
+								elif _mode[0] == "deep" and curr[("type", key_name[1])] == way[("type", real_key)]:
+									if not isinstance(way[("data", real_key)], list):
+										way[("data", real_key)] = lib0246.RevisionBatch(*way[("data", real_key)])
+									if isinstance(curr[("data", key_name[1])], list):
+										way[("data", real_key)].extend(curr[("data", key_name[1])])
+									else:
+										way[("data", real_key)].append(curr[("data", key_name[1])])
 									break
 								real_key += _pad[0]
 				else:
@@ -1203,7 +1206,7 @@ class BoxRange:
 
 ######################################################################################
 
-class ScriptImbue:
+class ScriptNode:
 	@classmethod
 	def INPUT_TYPES(s):
 		return {
@@ -1213,7 +1216,7 @@ class ScriptImbue:
 					"default": "",
 					"multiline": False
 				}),
-				"script_pin_mode": (["pin_highway_deep", "pin_highway_flat", "pin_junction"], ),
+				"script_pin_mode": (["pin_highway_deep", "pin_highway_flat", "pin_junction", "pin_direct"], ),
 				"script_res_order": ("STRING", {
 					"default": "",
 					"multiline": False
@@ -1230,10 +1233,10 @@ class ScriptImbue:
 			}
 		}
 	
-	RETURN_TYPES = (lib0246.TautologyStr("*"), "SCRIPT_DATA", "SCRIPT_DATA")
-	RETURN_NAMES = ("pipe_out", "script_pin_data", "script_res_data")
+	RETURN_TYPES = (lib0246.TautologyStr("*"), "SCRIPT_DATA", "SCRIPT_DATA", "SCRIPT_DATA")
+	RETURN_NAMES = ("pipe_out", "script_pin_data", "script_exec_data", "script_res_data")
 	INPUT_IS_LIST = False
-	OUTPUT_IS_LIST = (False, False, False)
+	OUTPUT_IS_LIST = lib0246.ContradictAll()
 	FUNCTION = "execute"
 	CATEGORY = "0246"
 
@@ -1303,6 +1306,8 @@ class ScriptImbue:
 						return True
 					return False
 				pin_func = temp_func
+			case "pin_direct":
+				raise Exception("pin_direct is not supported yet.")
 			case _:
 				pass
 
@@ -1346,28 +1351,36 @@ class ScriptImbue:
 			case _:
 				pass
 
-		return (pipe_in, None if pin_func is None else ScriptData({
-			"id": _id,
-			"func": pin_func,
-			"order": script_pin_order,
-			"kind": "wrap"
-		}), None if res_func is None else ScriptData({
-			"id": _id,
-			"func": res_func,
-			"order": script_res_order,
-			"kind": "wrap"
-		}))
+		return (
+			pipe_in,
+			None if pin_func is None else ScriptData({
+				"id": _id,
+				"func": pin_func,
+				"order": script_pin_order,
+				"kind": "wrap"
+			}), ScriptData({
+				"id": _id,
+				"node_name": script_node,
+				"node_class": class_type,
+				"node_inst": class_type(),
+				"func": plan_exec_node,
+				"kind": "exec"
+			}),
+			None if res_func is None else ScriptData({
+				"id": _id,
+				"func": res_func,
+				"order": script_res_order,
+				"kind": "wrap"
+			})
+		)
 
 ######################################################################################
 
-class ScriptPlan:
+class ScriptRule:
 	@classmethod
 	def INPUT_TYPES(s):
 		return {
 			"required": {
-				"script_node": (list(nodes.NODE_CLASS_MAPPINGS.keys()), ),
-				"script_func": (["_"], ),
-				"script_exec_mode": (["node", "func", "func_list"], ),
 				"script_rule_mode": (["slice", "cycle"], ),
 			},
 			"hidden": {
@@ -1375,35 +1388,16 @@ class ScriptPlan:
 			}
 		}
 	
-	RETURN_TYPES = ("SCRIPT_DATA", "SCRIPT_DATA")
-	RETURN_NAMES = ("script_exec_data", "script_rule_data")
+	RETURN_TYPES = ("SCRIPT_DATA", )
+	RETURN_NAMES = ("script_rule_data", )
 	OUTPUT_IS_LIST = (False, False)
 	FUNCTION = "execute"
 	CATEGORY = "0246"
 
 	def execute(
-		self, _id = None,
-		script_node = None, script_func = None, script_exec_mode = None, script_rule_mode = None,
-		script_chain_type = None
+		self, _id = None, script_rule_mode = None
 	):
-		# chain_type specifies which out pin type to be feed into same node until the batch exhaust
-
-		exec_data = None
 		rule_data = None
-		match script_exec_mode:
-			case "node":
-				exec_data = ScriptData({
-					"id": _id,
-					"node_name": script_node,
-					"node_class": nodes.NODE_CLASS_MAPPINGS[script_node],
-					"node_inst": nodes.NODE_CLASS_MAPPINGS[script_node](),
-					"func": plan_exec_node,
-					"kind": "exec"
-				})
-			case "func":
-				raise Exception(f"Not implemented yet.")
-			case _:
-				raise Exception(f"Invalid exec mode \"{script_exec_mode}\".")
 		
 		if script_rule_mode is not None:
 			if script_rule_mode == "_":
@@ -1429,7 +1423,7 @@ class ScriptPlan:
 					case _:
 						raise Exception(f"Invalid rule mode \"{script_rule_mode}\".")
 					
-		return (exec_data, rule_data)
+		return (rule_data, )
 
 ######################################################################################
 
@@ -1659,23 +1653,6 @@ class Hub:
 			"result": [res_data[i] for i in range(len(res_data))]
 		}
 
-######################################################################################
-######################################## TODO ########################################
-######################################################################################
-
-# class ScriptExpr:
-	# For things that require text-based expression, such as string combine, conditioning combine, etc.
-	# Which allows each operators to associate with a node or func.
-		# => Require 4 widgets: ops, node, add button, and current code.
-	# But how do we specify which parameters for which?
-	# pass
-
-######################################################################################
-
-# class Alter:
-	# Use parse_lang to shift around highway and junction data (including script)
-	# pass
-
 ########################################################################################
 ######################################## EXPORT ########################################
 ########################################################################################
@@ -1697,8 +1674,8 @@ NODE_CLASS_MAPPINGS = {
 	"0246.Merge": Merge,
 	# "0246.Convert": Convert,
 	"0246.BoxRange": BoxRange,
-	"0246.ScriptImbue": ScriptImbue,
-	"0246.ScriptPlan": ScriptPlan,
+	"0246.ScriptNode": ScriptNode,
+	"0246.ScriptRule": ScriptRule,
 	"0246.Script": Script,
 	"0246.Hub": Hub,
 	# "0246.Pick": Pick,
@@ -1718,8 +1695,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
 	"0246.Merge": "Merge",
 	# "0246.Convert": "Convert",
 	"0246.BoxRange": "Box Range",
-	"0246.ScriptImbue": "Script Imbue",
-	"0246.ScriptPlan": "Script Plan",
+	"0246.ScriptNode": "Script Node",
+	"0246.ScriptRule": "Script Rule",
 	"0246.Script": "Script",
 	"0246.Hub": "Hub",
 	# "0246.Pick": "Pick",

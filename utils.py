@@ -184,6 +184,10 @@ class RevisionDict(dict):
 
 		return self
 
+class RevisionBatch(list):
+	def __init__(self, *args):
+		self.extend(args)
+
 class FlatIter:
 	def __init__(self, data):
 		self.data = data
