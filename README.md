@@ -29,8 +29,8 @@ Control Flow:
 - `Count`: simple counter to use with `Loop`.
 
 "Execute anything" node:
-- `ScriptImbue`
-- `ScriptPlan`
+- `ScriptNode`
+- `ScriptRule`
 - `Script`
 
 ---
