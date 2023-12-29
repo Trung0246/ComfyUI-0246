@@ -940,7 +940,7 @@ class Merge:
 	def INPUT_TYPES(s):
 		return {
 			"required": {
-				"_mode": (["same", "deep"], ),
+				"_mode": (["flat", "deep"], ),
 				"_pad": ("STRING", {
 					"default": "_",
 					"multiline": False
@@ -1208,7 +1208,7 @@ class ScriptNode:
 					"default": "",
 					"multiline": False
 				}),
-				"script_pin_mode": (["pin_highway_deep", "pin_highway_flat", "pin_junction", "pin_direct"], ),
+				"script_pin_mode": (["pin_highway", "pin_junction", "pin_direct"], ),
 				"script_res_order": ("STRING", {
 					"default": "",
 					"multiline": False
@@ -1257,12 +1257,12 @@ class ScriptNode:
 			raise Exception(f"Node class {_prompt[_id]['class_type']} does not have any output.")
 
 		match script_pin_mode:
-			case "pin_highway_deep" | "pin_highway_flat" if pipe_flag and pipe_in[("kind")] == "highway":
+			case "pin_highway" if pipe_flag and pipe_in[("kind")] == "highway":
 				def temp_func(pin, res, **kwargs):
 					if res is None:
 						iter_inst = pipe_in.path_iter(("data", ))
 						for key in iter_inst:
-							if isinstance(pipe_in[key], list) and script_pin_mode == "pin_highway_deep":
+							if isinstance(pipe_in[key], lib0246.RevisionBatch):
 								if key[1] in pin:
 									pin[key[1]].extend(pipe_in[key])
 								else:
@@ -1526,7 +1526,7 @@ class Script:
 					)
 				)
 			else:
-				_script_in[("script", "exec")](script=_script_in, inst=inst, pin=pin, res=res)
+				res.extend(_script_in[("script", "exec")](script=_script_in, inst=inst, pin=pin, res=res))
 
 			inst["id"].clear()
 			inst["id"].append(_id)

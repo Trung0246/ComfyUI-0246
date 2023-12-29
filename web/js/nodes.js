@@ -2847,6 +2847,7 @@ let defs, node_defs = [], combo_defs = [], type_defs = new Set();
 						DATA_TEMP[0] = this.self.inputs[0].type;
 						DATA_TEMP[1] = this.self.outputs[0].type;
 						DATA_TEMP[2] = this.self.size[0];
+						this.self.inputs[0].type = this.self.outputs[0].type = this.self.widgets[0].value;
 					}, function () {
 						this.self.inputs[0].type = DATA_TEMP[0];
 						this.self.outputs[0].type = DATA_TEMP[1];
@@ -2892,14 +2893,6 @@ let defs, node_defs = [], combo_defs = [], type_defs = new Set();
 					this.serialize_widgets = true;
 
 					this.setSize(prev_size);
-
-					lib0246.hijack(this, "onConnectOutput", function () {
-						console.log("onConnectOutput");
-					}, () => {});
-
-					lib0246.hijack(this, "onConnectInput", function () {
-						console.log("onConnectInput");
-					}, () => {});
 				};
 
 				lib0246.hijack(reroute_class.prototype, "onDrawForeground", function () {
@@ -3229,6 +3222,13 @@ let defs, node_defs = [], combo_defs = [], type_defs = new Set();
 					} break;
 					case "0246.Beautify": {
 						setup_log(nodeType);
+						lib0246.hijack(nodeType.prototype, "onConnectInput", function () {
+							this.self.inputs[0].type = arguments[1];
+						}, () => {});
+						lib0246.hijack(nodeType.prototype, "onConnectionsChange", function (type, index, connected, link_info) {
+							if (!connected)
+								this.self.inputs[0].type = "*";
+						}, () => {});
 					} break;
 					case "0246.Stringify": {
 						single_impl_input(nodeType, nodeData, app, LiteGraph.CIRCLE_SHAPE, []);

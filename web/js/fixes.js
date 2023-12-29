@@ -383,6 +383,12 @@ lib0246.hijack(app, "loadGraphData", function (workflow) {
 			if (workflow.nodes[i].type === "0246.BoxRange") {
 				if (workflow.nodes[i].widgets_values[0] === "ConditioningSetAreaPercentage")
 					workflow.nodes[i].widgets_values[0] = "%(x, y, width, height)";
+			} else if (workflow.nodes[i].type === "0246.ScriptNode") {
+				if (
+					workflow.nodes[i].widgets_values[2] === "pin_highway_deep" ||
+					workflow.nodes[i].widgets_values[2] === "pin_highway_flat"
+				)
+					workflow.nodes[i].widgets_values[2] = "pin_highway";
 			}
 	}
 }, function (workflow) {
