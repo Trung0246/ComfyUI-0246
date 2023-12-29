@@ -49,7 +49,7 @@ I recommended you to play around with this sample workflow:
 
 <details>
     <p align="center">
-        <img src="https://github.com/Trung0246/ComfyUI-0246/assets/11626920/2863057c-f69d-4a60-8157-3916946ed956">
+        <img src="https://github.com/Trung0246/ComfyUI-0246/assets/11626920/05d53d43-a707-4c49-bbc9-cbaf98f70cc0">
     </p>
 </details>
 
