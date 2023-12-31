@@ -57,7 +57,10 @@ def highway_impl(_prompt, _id, _workflow, _way_in, flag, kwargs):
 	for i, curr_input in enumerate(curr_node["inputs"]):
 		if curr_input["name"] in kwargs:
 			name = _workflow["workflow"]["extra"]["0246.__NAME__"][_id]["inputs"][str(i)]["name"][1:]
-			_way_in[("data", name)] = lib0246.RevisionBatch(*kwargs[curr_input["name"]]) if flag else kwargs[curr_input["name"]]
+			if flag:
+				_way_in[("data", name)] = lib0246.RevisionBatch(*kwargs[curr_input["name"]])
+			else:
+				_way_in[("data", name)] = kwargs[curr_input["name"]]
 			_way_in[("type", name)] = curr_input["type"]
 
 	res = []
@@ -91,8 +94,11 @@ def gather_highway_impl(_dict_list, _id):
 			if ("type", key[1]) not in new_dict:
 				new_dict[("type", key[1])] = elem[("type", key[1])]
 			if ("data", key[1]) not in new_dict:
-				new_dict[("data", key[1])] = []
-			new_dict[("data", key[1])].append(elem[("data", key[1])])
+				new_dict[("data", key[1])] = lib0246.RevisionBatch()
+			if isinstance(elem[("data", key[1])], lib0246.RevisionBatch):
+				new_dict[("data", key[1])].extend(elem[("data", key[1])])
+			else:
+				new_dict[("data", key[1])].append(elem[("data", key[1])])
 
 	new_dict[("kind")] = "highway"
 	new_dict[("id")] = _id
@@ -1332,7 +1338,7 @@ class ScriptNode:
 							for type_curr, name_curr, count in zip(output_type, name_list, range(len(output_type))):
 								res[0][0][("type", name_curr)] = type_curr
 								if ("data", name_curr) not in res[0][0]:
-									res[0][0][("data", name_curr)] = []
+									res[0][0][("data", name_curr)] = lib0246.RevisionBatch()
 								res[0][0][("data", name_curr)].append(data_curr[count])
 
 						res[0][0][("kind")] = "highway"
@@ -1373,7 +1379,7 @@ class ScriptRule:
 	def INPUT_TYPES(s):
 		return {
 			"required": {
-				"script_rule_mode": (["slice", "cycle"], ),
+				"script_rule_mode": (["_", "slice", "cycle"], ),
 			},
 			"hidden": {
 				"_id": "UNIQUE_ID",
@@ -1650,6 +1656,7 @@ class Hub:
 ########################################################################################
 
 # [TODO] "Meta" node to show information about highway or junction
+# [TODO] "BoxRangeMeta" node to output specific box and dim
 # [TODO] "RandomInt" node can have linger seed if batch len is different
 
 NODE_CLASS_MAPPINGS = {
