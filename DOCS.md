@@ -84,6 +84,8 @@ Have bonus ability which is able to aggregate batch input, however does not atte
 Also if multiple same output type appear during `batch` mode, then the first same type pin will have `[11, 22, 33]`, and the next one is `[22, 33, 11]`.
 
 Demo workflow is in [assets/workflow_junction_batch.json](https://github.com/Trung0246/ComfyUI-0246/blob/main/assets/workflow_junction_batch.json).
+
+[More in depth explaination.](https://github.com/Trung0246/ComfyUI-0246/issues/16#issuecomment-1873016054)
 </details>
 
 ---
