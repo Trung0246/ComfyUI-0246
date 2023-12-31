@@ -98,6 +98,9 @@ Basic looping to create 20 images with all 20 different seeds:
 A complex looping involves FABRIC nodes from [ComfyUI_fabric](https://github.com/ssitu/ComfyUI_fabric), allowing to pick images multiple times:
 <img width="1864" alt="Screenshot 2023-11-25 224302" src="https://github.com/Trung0246/ComfyUI-0246/assets/11626920/989cf4b0-08a0-4b19-9f15-3b3a50c4d0b2">
 
+Outpaint workflow (embedded in the image):
+![workflow_outpaint](https://github.com/Trung0246/ComfyUI-0246/assets/11626920/cb00449a-2807-4f1f-8fc1-90119953d7e6)
+
 <details>
 
 The example above showcase that this node can turn node such as [Plasma Noise](https://github.com/Jordach/comfy-plasma) into batch.
