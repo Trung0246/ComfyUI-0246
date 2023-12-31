@@ -357,17 +357,18 @@ lib0246.hijack(app, "loadGraphData", function (workflow) {
 					if (workflow.nodes[i].widgets_values?.[0] === "__BATCH__")
 						workflow.nodes[i].widgets_values[0] = "__BATCH_PRIM__";
 					const curr_type_list = workflow.extra["0246.HUB_DATA"][workflow.nodes[i].id].sole_type;
-					for (let j = 0; j < workflow.nodes[i].outputs.length; ++ j) {
-						const curr_name = workflow.nodes[i].outputs[j].name;
-						if (curr_name?.endsWith?.("__BATCH__")) {
-							const curr_type = curr_type_list[curr_name];
-							curr_type[curr_type.length - 1] = "__BATCH_PRIM__";
-							const new_name = curr_type.join(":");
-							curr_type_list[new_name] = curr_type;
-							delete curr_type_list[curr_name];
-							workflow.nodes[i].outputs[j].name = new_name;
+					if (workflow.nodes[i].outputs)
+						for (let j = 0; j < workflow.nodes[i].outputs.length; ++ j) {
+							const curr_name = workflow.nodes[i].outputs[j].name;
+							if (curr_name?.endsWith?.("__BATCH__")) {
+								const curr_type = curr_type_list[curr_name];
+								curr_type[curr_type.length - 1] = "__BATCH_PRIM__";
+								const new_name = curr_type.join(":");
+								curr_type_list[new_name] = curr_type;
+								delete curr_type_list[curr_name];
+								workflow.nodes[i].outputs[j].name = new_name;
+							}
 						}
-					}
 				}
 			}
 			patch_script(workflow);
