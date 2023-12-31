@@ -2,6 +2,7 @@
 Random nodes for ComfyUI I made to solve my struggle with ComfyUI. Have varying quality.
 
 [Documentation](https://github.com/Trung0246/ComfyUI-0246/blob/main/DOCS.md)
+
 [More Docs](https://github.com/Trung0246/ComfyUI-0246/blob/bf3cc8c87e1ecee856849a277a66abb59997d357/web/js/nodes.js#L11) (can be shown directly in the UI if rgthree is installed).
 
 ![image](https://github.com/Trung0246/ComfyUI-0246/assets/11626920/ecd1078a-037a-4ba2-9a0b-440db9bf6cc1)
