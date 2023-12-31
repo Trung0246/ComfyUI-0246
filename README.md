@@ -1,6 +1,8 @@
 # ComfyUI-0246
 Random nodes for ComfyUI I made to solve my struggle with ComfyUI. Have varying quality.
 
+[Documentation](https://github.com/Trung0246/ComfyUI-0246/blob/main/DOCS.md)
+
 ![image](https://github.com/Trung0246/ComfyUI-0246/assets/11626920/ecd1078a-037a-4ba2-9a0b-440db9bf6cc1)
 
 # Nodes list
