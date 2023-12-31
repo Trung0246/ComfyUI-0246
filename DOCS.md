@@ -79,7 +79,7 @@ Basically same as `Junction` but batch as list instead for further processing.
 
 Hopefully difference between `batch` and `pluck` are self explainatory in the workflow.
 
-Have bonus ability which is able to aggregate batch input, however does not attempt to do something like `Latent From Batch` since latent is not a `batch list` internally, (in which it is `batch tensor`).
+Have bonus ability which is able to aggregate batch input, however does not attempt to do something like `Latent From Batch` since latent is not a `batch list` internally, (in which it is `batch torch.tensor`).
 
 Also if multiple same output type appear during `batch` mode, then the first same type pin will have `[11, 22, 33]`, and the next one is `[22, 33, 11]`.
 
