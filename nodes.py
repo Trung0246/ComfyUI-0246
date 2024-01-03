@@ -14,6 +14,7 @@ import json
 import copy
 import functools
 import copy
+import re
 
 # Self Code
 from . import utils as lib0246
@@ -175,6 +176,7 @@ def junction_impl(self, _id, _prompt, _workflow, _junc_in, _offset = None, _in_m
 
 	res = []
 	track = {}
+	db = {}
 
 	if _out_mode:
 		done_type = {}
@@ -184,7 +186,10 @@ def junction_impl(self, _id, _prompt, _workflow, _junc_in, _offset = None, _in_m
 
 			if elem["type"] in done_type:
 				# Rotate the list from [11, 22, 33] to [22, 33, 11]
-				res.append(done_type[elem["type"]][1:] + done_type[elem["type"]][:1])
+				if elem["type"] not in db:
+					db[elem["type"]] = done_type[elem["type"]]
+				db[elem["type"]] = (db[elem["type"]][1:] + db[elem["type"]][:1])
+				res.append(db[elem["type"]])
 				continue
 			
 			total = _junc_in.path_count(("data", elem["type"]))
@@ -258,30 +263,66 @@ def gather_junction_impl(_dict_list, _id):
 
 	return new_dict
 
-def junction_unpack(
-		data_dict, param_dict, key_list,
-		base_dict = {}, type_dict = {}, key_special=("default", "data", "index"),
-		pack_func=lambda _: _, type_func=lambda _: _,
-		fill_func=lambda d, k, v: d.setdefault(k, v)
-	):
-
+def junction_unpack_raw(
+	data_dict, param_dict, key_list, regex_inst,
+	base_dict = {}, type_dict = {}, key_special=("default", "data", "index"),
+	pack_func=lambda _: _, type_func=lambda _: _,
+	fill_func=lambda d, k, v: d.setdefault(k, v),
+	stub_flag=False,
+	block=1,
+):
 	for key in data_dict:
 		if key[0] == key_special[2]:
 			type_dict[type_func(key[1])] = data_dict[key]
+			
+	for param_key in lib0246.dict_iter(param_dict):
+		type_dict.setdefault(type_func(lib0246.dict_get(param_dict, param_key)[0]), 0)
 
-	for elem in key_list:
-		for param_key in param_dict[elem]:
-			data_type = param_dict[elem][param_key][0]
-			type_dict.setdefault(type_func(data_type), 0)
+	block_count = 0
+	kill_flag = False
+	def block_evt():
+		nonlocal block_count
+		nonlocal kill_flag
+		kill_flag = True
+		block_count += 1
+		return block_count >= block
 
-	for elem in key_list:
-		for param_key in param_dict[elem]:
-			param_tuple = param_dict[elem][param_key]
+	param_iter = lib0246.cycle_iter(
+		block_evt,
+		filter(
+			lambda _: _[0] in key_list,
+			lib0246.dict_iter(param_dict)
+		),
+	)
+
+	while block_count < block or block == sys.maxsize:
+		try:
+			param_key = next(param_iter)
+			param_tuple = lib0246.dict_get(param_dict, param_key)
 			defaults = {} if len(param_tuple) == 1 else param_tuple[1]
+
+			regex_res: re.Match = regex_inst.match(param_key[-1])
+			if regex_res is not None and regex_res.lastgroup == "_":
+				continue
+
 			data_key = (key_special[1], type_func(param_tuple[0]), type_dict.get(type_func(param_tuple[0]), 0))
-			value = data_dict.get(data_key, defaults.get(key_special[0], None))
-			fill_func(base_dict, param_key, pack_func(value))
+			value = None
+			if data_key in data_dict:
+				value = data_dict[data_key]
+				kill_flag = False
+			elif key_special[0] in defaults and (block < sys.maxsize or stub_flag):
+				if param_key[-1] in base_dict:
+					break
+				value = defaults[key_special[0]]
+				kill_flag = False
+			else:
+				break
+			fill_func(base_dict, param_key[-1], pack_func(value))
 			type_dict[type_func(param_tuple[0])] += 1
+		except StopIteration:
+			break
+		if kill_flag:
+			break
 
 	return base_dict
 
@@ -340,21 +381,67 @@ class ScriptData(dict):
 	def __init__(self, data):
 		super().__init__(data)
 
-def plan_exec_node(script, pin, **kwargs):
+def script_node_exec(script, pin, **kwargs):
 	func = getattr(script[("script", "node", "inst")], getattr(script[("script", "node", "class")], "FUNCTION"))
 	if hasattr(script[("script", "node", "class")], "INPUT_IS_LIST") and script[("script", "node", "class")].INPUT_IS_LIST:
 		return lib0246.transpose(func(**pin), tuple)
 	else:
 		return func(**pin)
 
-def plan_rule_slice(func, res, pin, **kwargs):
+def script_rule_slice(func, res, pin, **kwargs):
 	return res.extend(func(pin=curr_pin) for curr_pin in lib0246.dict_slice(pin))
 
-def plan_rule_product(func, res, pin, **kwargs):
+def script_rule_product(func, res, pin, **kwargs):
 	return res.extend(func(pin=curr_pin) for curr_pin in lib0246.dict_product(pin))
 
-def plan_rule_direct(func, res, pin, **kwargs):
+def script_rule_direct(func, res, pin, **kwargs):
 	return res.extend(func(pin=pin))
+
+def highway_unpack(pipe_in, input_type, _prompt, _id, _workflow, flag = False):
+	def temp_func(pin, res, **kwargs):
+		if res is None:
+			iter_inst = pipe_in.path_iter(("data", ))
+			for key in iter_inst:
+				if isinstance(pipe_in[key], lib0246.RevisionBatch):
+					if key[1] in pin:
+						pin[key[1]].extend(pipe_in[key])
+					else:
+						pin[key[1]] = pipe_in[key]
+				else:
+					if key[1] in pin:
+						pin[key[1]].append(pipe_in[key])
+					else:
+						pin[key[1]] = [pipe_in[key]]
+			if "hidden" in input_type:
+				for key in input_type["hidden"]:
+					match input_type["hidden"][key]:
+						case "PROMPT":
+							pin[key] = [_prompt]
+						case "UNIQUE_ID":
+							pin[key] = [_id]
+						case "EXTRA_PNGINFO":
+							pin[key] = [_workflow]
+			return True
+		return False
+	return temp_func
+
+def junction_unpack(pipe_in, input_type, regex_inst, flag = False):
+	def temp_func(pin, res, **kwargs):
+		if res is None:
+			junction_unpack_raw(
+				pipe_in, input_type,
+				list(filter(lambda x: x != "hidden", input_type.keys())),
+				base_dict=pin,
+				pack_func=lambda _: [_],
+				type_func=lambda _: "STRING" if isinstance(_, list) else _,
+				fill_func=lambda d, k, v: d.setdefault(k, []).extend(v),
+				stub_flag=True,
+				regex_inst=regex_inst,
+				block=sys.maxsize,
+			)
+			return True
+		return False
+	return temp_func
 
 ########################################################################################
 ######################################## HIJACK ########################################
@@ -1117,7 +1204,10 @@ class BoxRange:
 	def INPUT_TYPES(s):
 		return {
 			"required": lib0246.WildDict({
-				"script_method": (list(BoxRange.SUPPORT(0)), ),
+				"script_box_regex": ("STRING", {
+					"default": r"(?P<x>^x$)|(?P<y>^y$)|(?P<w>^width$)|(?P<h>^height$)|(^@x$)|(^@y$)|(^@w$)|(^@h$)|(^%x$)|(^%y$)|(^%w$)|(^%h$)",
+					"multiline": False
+				}),
 				"script_order": ("STRING", {
 					"default": "box",
 					"multiline": False
@@ -1127,77 +1217,188 @@ class BoxRange:
 				"_id": "UNIQUE_ID"
 			}
 		}
-	
-	@classmethod
-	def SUPPORT(s, mode, method = None, box_range = None, box_ratio = None):
-		# Designed to allow easy monkey patch for 3rd party
-		match mode:
-			case 0:
-				return [
-					"_",
-					"(x, y)",
-					"%(x, y)",
-					"(width, height)",
-					"%(width, height)",
-					"(x, y, width, height)",
-					"%(x, y, width, height)",
-				]
-			case 1:
-				match method:
-					case "%(x, y, width, height)":
-						def temp_func(pin, res, **kwargs):
-							if res is None:
-								pin["x"] = []
-								pin["y"] = []
-								pin["width"] = []
-								pin["height"] = []
-
-								for i in range(len(box_range["data"])):
-									pin["x"].append(lib0246.norm(
-										box_range["data"][i][0],
-										box_range["area"][0], box_range["area"][0] + box_range["area"][2]
-									))
-									pin["y"].append(lib0246.norm(
-										box_range["data"][i][1],
-										box_range["area"][1], box_range["area"][1] + box_range["area"][3]
-									))
-									pin["width"].append(box_range["data"][i][2] / box_range["area"][2])
-									pin["height"].append(box_range["data"][i][3] / box_range["area"][3])
-								return True
-							return False
-						return temp_func
-					case _:
-						raise Exception(f"\"{method}\" is not supported yet for BoxRange.")
 
 	RETURN_TYPES = lib0246.ByPassTypeTuple(("*", ))
-	RETURN_NAMES = lib0246.ByPassTypeTuple(("data", ))
+	RETURN_NAMES = lib0246.ByPassTypeTuple(("_data", ))
 	INPUT_IS_LIST = True
-	OUTPUT_IS_LIST = (False, )
+	OUTPUT_IS_LIST = lib0246.TautologyRest()
 	FUNCTION = "execute"
 	CATEGORY = "0246"
 
-	def execute(self, _id = None, script_method = None, script_order = None, box_range = {}, box_ratio = {}):
-		if isinstance(script_method, list):
-			script_method = script_method[0]
+	FUNC_REGEX = functools.lru_cache(maxsize=16)(re.compile)
+	FUNC_KEY_LIST = [
+		"W", "H", "S8W", "S8H", "R", "A",
+		"x", "y", "w", "h",
+		"px", "py", "pw", "ph",
+		# "rx", "ry",
+		"s8x", "s8y", "s8w", "s8h",
+	]
+
+	@classmethod
+	def process_box(
+		cls, build_fn, box_range, box_ratio, #res_dict = None, res_list = None,
+		_W = False, _H = False, _S8W = False, _S8H = False, _R = False, _A = False,
+		_x = False, _y = False, _w = False, _h = False,
+		_px = False, _py = False, _pw = False, _ph = False,
+		# _rx = False, _ry = False,
+		_s8x = False, _s8y = False, _s8w = False, _s8h = False,
+	):
+		if _W:
+			build_fn(box_ratio["data"]["width"], "W")
+		if _H:
+			build_fn(box_ratio["data"]["height"], "H")
+		if _S8W:
+			build_fn(lib0246.snap(box_ratio["data"]["width"], 8), "S8W")
+		if _S8H:
+			build_fn(lib0246.snap(box_ratio["data"]["height"], 8), "S8H")
+		if _R:
+			build_fn(box_ratio["data"]["ratio"], "R")
+		if _A:
+			build_fn(box_ratio["data"]["width"] * box_ratio["data"]["height"], "A")
+
+		for i in range(len(box_range["data"])):
+			if _x:
+				build_fn(lib0246.map(
+					box_range["data"][i][0],
+					box_range["area"][0], box_range["area"][0] + box_range["area"][2],
+					0, box_ratio["data"]["width"]
+				), "x")
+			if _y:
+				build_fn(lib0246.map(
+					box_range["data"][i][1],
+					box_range["area"][1], box_range["area"][1] + box_range["area"][3],
+					0, box_ratio["data"]["height"]
+				), "y")
+			if _w:
+				build_fn(lib0246.map(
+					box_range["data"][i][2],
+					0, box_range["area"][2],
+					0, box_ratio["data"]["width"]
+				), "w")
+			if _h:
+				build_fn(lib0246.map(
+					box_range["data"][i][3],
+					0, box_range["area"][3],
+					0, box_ratio["data"]["height"]
+				), "h")
+			if _px:
+				build_fn(lib0246.norm(
+					box_range["data"][i][0],
+					box_range["area"][0], box_range["area"][0] + box_range["area"][2]
+				), "px")
+			if _py:
+				build_fn(lib0246.norm(
+					box_range["data"][i][1],
+					box_range["area"][1], box_range["area"][1] + box_range["area"][3]
+				), "py")
+			if _pw:
+				build_fn(box_range["data"][i][2] / box_range["area"][2], "pw")
+			if _ph:
+				build_fn(box_range["data"][i][3] / box_range["area"][3], "ph")
+			# if _rx:
+			# 	res["rx"].append(box_range["data"][i][0])
+			# if _ry:
+			# 	res["ry"].append(box_range["data"][i][1])
+			if _s8x:
+				build_fn(lib0246.snap(lib0246.map(
+					box_range["data"][i][0],
+					box_range["area"][0], box_range["area"][0] + box_range["area"][2],
+					0, box_ratio["data"]["width"]
+				), 8), "s8x")
+			if _s8y:
+				build_fn(lib0246.snap(lib0246.map(
+					box_range["data"][i][1],
+					box_range["area"][1], box_range["area"][1] + box_range["area"][3],
+					0, box_ratio["data"]["height"]
+				), 8), "s8y")
+			if _s8w:
+				build_fn(lib0246.snap(lib0246.map(
+					box_range["data"][i][2],
+					0, box_range["area"][2],
+					0, box_ratio["data"]["width"]
+				), 8), "s8w")
+			if _s8h:
+				build_fn(lib0246.snap(lib0246.map(
+					box_range["data"][i][3],
+					0, box_range["area"][3],
+					0, box_ratio["data"]["height"]
+				), 8), "s8h")
+
+	@classmethod
+	def process_box_batch(cls, batch, data, name):
+		curr_index = BoxRange.FUNC_KEY_LIST.index(name)
+		if curr_index >= 0:
+			batch[curr_index].append(data)
+
+	def execute(self, _id = None, script_box_regex = None, script_order = None, box_range = None, box_ratio = None):
+		if isinstance(script_box_regex, list):
+			script_box_regex = script_box_regex[0]
 		if isinstance(script_order, list):
 			script_order = script_order[0]
 		if isinstance(box_range, list):
 			box_range = box_range[0]
+		if isinstance(box_ratio, list):
+			box_ratio = box_ratio[0]
 
-		if script_method != "_":
-			return (ScriptData({
+		full_res = [None]
+
+		script_regex: re.Pattern = BoxRange.FUNC_REGEX(script_box_regex)
+
+		batch_res = []
+		for i in range(len(BoxRange.FUNC_KEY_LIST)):
+			batch_res.append([])
+
+		BoxRange.process_box(
+			lambda _, name: BoxRange.process_box_batch(batch_res, _, name),
+			box_range, box_ratio,
+			**{("_" + key): script_regex.match("@" + key) is not None for key in BoxRange.FUNC_KEY_LIST}
+		)
+
+		for i in range(len(batch_res)):
+			if len(batch_res[i]) > 0:
+				full_res.append(batch_res[i])
+
+		if len(script_regex.groupindex.keys() & BoxRange.FUNC_KEY_LIST) > 0:
+			def temp_func(pin, res, **kwargs):
+				if res is None:
+					result = {key: [] for key in BoxRange.FUNC_KEY_LIST}
+					track = {key: 0 for key in BoxRange.FUNC_KEY_LIST}
+					for pin_key in pin:
+						temp = script_regex.match(pin_key)
+						if temp:
+							for res_key in result:
+								if temp.groupdict().get(res_key, None) is not None:
+									pin[pin_key] = result[res_key]
+									track[res_key] += 1
+					BoxRange.process_box(
+						lambda _, name: result[name].append(_),
+						box_range, box_ratio,
+						**{("_" + key): track[key] > 0 for key in BoxRange.FUNC_KEY_LIST}
+					)
+					return True
+				return False
+			full_res[0] = ScriptData({
 				"id": _id,
-				"func": BoxRange.SUPPORT(1, script_method, box_range, box_ratio),
+				"func": temp_func,
 				"order": script_order,
 				"kind": "wrap"
-			}), )
-		return ({
-			"box": box_range,
-			"dim": box_ratio
-		}, )
+			})
+		else:
+			full_res[0] = {
+				"box": box_range,
+				"dim": box_ratio
+			}
+
+		BoxRange.process_box(
+			lambda _, name: full_res.append([_]),
+			box_range, box_ratio,
+			**{("_" + key): script_regex.match("%" + key) is not None for key in BoxRange.FUNC_KEY_LIST}
+		)
+
+		return full_res
 	
 	@classmethod
-	def IS_CHANGED(self, script_method = None, script_order = None, box_range = {}, box_ratio = {}, *args, **kwargs):
+	def IS_CHANGED(self, script_box_regex = None, script_order = None, box_range = {}, box_ratio = {}, *args, **kwargs):
 		if isinstance(box_range, list):
 			box_range = box_range[0]
 		return box_range
@@ -1220,6 +1421,10 @@ class ScriptNode:
 					"multiline": False
 				}),
 				"script_res_mode": (["res_junction", "res_highway_batch"], ),
+				"script_ignore_regex": ("STRING", {
+					"default": r"(?P<_>^$)",
+					"multiline": False
+				}),
 			},
 			"optional": {
 				"pipe_in": lib0246.ByPassTypeTuple(("*", )),
@@ -1238,6 +1443,8 @@ class ScriptNode:
 	FUNCTION = "execute"
 	CATEGORY = "0246"
 
+	FUNC_REGEX = functools.lru_cache(maxsize=16)(re.compile)
+
 	def execute(
 			self,
 			_id = None, _prompt = None, _workflow = None,
@@ -1245,6 +1452,7 @@ class ScriptNode:
 			script_node = None,
 			script_pin_order = None, script_pin_mode = None,
 			script_res_order = None, script_res_mode = None,
+			script_ignore_regex = None,
 			**kwargs
 		):
 
@@ -1264,46 +1472,9 @@ class ScriptNode:
 
 		match script_pin_mode:
 			case "pin_highway" if pipe_flag and pipe_in[("kind")] == "highway":
-				def temp_func(pin, res, **kwargs):
-					if res is None:
-						iter_inst = pipe_in.path_iter(("data", ))
-						for key in iter_inst:
-							if isinstance(pipe_in[key], lib0246.RevisionBatch):
-								if key[1] in pin:
-									pin[key[1]].extend(pipe_in[key])
-								else:
-									pin[key[1]] = pipe_in[key]
-							else:
-								if key[1] in pin:
-									pin[key[1]].append(pipe_in[key])
-								else:
-									pin[key[1]] = [pipe_in[key]]
-						if "hidden" in input_type:
-							for key in input_type["hidden"]:
-								match input_type["hidden"][key]:
-									case "PROMPT":
-										pin[key] = [_prompt]
-									case "UNIQUE_ID":
-										pin[key] = [_id]
-									case "EXTRA_PNGINFO":
-										pin[key] = [_workflow]
-						return True
-					return False
-				pin_func = temp_func
+				pin_func = highway_unpack(pipe_in, input_type, _prompt, _id, _workflow)
 			case "pin_junction" if pipe_flag and pipe_in[("kind")] == "junction":
-				def temp_func(pin, res, **kwargs):
-					if res is None:
-						junction_unpack(
-							pipe_in, input_type,
-							list(filter(lambda x: x != "hidden", input_type.keys())),
-							base_dict=pin,
-							pack_func=lambda _: [_],
-							type_func=lambda _: "STRING" if isinstance(_, list) else _,
-							fill_func=lambda d, k, v: d.setdefault(k, []).extend(v)
-						)
-						return True
-					return False
-				pin_func = temp_func
+				pin_func = junction_unpack(pipe_in, input_type, ScriptNode.FUNC_REGEX(script_ignore_regex))
 			case "pin_direct":
 				raise Exception("pin_direct is not supported yet.")
 			case _:
@@ -1361,7 +1532,7 @@ class ScriptNode:
 				"node_name": script_node,
 				"node_class": class_type,
 				"node_inst": class_type(),
-				"func": plan_exec_node,
+				"func": script_node_exec,
 				"kind": "exec"
 			}),
 			None if res_func is None else ScriptData({
@@ -1371,6 +1542,198 @@ class ScriptNode:
 				"kind": "wrap"
 			})
 		)
+
+######################################################################################
+
+class ScriptPile:
+	@classmethod
+	def INPUT_TYPES(s):
+		return {
+			"required": {
+				"pipe_in": (lib0246.TautologyStr("*"), ),
+				"script_rule_loop_mode": (["_", "slice", "cycle"], ),
+				"script_rule_regex": ("STRING", {
+					"default": r"(?P<m>^@model$)|(?P<m_>^%MODEL$)|(?P<c>^@clip$)|(?P<c_>^%CLIP$)|(?P<_>^$)",
+					"multiline": False
+				}),
+				"script_rule_pin_mode": ([
+					# {a: [11, 22], b: [33.0, 44.0]} => {..., a: 11, b: 33.0, ...}, {..., a: 22, b: 44.0, ...}
+					"pin_highway_batch",
+
+					# {a: junc(11, 22), b: junc(33.0, 44.0)} => {..., a: 11, b: 33.0, ...}, {..., a: 22, b: 44.0, ...}
+					"pin_highway_junction",
+
+					# junc({a: 11, b: 33.0}, {a: 22, b: 44.0}) => {..., a: 11, b: 33.0, ...}, {..., a: 22, b: 44.0, ...}
+					"pin_junction_highway",
+
+					# junc(11, 22, 33.0, 44.0, 33, 44) => {..., a: 11, b: 33.0, c: 22, ...}, {..., a: 33, b: 44.0, c: 44, ...}
+					"pin_junction"
+				], ),
+				"count": ("INT", {
+					"default": 0,
+					"min": 0,
+					"max": sys.maxsize
+				}),
+			},
+			"hidden": {
+				"_prompt": "PROMPT",
+				"_id": "UNIQUE_ID",
+				"_workflow": "EXTRA_PNGINFO"
+			}
+		}
+	
+	RETURN_TYPES = (lib0246.TautologyStr("*"), "SCRIPT_DATA", )
+	RETURN_NAMES = ("pipe_out", "script_rule_data", )
+	OUTPUT_IS_LIST = (False, False, )
+	FUNCTION = "execute"
+	CATEGORY = "0246"
+
+	FUNC_REGEX = functools.lru_cache(maxsize=16)(re.compile)
+
+	@classmethod
+	@functools.lru_cache(maxsize=16)
+	def build_pile(cls, script_name, script_type, pin_key, script_rule_regex):
+		pile_data = {
+			"data": {},
+			"type": {}
+		}
+		count = 0
+		for curr_pin in pin_key:
+			curr_match_pin: re.Match = script_rule_regex.match("@" + curr_pin)
+			if curr_match_pin:
+				for (i, curr_out), curr_type in zip(enumerate(script_name), script_type):
+					curr_match_out: re.Match = script_rule_regex.match("%" + curr_out)
+					if curr_match_out and curr_match_out.lastgroup == curr_match_pin.lastgroup + "_":
+						pile_data["data"][(curr_out, curr_type)] = (i, curr_pin, count)
+						count += 1
+						if curr_type not in pile_data["type"]:
+							pile_data["type"][curr_type] = 0
+						pile_data["type"][curr_type] += 1
+						break
+				else:
+					raise Exception(f"Missing corresponding output for input \"{curr_pin}\".")
+		return pile_data
+	
+	@classmethod
+	def process(cls, pile_data, pipe_iter, curr_func, count, script, func, pin, res, **kwargs):
+		curr_count = 0
+		pin.update(next(pipe_iter))
+
+		while True:
+			flag = 0
+
+			temp_res = func(pin=pin) if \
+				curr_func is None else (
+					list(func(pin=curr_raw_pin) \
+						for curr_raw_pin in curr_func(pin))
+				)
+
+			curr_count += 1
+
+			try:
+				pin.update(next(pipe_iter))
+			except StopIteration:
+				flag += 1
+
+			if flag > 0 or (count > 0 and curr_count >= count):
+				res.extend(temp_res)
+				return True
+			
+			temp_res = list(lib0246.transpose(list(temp_res), list))
+			pin.update({
+				curr_pin: temp_res[i] for i, curr_pin, _ in pile_data["data"].values()
+			})
+
+	def execute(
+		self, _id = None, _prompt = None, _workflow = None,
+		script_rule_regex = None, script_rule_loop_mode = None, script_rule_pin_mode = None,
+		count = None, pipe_in = None
+	):
+		script_rule_regex = ScriptPile.FUNC_REGEX(script_rule_regex)
+
+		curr_func = None
+		match script_rule_loop_mode:
+			case "cycle":
+				curr_func = lib0246.dict_product
+			case "slice":
+				curr_func = lib0246.dict_slice
+			case "_":
+				pass
+			case other:
+				raise Exception(f"Script rule loop mode \"{other}\" is not supported yet.")
+			
+		def temp_func(script, func, pin, res, **kwargs):
+			pile_data = ScriptPile.build_pile(
+				tuple(
+					getattr(script[("script", "node", "class")], "RETURN_NAMES") if \
+					hasattr(script[("script", "node", "class")], "RETURN_NAMES") else \
+					getattr(script[("script", "node", "class")], "RETURN_TYPES")
+				),
+				tuple(getattr(script[("script", "node", "class")], "RETURN_TYPES")),
+				tuple(pin.keys()),
+				script_rule_regex
+			)
+
+			match script_rule_pin_mode:
+				case "pin_highway_batch":
+					return ScriptPile.process(
+						pile_data, lib0246.dict_slice({
+							(key[1]): pipe_in[key] for key in pipe_in.path_iter(("data", ))
+						}, lambda _: [_]),
+						curr_func, count,
+						script, func, pin, res
+					)
+
+				case "pin_junction":
+					raw_input_type = script[("script", "node", "class")].INPUT_TYPES()
+					
+					pin_key_set = set(pin.keys())
+					node_key_set = set(map(
+						lambda _: _[1],
+						filter(
+							lambda _: _[0] != "hidden",
+							lib0246.dict_iter(raw_input_type)
+						)
+					))
+					diff_key_set = (pin_key_set - node_key_set) | (node_key_set - pin_key_set)
+
+					if len(diff_key_set) == 0:
+						raise Exception("No input and output to pile up.")
+
+					input_type = {}
+					for input_key in lib0246.dict_iter(raw_input_type):
+						if input_key[1] in diff_key_set:
+							lib0246.dict_set(input_type, input_key, lib0246.dict_get(raw_input_type, input_key))
+
+					data_dict = junction_unpack_raw(
+						pipe_in, input_type,
+						list(filter(lambda x: x != "hidden", input_type.keys())),
+						base_dict={
+							k: [] for k in diff_key_set
+						},
+						pack_func=lambda _: [_],
+						type_func=lambda _: "STRING" if isinstance(_, list) else _,
+						fill_func=lambda d, k, v: d.setdefault(k, []).extend(v),
+						regex_inst=script_rule_regex,
+						block=sys.maxsize
+					)
+
+					return ScriptPile.process(
+						pile_data, lib0246.dict_slice(data_dict, lambda _: [_]),
+						curr_func, count,
+						script, func, pin, res
+					)
+
+				case other:
+					raise Exception(f"Script rule pin mode \"{other}\" is not supported yet.")
+				
+			return False
+
+		return (pipe_in, ScriptData({
+			"id": _id,
+			"func": temp_func,
+			"kind": "rule"
+		}), )
 
 ######################################################################################
 
@@ -1388,7 +1751,7 @@ class ScriptRule:
 	
 	RETURN_TYPES = ("SCRIPT_DATA", )
 	RETURN_NAMES = ("script_rule_data", )
-	OUTPUT_IS_LIST = (False, False)
+	OUTPUT_IS_LIST = (False, )
 	FUNCTION = "execute"
 	CATEGORY = "0246"
 
@@ -1401,7 +1764,7 @@ class ScriptRule:
 			if script_rule_mode == "_":
 				rule_data = ScriptData({
 					"id": _id,
-					"func": plan_rule_direct,
+					"func": script_rule_direct,
 					"kind": "rule"
 				})
 			else:
@@ -1409,13 +1772,13 @@ class ScriptRule:
 					case "slice":
 						rule_data = ScriptData({
 							"id": _id,
-							"func": plan_rule_slice,
+							"func": script_rule_slice,
 							"kind": "rule"
 						})
 					case "cycle":
 						rule_data = ScriptData({
 							"id": _id,
-							"func": plan_rule_product,
+							"func": script_rule_product,
 							"kind": "rule"
 						})
 					case _:
@@ -1655,8 +2018,74 @@ class Hub:
 ######################################## EXPORT ########################################
 ########################################################################################
 
+# Node only used for showcase stuff
+
+class StrAdd:
+	@classmethod
+	def INPUT_TYPES(s):
+		return {
+			"required": {
+				"a": ("STRING", {
+					"default": "a",
+					"multiline": True
+				}),
+				"b": ("STRING", {
+					"default": "b",
+					"multiline": True
+				}),
+				"c": ("STRING", {
+					"default": "c",
+					"multiline": True
+				}),
+			}
+		}
+	
+	RETURN_TYPES = ("STRING", )
+	RETURN_NAMES = ("res", )
+	OUTPUT_IS_LIST = (False, )
+	FUNCTION = "execute"
+	CATEGORY = "0246"
+
+	def execute(self, a = None, b = None, c = None):
+		return (f"({a};{b};{c})", )
+	
+class StrAddBatch:
+	@classmethod
+	def INPUT_TYPES(s):
+		return {
+			"required": {
+				"a": ("STRING", {
+					"default": "a",
+					"multiline": True
+				}),
+				"b": ("STRING", {
+					"default": "b",
+					"multiline": True
+				}),
+				"c": ("STRING", {
+					"default": "c",
+					"multiline": True
+				}),
+			}
+		}
+	
+	RETURN_TYPES = ("STRING", )
+	RETURN_NAMES = ("res", )
+	INPUT_IS_LIST = True
+	OUTPUT_IS_LIST = (True, )
+	FUNCTION = "execute"
+	CATEGORY = "0246"
+
+	def execute(self, a = None, b = None, c = None):
+		res = []
+		for i in range(len(a)):
+			a_val = a[i] if i < len(a) else a[-1]
+			b_val = b[i] if i < len(b) else b[-1]
+			c_val = c[i] if i < len(c) else c[-1]
+			res.append(f"({a_val};{b_val};{c_val})")
+		return (res, )
+
 # [TODO] "Meta" node to show information about highway or junction
-# [TODO] "BoxRangeMeta" node to output specific box and dim
 # [TODO] "RandomInt" node can have linger seed if batch len is different
 
 NODE_CLASS_MAPPINGS = {
@@ -1675,9 +2104,12 @@ NODE_CLASS_MAPPINGS = {
 	"0246.BoxRange": BoxRange,
 	"0246.ScriptNode": ScriptNode,
 	"0246.ScriptRule": ScriptRule,
+	"0246.ScriptPile": ScriptPile,
 	"0246.Script": Script,
 	"0246.Hub": Hub,
 	# "0246.Pick": Pick,
+	# "0246.StrAdd": StrAdd,
+	# "0246.StrAddBatch": StrAddBatch,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -1696,9 +2128,12 @@ NODE_DISPLAY_NAME_MAPPINGS = {
 	"0246.BoxRange": "Box Range",
 	"0246.ScriptNode": "Script Node",
 	"0246.ScriptRule": "Script Rule",
+	"0246.ScriptPile": "Script Pile",
 	"0246.Script": "Script",
 	"0246.Hub": "Hub",
 	# "0246.Pick": "Pick",
+	# "0246.StrAdd": "Str Add",
+	# "0246.StrAddBatch": "Str Add Batch",
 }
 
 print("\033[95m" + lib0246.HEAD_LOG + "Loaded all nodes and apis (/0246-parse)." + "\033[0m")

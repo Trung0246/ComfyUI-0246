@@ -13,7 +13,8 @@
 	"0246.Loop": "Very hacky recursive repetition by messing with ComfyUI internals.",
 	"0246.Hold": "Holds data between each loop execution.",
 	"0246.Count": "Simple counter to use with Loop.",
-	"0246.ScriptImbue": "Mostly for node parameterization for Script node.",
-	"0246.ScriptPlan": "Specify how Script node should be executed.",
+	"0246.ScriptNode": "Mostly for node parameterization for Script node.",
+	"0246.ScriptRule": "Specify how Script node should be executed.",
+	"0246.ScriptPile": "Generic stacker execution mechanism for Script node.",
 	"0246.Script": "General execution mechanism."
 }

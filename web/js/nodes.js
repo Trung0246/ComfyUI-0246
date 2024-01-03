@@ -142,6 +142,10 @@ const HELP = {
 				</ul>
 			</li>
 		</ul>
+		<span>
+			There'res a "secret" mode such that when all 3 are unlocked or locked and change the "ratio", it will actually 
+			changes the "area" of the box instead. All 3 locked means "width" are pinned, all 3 unlocked means "height" are pinned.
+		</span>
 	`.replace(/[\t\n]+/g, ''),
 	"hub": `
 		<span>
@@ -336,6 +340,7 @@ let defs, node_defs = [], combo_defs = [], type_defs = new Set();
 		"_sort_mode",
 		"_mode",
 		"_pad",
+		"_data", "_width", "_height", "_ratio",
 		"..."
 	];
 
@@ -440,6 +445,8 @@ let defs, node_defs = [], combo_defs = [], type_defs = new Set();
 				callback.apply({ self: this.self, name: name, mode: 2 }, arguments);
 		});
 	}
+
+	const INIT_FLAG = Symbol("init_flag"); 
 
 	function highway_impl(nodeType, nodeData, app, shape_in, shape_out) {
 		nodeType.prototype.onNodeMoved = function () {};
@@ -601,8 +608,10 @@ let defs, node_defs = [], combo_defs = [], type_defs = new Set();
 			};
 
 			this.onConnectionsChange = function (type, index, connected, link_info) {
-				if (link_info === null)
+				if (link_info === null) {
+					this[INIT_FLAG] = true;
 					return;
+				}
 
 				if (!connected) {
 					switch (type) {
@@ -628,6 +637,18 @@ let defs, node_defs = [], combo_defs = [], type_defs = new Set();
 					}
 				}
 			};
+
+			lib0246.hijack(this, "onAdded", () => {}, function () {
+				if (this.self[INIT_FLAG]) {
+					delete this.self[INIT_FLAG];
+					this.self.widgets.find(w => w.name === "Update").callback();
+					return;
+				}
+			});
+
+			lib0246.hijack(this, "onRemoved", function () {
+				delete app.graph.extra["0246.__NAME__"][this.self.id];
+			}, () => {});
 		};
 
 		lib0246.hijack(nodeType.prototype, "getExtraMenuOptions", function (canvas, options) {
@@ -724,6 +745,82 @@ let defs, node_defs = [], combo_defs = [], type_defs = new Set();
 		rgthree_exec("addConnectionLayoutSupport", nodeType, app);
 	}
 
+	function single_impl_input_raw(inst, app, real, shape_in) {
+		setup_expand(inst, "input", real, "...", shape_in, function () {
+			switch (this.mode) {
+				case 0: {
+					if (this.self.inputs[arguments[0]].link !== null) {
+						app.graph.links[this.self.inputs[arguments[0]].link].replaced = true;
+						return true;
+					}
+					this.self.inputs[arguments[0]].type = arguments[2].type;
+				} break;
+				case 1: {
+					this.self.inputs[arguments[2]].name = `${arguments[0]}:${arguments[1]}`;
+				} break;
+				case 2: {
+					if (arguments[0] === 1) {
+						let link_info = arguments[3];
+						if (BLACKLIST.includes(this.self.inputs[link_info.target_slot].name) || link_info.replaced)
+							return;
+						link_shift_up(this.self, this.self.inputs, link_info.target_slot, false, (link_index, extra_link_index) => {
+							return this.self.inputs[link_index].link;
+						});
+						-- real.input;
+					}
+				} break;
+			}
+		});
+	}
+
+	function single_impl_output_raw(inst, app, real, shape_out) {
+		setup_expand(inst, "output", real, "...", shape_out, function () {
+			switch (this.mode) {
+				case 0: {
+					if (this.self.outputs[arguments[0]].links && this.self.outputs[arguments[0]].links.length > 0)
+						return true;
+					
+					// Avoid node to connect to multiple output while allowing different pins
+					for (let i = 0; i < this.self.outputs.length; ++ i) {
+						if (BLACKLIST.includes(this.self.outputs[i].name))
+							continue;
+						let output_node = this.self.getOutputNodes(i);
+						if (output_node)
+							for (let j = 0; j < output_node.length; ++ j) {
+								if (output_node[j] === arguments[3] && i === arguments[0])
+									return false;
+							}
+					}
+
+					if (arguments[2].__outputType) // Reroute
+						this.self.outputs[arguments[0]].type = arguments[2].__outputType;
+					// else if (arguments[2].defaultConnectionsLayout) // Reroute (rgthree)
+					// 	this.self.outputs[arguments[0]].type = arguments[2].type;
+					else
+						this.self.outputs[arguments[0]].type = arguments[2].type;
+				} break;
+				case 1: {
+					this.self.outputs[arguments[2]].name = `${arguments[1]}:${arguments[0]}`;
+					// node_fit(this.self, this.self.widgets.filter(_ => _.name === "_offset")[0]);
+				} break;
+				case 2: {
+					if (arguments[0] === 2) {
+						let link_info = arguments[3];
+						if (BLACKLIST.includes(this.self.outputs[link_info.origin_slot].name))
+							return;
+						if (!this.self.outputs[link_info.origin_slot].links || this.self.outputs[link_info.origin_slot].links.length === 0) {
+							link_shift_up(this.self, this.self.outputs, link_info.origin_slot, true, (link_index, extra_link_index) => {
+								return this.self.outputs[link_index].links[extra_link_index];
+							});
+							-- real.output;
+							// node_fit(this.self, this.self.widgets.filter(_ => _.name === "_offset")[0]);
+						}
+					}
+				} break;
+			}
+		});
+	}
+
 	function junction_impl(nodeType, nodeData, app, name, shape_in, shape_out) {
 		nodeType.prototype.onNodeCreated = function () {
 			if (typeof name === "string")
@@ -740,78 +837,9 @@ let defs, node_defs = [], combo_defs = [], type_defs = new Set();
 				output: 0,
 			};
 			
-			setup_expand(this, "input", real, "...", shape_in, function () {
-				switch (this.mode) {
-					case 0: {
-						if (this.self.inputs[arguments[0]].link !== null) {
-							app.graph.links[this.self.inputs[arguments[0]].link].replaced = true;
-							return true;
-						}
-						this.self.inputs[arguments[0]].type = arguments[2].type;
-					} break;
-					case 1: {
-						this.self.inputs[arguments[2]].name = `${arguments[0]}:${arguments[1]}`;
-						// node_fit(this.self, this.self.widgets.filter(_ => _.name === "_offset")[0]);
-					} break;
-					case 2: {
-						if (arguments[0] === 1) {
-							let link_info = arguments[3];
-							if (BLACKLIST.includes(this.self.inputs[link_info.target_slot].name) || link_info.replaced)
-								return;
-							link_shift_up(this.self, this.self.inputs, link_info.target_slot, false, (link_index, extra_link_index) => {
-								return this.self.inputs[link_index].link;
-							});
-							-- real.input;
-							// node_fit(this.self, this.self.widgets.filter(_ => _.name === "_offset")[0]);
-						}
-					} break;
-				}
-			});
+			single_impl_input_raw(this, app, real, shape_in);
 
-			setup_expand(this, "output", real, "...", shape_out, function () {
-				switch (this.mode) {
-					case 0: {
-						if (this.self.outputs[arguments[0]].links && this.self.outputs[arguments[0]].links.length > 0)
-							return true;
-						
-						// Avoid node to connect to multiple output while allowing different pins
-						for (let i = 0; i < this.self.outputs.length; ++ i) {
-							if (BLACKLIST.includes(this.self.outputs[i].name))
-								continue;
-							let output_node = this.self.getOutputNodes(i);
-							for (let j = 0; j < output_node.length; ++ j) {
-								if (output_node[j] === arguments[3] && i === arguments[0])
-									return false;
-							}
-						}
-
-						if (arguments[2].__outputType) // Reroute
-							this.self.outputs[arguments[0]].type = arguments[2].__outputType;
-						// else if (arguments[2].defaultConnectionsLayout) // Reroute (rgthree)
-						// 	this.self.outputs[arguments[0]].type = arguments[2].type;
-						else
-							this.self.outputs[arguments[0]].type = arguments[2].type;
-					} break;
-					case 1: {
-						this.self.outputs[arguments[2]].name = `${arguments[1]}:${arguments[0]}`;
-						// node_fit(this.self, this.self.widgets.filter(_ => _.name === "_offset")[0]);
-					} break;
-					case 2: {
-						if (arguments[0] === 2) {
-							let link_info = arguments[3];
-							if (BLACKLIST.includes(this.self.outputs[link_info.origin_slot].name))
-								return;
-							if (!this.self.outputs[link_info.origin_slot].links || this.self.outputs[link_info.origin_slot].links.length === 0) {
-								link_shift_up(this.self, this.self.outputs, link_info.origin_slot, true, (link_index, extra_link_index) => {
-									return this.self.outputs[link_index].links[extra_link_index];
-								});
-								-- real.output;
-								// node_fit(this.self, this.self.widgets.filter(_ => _.name === "_offset")[0]);
-							}
-						}
-					} break;
-				}
-			});
+			single_impl_output_raw(this, app, real, shape_out);
 
 			lib0246.hijack(this, "getExtraMenuOptions", function (canvas, options) {
 				help_option(nodeType, HELP["junction"], options);
@@ -831,43 +859,31 @@ let defs, node_defs = [], combo_defs = [], type_defs = new Set();
 	}
 
 	function single_impl_input(nodeType, nodeData, app, shape_in, pin_list) {
-		nodeType.prototype.onNodeCreated = function () {
-			const real = {
-				input: 0,
-			};
-
-			setup_loop_update(this);
+		lib0246.hijack(nodeType.prototype, "onNodeCreated", () => {}, function () {
+			setup_loop_update(this.self);
 			
 			if (shape_in !== null)
-				setup_expand(this, "input", real, "...", shape_in, function () {
-					switch (this.mode) {
-						case 0: {
-							if (this.self.inputs[arguments[0]].link !== null) {
-								app.graph.links[this.self.inputs[arguments[0]].link].replaced = true;
-								return true;
-							}
-							this.self.inputs[arguments[0]].type = arguments[2].type;
-						} break;
-						case 1: {
-							this.self.inputs[arguments[2]].name = `${arguments[0]}:${arguments[1]}`;
-						} break;
-						case 2: {
-							if (arguments[0] === 1) {
-								let link_info = arguments[3];
-								if (BLACKLIST.includes(this.self.inputs[link_info.target_slot].name) || link_info.replaced)
-									return;
-								link_shift_up(this.self, this.self.inputs, link_info.target_slot, false, (link_index, extra_link_index) => {
-									return this.self.inputs[link_index].link;
-								});
-								-- real.input;
-							}
-						} break;
-					}
-				});
+				single_impl_input_raw(this.self, app, {
+					input: 0,
+				}, shape_in);
 
 			for (let i = 0; i < pin_list.length; i += 4)
-				setup_sole_pin(this, pin_list[i], pin_list[i + 1], pin_list[i + 2], pin_list[i + 3]);
-		}
+				setup_sole_pin(this.self, pin_list[i], pin_list[i + 1], pin_list[i + 2], pin_list[i + 3]);
+		});
+	}
+
+	function single_impl_output(nodeType, nodeData, app, shape_out, pin_list) {
+		lib0246.hijack(nodeType.prototype, "onNodeCreated", () => {}, function () {
+			setup_loop_update(this.self);
+
+			if (shape_out !== null)
+				single_impl_output_raw(this.self, app, {
+					output: 0,
+				}, shape_out);
+
+			for (let i = 0; i < pin_list.length; i += 4)
+				setup_sole_pin(this.self, pin_list[i], pin_list[i + 1], pin_list[i + 2], pin_list[i + 3]);
+		});
 	}
 
 	function raw_setup_log(self) {
@@ -3071,6 +3087,10 @@ let defs, node_defs = [], combo_defs = [], type_defs = new Set();
 					node.bgcolor = "#4d001f";
 				} break;
 				case "0246.ScriptRule": {
+					node.color = lib0246.mix_color_hue(LGraphCanvas.node_colors.green.color, "#660029");
+					node.bgcolor = LGraphCanvas.node_colors.green.bgcolor;
+				} break;
+				case "0246.ScriptPile": {
 					node.color = "#660029";
 					node.bgcolor = lib0246.mix_color_hue(LGraphCanvas.node_colors.green.bgcolor, "#660029");
 				} break;
@@ -3120,9 +3140,15 @@ let defs, node_defs = [], combo_defs = [], type_defs = new Set();
 
 							box_widget.flex.ratio = ratio_widget.value.data.ratio;
 
+							const regex_widget = node.widgets.find(w => w.name === "script_box_regex");
+							regex_widget.options = regex_widget.options ?? {};
+							regex_widget.options.multiline = true;
+
 							node.serialize_widgets = true;
 							node.setSize(node.computeSize());
 						});
+
+						single_impl_output(nodeType, nodeData, app, LiteGraph.CIRCLE_SHAPE, []);
 					} break;
 					case "0246.Highway": {
 						highway_impl(nodeType, nodeData, app, LiteGraph.CIRCLE_SHAPE, LiteGraph.CIRCLE_SHAPE);
@@ -3410,6 +3436,20 @@ let defs, node_defs = [], combo_defs = [], type_defs = new Set();
 											if (node.hub.space_widget[node_id].select)
 												node.hubPullNode(node.hub.space_widget[node_id].value);
 										}
+										app.canvas.setDirty(true);
+									}
+								}, {
+									content: "[0246.Hub] Select All",
+									callback: function() {
+										for (let node_id in node.hub.space_widget)
+											node.hub.space_widget[node_id].select = true;
+										app.canvas.setDirty(true);
+									}
+								}, {
+									content: "[0246.Hub] Deselect All",
+									callback: function() {
+										for (let node_id in node.hub.space_widget)
+											node.hub.space_widget[node_id].select = false;
 										app.canvas.setDirty(true);
 									}
 								}
@@ -3713,6 +3753,20 @@ let defs, node_defs = [], combo_defs = [], type_defs = new Set();
 					} break;
 					case "0246.Script": {
 						junction_impl(nodeType, nodeData, app, null, LiteGraph.GRID_SHAPE, LiteGraph.GRID_SHAPE);
+					} break;
+					case "0246.ScriptPile": {
+						lib0246.hijack(nodeType.prototype, "onNodeCreated", () => {}, function () {
+							const regex_widget = this.self.widgets.find(w => w.name === "script_rule_regex");
+							regex_widget.options = regex_widget.options ?? {};
+							regex_widget.options.multiline = true;
+						});
+					} break;
+					case "0246.ScriptNode": {
+						lib0246.hijack(nodeType.prototype, "onNodeCreated", () => {}, function () {
+							const regex_widget = this.self.widgets.find(w => w.name === "script_ignore_regex");
+							regex_widget.options = regex_widget.options ?? {};
+							regex_widget.options.multiline = true;
+						});
 					} break;
 				}
 			}

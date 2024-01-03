@@ -8,6 +8,8 @@ import os
 import torch
 import itertools
 import collections.abc
+import math
+import collections
 
 # Check for libs
 wrapt = None
@@ -130,6 +132,21 @@ def import_module(module_name, file_path, package_name = None):
 	except (FileNotFoundError, ModuleNotFoundError, OSError):
 		return None
 
+def args(args: list, kwargs: dict, name: str, fn, idx=None):
+	arg_names = fn.__code__.co_varnames[:fn.__code__.co_argcount]
+	value = None
+	if name in kwargs:
+		value = kwargs[name]
+	else:
+		try:
+			# Get its position in the formal parameters list and retrieve from args
+			index = arg_names.index(name)
+			value = args[index] if index < len(args) else None
+		except Exception:
+			if idx is not None and idx < len(args):
+				value = args[idx]
+	return value
+
 class RevisionDict(dict):
 	def __init__(self, *args, **kwargs):
 		self.update(*args, **kwargs)
@@ -163,7 +180,7 @@ class RevisionDict(dict):
 		while (*path, count) in self:
 			yield (*path, count)
 			count += 1
-	
+
 	def sort(self, path_order, path_data, mode):
 		order_keys = [key for key in self.keys() if key[:len(path_order)] == path_order]
 		data_keys = [key for key in self.keys() if key[:len(path_data)] == path_data]
@@ -232,25 +249,82 @@ class FlatIter:
 
 def flat_zip(names, flat_iter: FlatIter):
 	keys_list = list(flat_iter.data.keys())
-	name_idx = 0
 
 	for key, value in flat_iter:
-		key_idx = keys_list.index(key)
-		if key_idx != name_idx:
-			name_idx = key_idx
-		current_name = names[name_idx]
-		yield current_name, (key, value)
+		yield names[keys_list.index(key)], (key, value)
+
+class ChunkIterator:
+	def __init__(self, base_iterator, chunk_size, fill):
+		self.base_iterator = base_iterator
+		self.chunk_size = chunk_size
+		self.fill = fill
+		self.count = 0
+
+	def __iter__(self):
+		return self
+
+	def __next__(self):
+		if self.count < self.chunk_size:
+			try:
+				item = next(self.base_iterator)
+				self.count += 1
+				return item
+			except StopIteration:
+				if self.fill and self.count > 0:
+					self.count += 1
+					return None
+				raise
+		else:
+			raise StopIteration
+
+def take(iterable, chunk, build, fill=False):
+	iterator = iter(iterable)
+	while True:
+		chunk_iter = ChunkIterator(iterator, chunk, fill)
+		built_chunk = build(item for item in chunk_iter)
+
+		# Check if the chunk is empty, which indicates the iterator is exhausted
+		if not built_chunk and next(chunk_iter, None) is None:
+			break
+		yield built_chunk
 
 def dict_product(dict_list):
 	keys, values = zip(*dict_list.items())
 	return ({k: v for k, v in zip(keys, combination)} for combination in itertools.product(*values))
 
-def dict_slice(dict_list):
+def dict_slice(dict_list, build=lambda _: _):
 	for i in range(max((len(v) for v in dict_list.values()), default=0)):
 		curr = dict()
 		for k, v in dict_list.items():
-			curr[k] = v[i] if i < len(v) else v[-1]
+			curr[k] = build(v[i] if i < len(v) else v[-1])
 		yield curr
+
+def dict_iter(dict_inst):
+	dq = collections.deque(((key,), value) for key, value in dict_inst.items())
+
+	while dq:
+		current_path, current_value = dq.popleft()
+		if isinstance(current_value, collections.abc.Mapping):
+			for key in reversed(current_value):
+				dq.appendleft((current_path + (key,), current_value[key]))
+		else:
+			yield current_path
+
+def dict_get(dict_inst, tuple_path, val=None, build=dict):
+	curr = dict_inst
+	for key in tuple_path[:-1]:
+		if key not in curr:
+			curr[key] = build()
+		curr = curr[key]
+	return curr.get(tuple_path[-1], val)
+
+def dict_set(dict_inst, tuple_path, val, build=dict):
+	curr = dict_inst
+	for key in tuple_path[:-1]:
+		if key not in curr:
+			curr[key] = build()
+		curr = curr[key]
+	curr[tuple_path[-1]] = val
 
 def transpose(iter, build):
 	if not isinstance(iter[0], collections.abc.Iterable):
@@ -267,6 +341,14 @@ def flat_iter(iter, layer = 0, func=lambda _: isinstance(_, collections.abc.Iter
 			yield from flat_iter(elem, layer, func, __layer__=__layer__ + 1)
 		else:
 			yield elem, __layer__
+
+def cycle_iter(func, iterable, sentinel=object()):
+	for item in itertools.cycle(itertools.chain(iterable, [sentinel])):
+		if item == sentinel:
+			if func():
+				break
+			continue
+		yield item
 
 def hijack(scope, name, param_func, res_func = None, call_func = None, out_scope = None):
 	old_func = getattr(scope, name)
@@ -419,6 +501,11 @@ def swap_index(index_func, swap_func):
 				current = next_index
 				next_index = index_func(current)
 		i += 1
+
+def snap(num, step):
+	if num > 0:
+		return math.floor(num / step) * step
+	return math.ceil(num / step) * step
 
 ######################################################################################
 ######################################## LANG ########################################
@@ -938,6 +1025,7 @@ def parse_lang(input: str):
 # https://pastebin.com/raw/5kn6KKbT: The OG RevisionDict, if we needs it ever again
 # https://pastebin.com/raw/17pwbLpr: Misc junk
 # https://pastebin.com/raw/vnreX3uJ
+# https://pastebin.com/raw/S9jyqpaY
 
 # JS:
 # https://pastebin.com/raw/ibGnvzed
