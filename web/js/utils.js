@@ -597,6 +597,12 @@ export function rem(a, b) {
 	return (a % b + b) % b;
 }
 
+export function text_snip(text, max_len) {
+	if (text.length <= max_len)
+		return text;
+	return text.slice(0, 3) + "..." + text.slice(-3);
+}
+
 export async function safe_eval(code) {
 	// https://github.com/Prendus/secure-eval/blob/master/secure-eval.ts
 	const secureEvalIframe = document.createElement('iframe');
@@ -652,4 +658,8 @@ export async function safe_eval(code) {
 			secureEvalIframe.contentWindow.postMessage(code, '*');
 		});
 	});
+}
+
+export function dummy(...args) {
+	return args[0];
 }

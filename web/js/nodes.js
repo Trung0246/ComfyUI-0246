@@ -80,6 +80,43 @@ app.registerExtension({
 
 			reroute_class.category = "0246";
 		}
+
+		{
+			function Test() {}
+
+			Test.title = "Test";
+			Test.category = "0246";
+			Test.comfyClass = "0246.Test";
+			Test.collapsable = true;
+			Test.title_mode = LiteGraph.NORMAL_TITLE;
+
+			Test.prototype.onNodeCreated = function() {
+				const node = this;
+				const box_widget = node.addCustomWidget(wg0246.BOX_RANGE_WIDGET("BOX_RANGE", "box_range", {
+					row_count: 10,
+					col_count: 10,
+				}));
+
+				node.addInput("input", "number");
+				node.addOutput("output", "number");
+				node.addOutput("output2", "number");
+				node.addOutput("output3", "number");
+				node.addOutput("output4", "number");
+
+				wg0246.widget_flex(node, box_widget, {
+					ratio: 0,
+					share: 1,
+					min_h: 50,
+					center: true,
+				});
+
+				node.addWidget("button", "Random Value", null, () => {}, {
+					serialize: false
+				});
+			}
+
+			LiteGraph.registerNodeType("0246.Test", Test);
+		}
 	},
 	nodeCreated(node) {
 		switch (node.comfyClass) {
@@ -938,7 +975,7 @@ app.registerExtension({
 							cloud_widget = node.addCustomWidget(wg0246.CLOUD_WIDGET("CLOUD_DATA", "base:data"));
 							wg0246.widget_flex(node, cloud_widget, {
 								ratio: 0,
-								share: 1.5,
+								share: 1.25,
 								min_h: 100,
 								center: true,
 								margin_x: 10,
@@ -992,7 +1029,8 @@ app.registerExtension({
 												node.widgets.find(w => w.name === "base:first_group_id").value
 											);
 									}
-								}, {
+								},
+								null, {
 									content: "[0246.Cloud] 🗑️ Picked Clouds",
 									callback: (value, options, evt, menu, node) => {
 										const cloud_widget = node.widgets.find(w => w.name === "base:data");
@@ -1015,9 +1053,9 @@ app.registerExtension({
 									callback: (value, options, evt, menu, node) => {
 										
 									}
-								}
+								},
+								null
 							);
-							options.push(null);
 						} else
 							RIGHT_CLICK_NODE = null;
 					});

@@ -196,7 +196,10 @@ export const HELP = {
 
 import { app } from "../../../scripts/app.js";
 import { api } from "../../../scripts/api.js";
-import { ComfyWidgets } from "../../../scripts/widgets.js";
+import {
+	ComfyWidgets,
+	addValueControlWidgets
+} from "../../../scripts/widgets.js";
 import * as comfy_widget from "../../../extensions/core/widgetInputs.js";
 
 import * as lib0246 from "./utils.js";
@@ -514,7 +517,7 @@ function setup_expand(node, name, real, pin, shape, callback) {
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-const INIT_FLAG = Symbol("init_flag");
+const INIT_MARK = Symbol("init");
 
 export function highway_impl(nodeType, nodeData, app, shape_in, shape_out) {
 	nodeType.prototype.onNodeMoved = function () {};
@@ -681,7 +684,7 @@ export function highway_impl(nodeType, nodeData, app, shape_in, shape_out) {
 
 		this.onConnectionsChange = function (type, index, connected, link_info) {
 			if (link_info === null) {
-				this[INIT_FLAG] = true;
+				this[INIT_MARK] = true;
 				return;
 			}
 
@@ -711,8 +714,8 @@ export function highway_impl(nodeType, nodeData, app, shape_in, shape_out) {
 		};
 
 		lib0246.hijack(this, "onAdded", function () {
-			if (this.mark && this.self[INIT_FLAG]) {
-				delete this.self[INIT_FLAG];
+			if (this.mark && this.self[INIT_MARK]) {
+				delete this.self[INIT_MARK];
 				this.self.widgets.find(w => w.name === "Update").callback();
 				return;
 			}
@@ -1210,7 +1213,6 @@ export function process_reroute(node, type) {
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-
 function node_mouse_pos(node) {
 	return [
 		app.canvas.graph_mouse[0] - node.pos[0],
@@ -1223,17 +1225,15 @@ function calc_flex(node, widget, width, height, dom_flag) {
 	node.flex_data.share_count = 0;
 	node.flex_data.share_weight = [];
 	node.flex_data.share_max_h = [];
-	node.flex_data.share_real_h = 0;
 	node.flex_data.off_h = 0;
-	node.flex_data.left_h = 54;
-	node.flex_data.dom_h = 0; //-8;
+	node.flex_data.left_h = 0;
+	node.flex_data.dom_h = 0;
 	for (let i = 0; i < node.widgets.length; ++ i)
 		if (node.widgets[i]?.flex) {
 			if (node.widgets[i]?.type === "converted-widget")
 				continue;
 			node.flex_data.share_weight.push(node.widgets[i]?.flex?.share);
 			node.flex_data.share_max_h.push(Number.isFinite(node.widgets[i]?.flex?.max_h) && node.widgets[i]?.flex?.max_h > 0 ? node.widgets[i]?.flex?.max_h : null);
-			node.flex_data.share_real_h += node.widgets[i]?.flex?.real_h ?? 0;
 			++ node.flex_data.share_count;
 			if (node.widgets[i] === widget)
 				node.widgets[i].flex.index = node.flex_data.share_count - 1;
@@ -1291,10 +1291,9 @@ export function widget_flex(node, widget, options = {}) {
 
 	lib0246.hijack(widget, "computeSize", function (width) {
 		if (!this.mark) {
-			const slot_count = Math.max(node.inputs?.length ?? 0, node.outputs?.length ?? 0),
-				pad_h = Math.max(24 - slot_count * (LiteGraph.NODE_SLOT_HEIGHT + 4), 0),
-				pad_h2 = Math.max(64 - slot_count * (LiteGraph.NODE_SLOT_HEIGHT + 4), 0);
-
+			const slot_count = Math.max(node.inputs?.length ?? 0, node.outputs?.length ?? 0, 1),
+				slot_h = (slot_count + 0.7) * LiteGraph.NODE_SLOT_HEIGHT;
+	
 			this.self.flex.temp_h = 0;
 			if (PROCESS_WIDGET_NODE && PROCESS_WIDGET_NODE.isPointInside(app.canvas.graph_mouse[0], app.canvas.graph_mouse[1])) {
 				// Intentional double-ifs
@@ -1305,64 +1304,69 @@ export function widget_flex(node, widget, options = {}) {
 					this.stop = true;
 					return;
 				}
-				this.self.flex.temp_h += pad_h;
 			}
-
+	
 			// Don't ask why how I came up with this. This took a week of brain power.
-
+	
 			this.self.flex.real_y = this.self.flex.real_y ?? 0;
 			this.self.flex.margin_tail_real_y = this.self.flex.margin_tail_y + this.self.flex.margin_over_y;
-
+	
 			this.self.flex.real_max_h = Infinity;
-
+	
 			this.self.flex.real_min_h = this.self.flex.min_h ?? 0;
-
+	
 			let raw_size = node.size?.[1] ?? this.self.flex.real_min_h;
-
+	
 			if (app.canvas.resizing_node === node) {
-				let sum_h = 6 + slot_count * (LiteGraph.NODE_SLOT_HEIGHT + 4);
-				for (let i = 0; i < node.widgets.length; ++ i) {
-					if (node.widgets[i]?.flex)
-						sum_h += (node.widgets[i]?.flex?.real_min_h ?? 0) + 4;
-					else
-						sum_h += (node.widgets[i]?.computedHeight ?? node.widgets[i]?.computeSize?.(width)[1] ?? LiteGraph.NODE_WIDGET_HEIGHT) + 4;
-				}
+				let sum_h = 28 + slot_h; // WHy 16? For Cloud with "rand" that have widgets changed to pin
+				for (let i = 0; i < node.widgets.length; ++ i)
+					sum_h += (
+						node.widgets[i]?.flex?.real_min_h ??
+						node.widgets[i]?.computedHeight ??
+						node.widgets[i]?.computeSize?.(width)[1] ??
+						LiteGraph.NODE_WIDGET_HEIGHT
+					) + 4;
 				raw_size = Math.max(app.canvas.graph_mouse[1] - node.pos[1], sum_h);
+				if (raw_size !== node.size?.[1]) {
+					node.size[1] = raw_size;
+					app.canvas.setDirty(true);
+				}
 			}
-
+	
 			const dom_flag = width === undefined; // [UNUSED]
-
+	
 			calc_flex(node, this.self, width, raw_size, dom_flag);
 			this.self.flex.real_h = node.flex_data.avail_h + node.flex_data.off_h + node.flex_data.left_h + (dom_flag ? node.flex_data.dom_h : 0);
-
+	
 			this.self.flex.real_max_h = lib0246.calc_spread(
 				node.flex_data.share_count,
-				node.flex_data.avail_h - 20 + pad_h2,
+				// LGraphNode.prototype.getConnectionPos
+				node.flex_data.avail_h - slot_h,
 				node.flex_data.share_weight,
 				node.flex_data.share_max_h
-			)[this.self.flex.index] + pad_h;
-			
+			)[this.self.flex.index];
+	
 			if (this.self.flex.real_max_h < this.self.flex.real_min_h)
 				this.self.flex.real_max_h = this.self.flex.real_min_h;
-
+	
 			lib0246.calc_area(
 				this.self.flex.margin_x, this.self.flex.margin_head_y, this.self.flex.margin_tail_real_y,
 				width, this.self.flex.real_h, this.self.flex.real_max_h,
 				this.self.flex.ratio, this.self.flex.center, this.self.flex.real_y,
 				true, this.self.flex.hold_size
 			);
-
-			this.self.flex.temp_h += this.self.flex.hold_size[3] - pad_h; // + this.self.flex.margin_head_y + this.self.flex.margin_tail_y;
-			
+	
+			this.self.flex.temp_h += this.self.flex.hold_size[3];
+	
 			if (this.self.flex.real_h < this.self.flex.real_min_h)
 				this.self.flex.real_h = this.self.flex.real_min_h;
-			
+	
 			if (this.self.flex.temp_h < this.self.flex.real_min_h)
 				this.self.flex.temp_h = this.self.flex.real_min_h;
-
+	
 			this.self.computedHeight = this.self.flex.temp_h;
-
-			this.res = [width, this.self.flex.temp_h]; // + (dom_flag ? 12 : 0)];
+	
+			this.res = [width, this.self.flex.temp_h];
 			this.stop = true;
 		}
 	});
@@ -1388,7 +1392,7 @@ export function widget_flex(node, widget, options = {}) {
 	};
 }
 
-const DOM_NODE_DB = new Set(), DOM_RESIZE = Symbol("dom_resize");
+const DOM_NODE_DB = new Set(), DOM_RESIZE_MARK = Symbol("dom_resize");
 
 export function DOM_WIDGET(data_type, data_name, element, options = {}) {
 	Object.assign(options, {
@@ -1479,8 +1483,8 @@ export function DOM_WIDGET(data_type, data_name, element, options = {}) {
 					}
 				});
 
-				if (!node[DOM_RESIZE]) {
-					node[DOM_RESIZE] = true;
+				if (!node[DOM_RESIZE_MARK]) {
+					node[DOM_RESIZE_MARK] = true;
 					lib0246.hijack(node, "onResize", function (size) {
 						if (this.mark) {
 							widget.options.beforeResize?.call(widget, this);
@@ -3415,6 +3419,68 @@ const CLOUD_STATE = [
 	}
 ];
 
+function cloud_rand_func(value, canvas, node, pos, evt) {
+	if (value === "seed") {
+		node.widgets.find(_ => _.name === `${this.name.split(":").slice(0, 2).join(":")}:rand:seed`).value =
+			lib0246.rand_int(-1125899906842624, 1125899906842624);
+		this.value = "fix";
+	}
+}
+
+function cloud_after_func(node, inst_id, step) {
+	switch (this.value) {
+		case "rand": {
+			this.value = lib0246.rand_int(-1125899906842624, 1125899906842624);
+		} break;
+		case "+": {
+			this.value += step ? step.value : this.cloud.widgets[inst_id][1].options.step / 10;
+		} break;
+		case "-": {
+			this.value -= step ? step.value : this.cloud.widgets[inst_id][1].options.step / 10;
+		} break;
+		case "fix": {
+			// Nothing
+		} break;
+	}
+}
+
+function cloud_widget_build_basic(node, widget, inst_id, name, input, data) {
+	if (input !== null && input.find(_ => _.name === name)) {
+		node.widgets.push(widget.cloud.widgets[inst_id][0]);
+		window.setTimeout(() => {
+			node.widgets.splice(
+				node.widgets.indexOf(widget.cloud.widgets[inst_id][0]),
+				widget.cloud.widgets[inst_id].length
+			);
+		}, 0);
+	}
+	if (data !== null)
+		for (let i = 0; i < widget.cloud.widgets[inst_id].length; ++ i)
+			widget.cloud.widgets[inst_id][i].value = data.widgets_values[i];
+}
+
+function cloud_widget_select_basic(node, inst_id, name, flag) {
+	if (flag) {
+		if (node.widgets.findIndex(_ => _.name === name) === -1)
+			node.widgets.push(...this.cloud.widgets[inst_id]);
+	} else
+		node.widgets.splice(
+			node.widgets.indexOf(this.cloud.widgets[inst_id][0]),
+			this.cloud.widgets[inst_id].length
+		);
+}
+
+function cloud_widget_view_text_basic(inst, mark = "", snip = true) {
+	const text = [];
+	for (let i = 0; i < this.cloud.widgets[inst.id].length; ++ i)
+		text.push(
+			this.cloud.widgets[inst.id][i].type === "converted-widget" ?
+			`~${i}~` :
+			lib0246[snip ? "text_snip" : "dummy"](String(this.cloud.widgets[inst.id][i].value), 8),
+		);
+	return text.join(mark);
+}
+
 function cloud_build(node, kind, data = null, input = null, full = null) {
 	const inst_id = data?.id ?? String(this.cloud.data.id ++);
 	switch (kind) {
@@ -3459,18 +3525,78 @@ function cloud_build(node, kind, data = null, input = null, full = null) {
 					},
 				}
 			];
-			if (input !== null && input.find(_ => _.name === `cloud:${inst_id}:weight:weight_input`)) {
-				node.widgets.push(this.cloud.widgets[inst_id][0]);
-				window.setTimeout(() => {
-					node.widgets.splice(node.widgets.indexOf(this.cloud.widgets[inst_id][0]), 1);
-				}, 0);
-			}
-			if (data !== null)
-				this.cloud.widgets[inst_id][0].value = data.widgets_values[0];
+			cloud_widget_build_basic(node, this, inst_id, `cloud:${inst_id}:weight:weight_input`, input, data);
 		} break;
 		case "rand": {
+			this.cloud.widgets[inst_id] = [
+				{
+					name: `cloud:${inst_id}:rand:count`,
+					type: "number",
+					value: 1,
+					options: {
+						min: 1,
+						max: Number.MAX_SAFE_INTEGER,
+						step: 10,
+						precision: 0
+					},
+				}, {
+					name: `cloud:${inst_id}:rand:seed`,
+					type: "number",
+					value: 1,
+					options: {
+						min: -1125899906842624,
+						max: 1125899906842624,
+						step: 10,
+						precision: 0
+					},
+				}, {
+					name: `cloud:${inst_id}:rand:mode`,
+					type: "combo",
+					value: "rand",
+					callback: cloud_rand_func,
+					afterQueued: cloud_after_func.bind(this, node, inst_id),
+					options: {
+						// Allow serialize for server-side generation
+						values: ["seed", "fix", "rand", "+", "-"],
+					},
+				}
+			];
+			cloud_widget_build_basic(node, this, inst_id, `cloud:${inst_id}:rand:count`, input, data);
 		} break;
 		case "cycle": {
+			this.cloud.widgets[inst_id] = [
+				{
+					name: `cloud:${inst_id}:cycle:offset`,
+					type: "number",
+					value: 1,
+					options: {
+						min: Number.MIN_SAFE_INTEGER,
+						max: Number.MAX_SAFE_INTEGER,
+						step: 10,
+						precision: 0
+					},
+				}, {
+					name: `cloud:${inst_id}:cycle:step`,
+					type: "number",
+					value: 1,
+					options: {
+						min: Number.MIN_SAFE_INTEGER,
+						max: Number.MAX_SAFE_INTEGER,
+						step: 10,
+						precision: 0
+					},
+				}, {
+					name: `cloud:${inst_id}:cycle:mode`,
+					type: "combo",
+					value: "+",
+					options: {
+						// Allow serialize for server-side generation
+						values: ["fix", "+", "-"],
+					},
+				}
+			];
+			this.cloud.widgets[inst_id][2].afterQueued = cloud_after_func.bind(this, node, inst_id, this.cloud.widgets[inst_id][1]);
+			cloud_widget_build_basic(node, this, inst_id, `cloud:${inst_id}:cycle:offset`, input, data);
 		} break;
 		default: {
 			this.options?.build?.(node, kind, data);
@@ -3483,21 +3609,6 @@ function cloud_build(node, kind, data = null, input = null, full = null) {
 			widgets_values: [],
 			widgets_names: [],
 		});
-}
-
-function cloud_remove(node, inst_id) {
-	this.select(node, inst_id, false);
-	this.cloud.data.inst.splice(this.cloud.data.inst.findIndex(_ => _.id === inst_id), 1);
-	delete this.cloud.widgets[inst_id];
-	delete this.cloud.data.view[inst_id];
-	delete this.cloud.data.pos[inst_id];
-	delete this.cloud.data.hit[inst_id];
-	for (let group_id in this.cloud.data.group) {
-		const idx = this.cloud.data.group[group_id]?.inst?.indexOf?.(inst_id);
-		if (idx !== -1)
-			this.cloud.data.group[group_id]?.inst?.splice?.(idx, 1);
-	}
-	cloud_clean_group(this.cloud.data.group);
 }
 
 function cloud_select(node, inst_id, flag) {
@@ -3515,18 +3626,18 @@ function cloud_select(node, inst_id, flag) {
 		} break;
 		case "text_list": {
 		} break;
-		case "text_json": {
+		case "text_file_list": {
+		} break;
+		case "text_file_json": {
 		} break;
 		case "weight": {
-			if (flag) {
-				if (node.widgets.findIndex(_ => _.name === `cloud:${inst_id}:weight:weight_input`) === -1)
-					node.widgets.push(this.cloud.widgets[inst_id][0]);
-			} else
-				node.widgets.splice(node.widgets.indexOf(this.cloud.widgets[inst_id][0]), 1);
+			cloud_widget_select_basic.call(this, node, inst_id, `cloud:${inst_id}:weight:weight_input`, flag);
 		} break;
 		case "rand": {
+			cloud_widget_select_basic.call(this, node, inst_id, `cloud:${inst_id}:rand:count`, flag);
 		} break;
 		case "cycle": {
+			cloud_widget_select_basic.call(this, node, inst_id, `cloud:${inst_id}:cycle:offset`, flag);
 		} break;
 		default: {
 			this.options?.select?.(node, inst_id, flag);
@@ -3546,21 +3657,25 @@ function cloud_view(node, inst) {
 	switch (inst.kind) {
 		case "text": {
 			text += this.cloud.widgets[inst.id][0].type === "converted-widget" ?
-				`##${inst.id}##` :
+				`~0~` :
 				this.cloud.widgets[inst.id][0].options.getValue();
 		} break;
 		case "text_list": {
 		} break;
-		case "text_json": {
+		case "text_file_list": {
+		} break;
+		case "text_file_json": {
 		} break;
 		case "weight": {
-			text += this.cloud.widgets[inst.id][0].type === "converted-widget" ?
-				`##${inst.id}##` :
+			text = this.cloud.widgets[inst.id][0].type === "converted-widget" ?
+				`~0~` :
 				String(lib0246.round(this.cloud.widgets[inst.id][0].value, 2));
 		} break;
 		case "rand": {
+			text = cloud_widget_view_text_basic.call(this, inst, " ");
 		} break;
 		case "cycle": {
+			text = cloud_widget_view_text_basic.call(this, inst, " ");
 		} break;
 		default: {
 			text += this.options?.view?.(node, inst);
@@ -3568,8 +3683,23 @@ function cloud_view(node, inst) {
 	}
 	// [TODO] If converted to pin then display as such
 	if (text === old_text)
-		text += "#####";
+		text += "[...]";
 	return text;
+}
+
+function cloud_remove(node, inst_id) {
+	this.select(node, inst_id, false);
+	this.cloud.data.inst.splice(this.cloud.data.inst.findIndex(_ => _.id === inst_id), 1);
+	delete this.cloud.widgets[inst_id];
+	delete this.cloud.data.view[inst_id];
+	delete this.cloud.data.pos[inst_id];
+	delete this.cloud.data.hit[inst_id];
+	for (let group_id in this.cloud.data.group) {
+		const idx = this.cloud.data.group[group_id]?.inst?.indexOf?.(inst_id);
+		if (idx !== -1)
+			this.cloud.data.group[group_id]?.inst?.splice?.(idx, 1);
+	}
+	cloud_clean_group(this.cloud.data.group);
 }
 
 function cloud_build_group(node, mode, second = null, color = undefined) {
@@ -3751,15 +3881,15 @@ function cloud_draw_msg(ctx, widget, inst_id, text, prev_p) {
 		text,
 		widget.flex.hold_draw[0] + widget.cloud.data.pos[inst_id][idx + 1] + prev_p,
 		widget.flex.hold_draw[1] +
-			widget.cloud.data.pos[inst_id][idx + 2] + widget.cloud.data.pos[inst_id][idx + 4] +
-			(text_measure.actualBoundingBoxAscent + text_measure.actualBoundingBoxDescent) / 2 + 6
+			widget.cloud.data.pos[inst_id][idx + 2] + widget.cloud.data.pos[inst_id][idx + 4] -
+			text_measure.actualBoundingBoxAscent + text_measure.actualBoundingBoxDescent + 6
 	);
 	ctx.fillText(
 		text,
 		widget.flex.hold_draw[0] + widget.cloud.data.pos[inst_id][idx + 1] + prev_p,
 		widget.flex.hold_draw[1] +
-			widget.cloud.data.pos[inst_id][idx + 2] + widget.cloud.data.pos[inst_id][idx + 4] +
-			(text_measure.actualBoundingBoxAscent + text_measure.actualBoundingBoxDescent) / 2 + 6
+			widget.cloud.data.pos[inst_id][idx + 2] + widget.cloud.data.pos[inst_id][idx + 4] -
+			text_measure.actualBoundingBoxAscent + text_measure.actualBoundingBoxDescent + 6
 	);
 	return curr_p;
 	// ctx.strokeText(
@@ -3864,7 +3994,7 @@ export function CLOUD_WIDGET(data_type, data_name, options = {}) {
 				ctx, this.flex.hold_draw[0], this.flex.hold_draw[1], this.flex.hold_draw[2], this.flex.hold_draw[3],
 				2, 2, 5, 5,
 				4, 4, 4, 4,
-				4, 4, 2, 2,
+				0, 6, 2, 2,
 				2, 2
 				// 0, 0, 0, 0,
 				// 0, 0, 0, 0,
@@ -4226,3 +4356,7 @@ app.registerExtension({
 		});
 	},
 });
+
+window.test = [
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+];
