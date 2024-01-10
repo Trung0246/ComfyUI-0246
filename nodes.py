@@ -1553,7 +1553,7 @@ class ScriptPile:
 				"pipe_in": (lib0246.TautologyStr("*"), ),
 				"script_rule_loop_mode": (["_", "slice", "cycle"], ),
 				"script_rule_regex": ("STRING", {
-					"default": r"(?P<m>^@model$)|(?P<m_>^%MODEL$)|(?P<c>^@clip$)|(?P<c_>^%CLIP$)|(?P<_>^$)",
+					"default": r"(?P<m>^(@model|%MODEL)$)|(?P<c>^(@clip|%CLIP)$)|(?P<_>^$)",
 					"multiline": False
 				}),
 				"script_rule_pin_mode": ([
@@ -1603,7 +1603,7 @@ class ScriptPile:
 			if curr_match_pin:
 				for (i, curr_out), curr_type in zip(enumerate(script_name), script_type):
 					curr_match_out: re.Match = script_rule_regex.match("%" + curr_out)
-					if curr_match_out and curr_match_out.lastgroup == curr_match_pin.lastgroup + "_":
+					if curr_match_out and curr_match_out.lastgroup == curr_match_pin.lastgroup:
 						pile_data["data"][(curr_out, curr_type)] = (i, curr_pin, count)
 						count += 1
 						if curr_type not in pile_data["type"]:
@@ -2014,76 +2014,42 @@ class Hub:
 			"result": [res_data[i] for i in range(len(res_data))]
 		}
 
+######################################################################################
+
+class Cloud:
+	@classmethod
+	def INPUT_TYPES(s):
+		return {
+			"required": lib0246.WildDict(),
+			"optional": {
+				"_cloud_in": ("CLOUD_PIPE", ),
+			},
+			"hidden": {
+				"_prompt": "PROMPT",
+				"_id": "UNIQUE_ID",
+				"_workflow": "EXTRA_PNGINFO"
+			}
+		}
+	
+	RETURN_TYPES = lib0246.ByPassTypeTuple(("CLOUD_PIPE", ))
+	RETURN_NAMES = lib0246.ByPassTypeTuple(("_cloud_out", ))
+	INPUT_IS_LIST = True
+	OUTPUT_IS_LIST = lib0246.TautologyAll()
+	FUNCTION = "execute"
+	CATEGORY = "0246"
+
+	def execute(self, _id = None, _prompt = None, _workflow = None, **kwargs):
+		pass
+
+	def text_to_cloud(self):
+		pass
+
+	def cloud_to_text(self):
+		pass
+
 ########################################################################################
 ######################################## EXPORT ########################################
 ########################################################################################
-
-# Node only used for showcase stuff
-
-class StrAdd:
-	@classmethod
-	def INPUT_TYPES(s):
-		return {
-			"required": {
-				"a": ("STRING", {
-					"default": "a",
-					"multiline": True
-				}),
-				"b": ("STRING", {
-					"default": "b",
-					"multiline": True
-				}),
-				"c": ("STRING", {
-					"default": "c",
-					"multiline": True
-				}),
-			}
-		}
-	
-	RETURN_TYPES = ("STRING", )
-	RETURN_NAMES = ("res", )
-	OUTPUT_IS_LIST = (False, )
-	FUNCTION = "execute"
-	CATEGORY = "0246"
-
-	def execute(self, a = None, b = None, c = None):
-		return (f"({a};{b};{c})", )
-	
-class StrAddBatch:
-	@classmethod
-	def INPUT_TYPES(s):
-		return {
-			"required": {
-				"a": ("STRING", {
-					"default": "a",
-					"multiline": True
-				}),
-				"b": ("STRING", {
-					"default": "b",
-					"multiline": True
-				}),
-				"c": ("STRING", {
-					"default": "c",
-					"multiline": True
-				}),
-			}
-		}
-	
-	RETURN_TYPES = ("STRING", )
-	RETURN_NAMES = ("res", )
-	INPUT_IS_LIST = True
-	OUTPUT_IS_LIST = (True, )
-	FUNCTION = "execute"
-	CATEGORY = "0246"
-
-	def execute(self, a = None, b = None, c = None):
-		res = []
-		for i in range(len(a)):
-			a_val = a[i] if i < len(a) else a[-1]
-			b_val = b[i] if i < len(b) else b[-1]
-			c_val = c[i] if i < len(c) else c[-1]
-			res.append(f"({a_val};{b_val};{c_val})")
-		return (res, )
 
 # [TODO] "Meta" node to show information about highway or junction
 # [TODO] "RandomInt" node can have linger seed if batch len is different
@@ -2107,6 +2073,7 @@ NODE_CLASS_MAPPINGS = {
 	"0246.ScriptPile": ScriptPile,
 	"0246.Script": Script,
 	"0246.Hub": Hub,
+	# "0246.Cloud": Cloud,
 	# "0246.Pick": Pick,
 	# "0246.StrAdd": StrAdd,
 	# "0246.StrAddBatch": StrAddBatch,
@@ -2131,6 +2098,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
 	"0246.ScriptPile": "Script Pile",
 	"0246.Script": "Script",
 	"0246.Hub": "Hub",
+	# "0246.Cloud": "Cloud",
 	# "0246.Pick": "Pick",
 	# "0246.StrAdd": "Str Add",
 	# "0246.StrAddBatch": "Str Add Batch",

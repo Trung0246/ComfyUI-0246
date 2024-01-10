@@ -49,36 +49,62 @@ export function is_async(func) {
 	return func.constructor.name === "AsyncFunction";
 }
 
-export function hijack(obj, key, before_func, after_func) {
+export const HIJACK_MARK = Symbol("hijack_mark");
+
+function hijack_evt(evt_obj, pass_obj, mode) {
+	for (let i = 0; i < evt_obj.evt.length; ++ i)
+		evt_obj.evt[i].call(pass_obj, mode);
+}
+
+export function hijack(obj, key, func, evt) {
 	// The most convoluted hijacking mechanism ever
-	const old_func = obj[key] ?? (() => {});
+	const old_func = obj[key] ?? (() => {}),
+		evt_obj = old_func[HIJACK_MARK] ?? {
+			evt: [],
+		};
 
 	obj[key] = function(...args) {
 		const self = this;
 		const pass_obj = {
 			self: self,
 			stop: false,
-			pre: before_func,
-			post: after_func,
+			func: func,
 			old: old_func,
 			args: args,
-			wait: is_async(old_func) || is_async(before_func) || is_async(after_func),
+			wait: is_async(old_func) || is_async(func),
 		};
 
 		const exec_after = () => {
-			const after_result = after_func.apply(pass_obj, args);
+			hijack_evt(evt_obj, pass_obj, 0b10000);
+			const after_result = func.apply(pass_obj, args);
+			hijack_evt(evt_obj, pass_obj, 0b100000);
+
 			if (is_promise(after_result))
-				return after_result.then(() => pass_obj.res);
+				// return after_result.then(() => pass_obj.res);
+				return after_result.then(() => {
+					hijack_evt(evt_obj, pass_obj, 0b100000000);
+					return pass_obj.res;
+				});
 			return pass_obj.res;
 		};
 
 		const exec_old = () => {
 			if (pass_obj.old !== old_func || pass_obj.stop) {
+				hijack_evt(evt_obj, pass_obj, 0b1000000);
 				if (is_promise(pass_obj.res))
-					return pass_obj.res.then(exec_after);
+					// return pass_obj.res.then(exec_after);
+					return pass_obj.res.then(res => {
+						pass_obj.res = res;
+						hijack_evt(evt_obj, pass_obj, 0b10000000);
+						return exec_after();
+					});
 				return exec_after();
 			}
+
+			hijack_evt(evt_obj, pass_obj, 0b100);
 			const result = old_func.apply(self, args);
+			hijack_evt(evt_obj, pass_obj, 0b1000);
+
 			if (is_promise(result))
 				return result.then(res => {
 					pass_obj.res = res;
@@ -88,11 +114,20 @@ export function hijack(obj, key, before_func, after_func) {
 			return exec_after();
 		};
 
-		const before_result = before_func.apply(pass_obj, args);
+		hijack_evt(evt_obj, pass_obj, 0b1);
+		const before_result = func.apply(pass_obj, args);
+		hijack_evt(evt_obj, pass_obj, 0b10);
+
+		pass_obj.mark = true;
 		if (is_promise(before_result))
 			return before_result.then(exec_old);
 		return exec_old();
 	};
+
+	obj[key][HIJACK_MARK] = evt_obj;
+
+	if (evt)
+		obj[key][HIJACK_MARK].evt.push(evt);
 
 	return old_func;
 }
@@ -511,19 +546,15 @@ export function calc_spread(count, total, weight, limit) {
 
 	for (let i = 0; i < count; ++ i)
 		if (limit[i] !== null) {
-			let weight_ratio = weight[i] / total_weight,
-				res_val = weight_ratio * total;
-			res[i] = Math.min(res_val, limit[i]);
+			res[i] = Math.min(weight[i] / total_weight * total, limit[i]);
 
 			total -= res[i];
 			total_weight -= weight[i];
 		}
 
 	for (let i = 0; i < count; ++ i)
-		if (limit[i] === null) {
-			let weight_ratio = weight[i] / total_weight;
-			res[i] = weight_ratio * total;
-		}
+		if (limit[i] === null)
+			res[i] = weight[i] / (total_weight === 0 ? 1 : total_weight) * total;
 
 	return res;
 }
@@ -542,6 +573,24 @@ export function snap(num, step) {
 	if (num > 0)
 		return Math.floor(num / step) * step;
 	return Math.ceil(num / step) * step;
+}
+
+export function multi_snap(num, len, fn) {
+	if (num < fn(0) || num > fn(len - 1))
+		return null;
+	
+	let closest = 0,
+		min_diff = Math.abs(num - fn(0));
+
+	for (let i = 1; i < len; ++ i) {
+		let diff = Math.abs(num - fn(i));
+		if (diff < min_diff) {
+			min_diff = diff;
+			closest = i;
+		}
+	}
+
+	return closest;
 }
 
 export function rem(a, b) {

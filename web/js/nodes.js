@@ -1,3130 +1,189 @@
 import { app } from "../../../scripts/app.js";
-import { api } from "../../../scripts/api.js";
 import { ComfyWidgets } from "../../../scripts/widgets.js";
 import { GroupNodeHandler } from "../../../extensions/core/groupNode.js";
-import * as comfy_widget from "../../../extensions/core/widgetInputs.js";
-
-import { JSONEditor } from "https://cdn.jsdelivr.net/npm/vanilla-jsoneditor/standalone.js";
 
 import * as lib0246 from "./utils.js";
-
-const HELP = {
-	"highway": `
-		<span>
-			The _query syntax goes as follow:
-		</span>
-		<ul>
-			<li>
-				<code>&gt;name</code>
-				<br>
-				- Input variable.
-			</li>
-			<li>
-				<code>&lt;name</code>
-				<br>
-				- Output variable.
-			</li>
-			<li>
-				<code>&gt;\`n!ce n@me\`</code>
-				<br>
-				-	Input variable but with special character and spaces (except \`, obviously).
-			</li>
-			<li>
-				<code>!name</code>
-				<br>
-				- Output variable, but also delete itself, preventing from being referenced further.
-				<br>
-				- CURRENTLY BROKEN DUE TO HOW COMFYUI UPDATE THE NODES.
-			</li>
-			<li>
-				<code>&lt;name1; &gt;name2; !name3</code>
-				<br>
-				- Multiple input and outputs together.
-			</li>
-		</ul>
-	`.replace(/[\t\n]+/g, ''),
-	"junction": `
-		<span>
-			_offset is used to skip data ahead for specific type (since internally it's a sequence of data).
-		</span>
-		<br><br>
-		<span>
-			_offset is persistent and will retains information across linked Junction and JunctionBatch.
-		</span>
-		<br><br>
-		<span>
-			The _offset syntax goes as follow:
-		</span>
-		<ul>
-			<li>
-				<code>type,1</code>
-				<br>
-				- type is the type (usually LATENT, MODEL, VAE, etc.) and 1 is the index being set.
-			</li>
-			<li>
-				<code>type,+2</code>
-				<br>
-				- Same as above but instead of set offset, it increase the offset instead.
-			</li>
-			<li>
-				<code>type,-2</code>
-				<br>
-				- Decrease offset.
-			</li>
-			<li>
-				<code>type1, -1; type2, +2; type3, 4</code>
-				<br>
-				- Multiple offset.
-			</li>
-		</ul>
-	`.replace(/[\t\n]+/g, ''),
-	"box_range": `
-		<span>
-			Drag from an empty space to anywhere to create a new box.
-		</span>
-		<br><br>
-		<span>
-			Click on a box to select that box.
-		</span>
-		<ul>
-			<li>
-				Clicking the same position again will cycle through each boxes that are contains that mouse position.
-			</li>
-		</ul>
-		<span>
-			Changing z-index of a box may also change z-index of other boxes.
-		</span>
-		<br><br>
-		<span>
-			If during MOVE or RESIZE state, mouse the mouse out of boundary to cancel the action.
-		</span>
-		<br><br>
-		<span>
-			If holding Shift during drag from empty space, then it will DELETE any box that are within that area.
-		</span>
-		<br><br>
-		<span>
-			When a box is selected:
-		</span>
-		<ul>
-			<li>
-				Drag the box around to MOVE it.
-			</li>
-			<li>
-				Double click in top right to DELETE.
-			</li>
-			<li>
-				Double click in bottom right to RESIZE.
-			</li>
-			<li>
-				Double click in bottom left to INCREASE Z-INDEX.
-			</li>
-			<li>
-				Double click in top left to DECREASE Z-INDEX.
-			</li>
-			<li>
-				Hold SHIFT while clicking on the box again will prompt for specific range <code>[x, y, width, height]</code> or JS code string.
-				<ul>
-					<li>
-						If any is <code>null</code> then it will be filled with the current boundary data for that index.
-					</li>
-					<li>
-						If any is <code>"string"</code> then it will be implicitly assumed to be math expression and will be evaluated.
-					</li>
-					<li>
-						If entire thing is JS then it must return an array. There's some utilities function available.
-						<ul>
-							<li>
-								You can Ctrl-F to search for "safe_eval" within "nodes.js" and "utils.js" for more info on what's available.
-							</li>
-						</ul>
-					</li>
-				</ul>
-			</li>
-		</ul>
-		<span>
-			There'res a "secret" mode such that when all 3 are unlocked or locked and change the "ratio", it will actually 
-			changes the "area" of the box instead. All 3 locked means "width" are pinned, all 3 unlocked means "height" are pinned.
-		</span>
-	`.replace(/[\t\n]+/g, ''),
-	"hub": `
-		<span>
-			This node can create a NEW widget (or create a bunch of NEW widgets using an exist node as template)
-		</span>
-		<br><br>
-		<span>
-			It also can group and sync widgets data from other nodes.
-		</span>
-		<br><br>
-		<span>
-			When clicking on node title within the hub, it will select/unselect that node.
-		</span>
-		<ul>
-			<li>
-				A node is being selected when a border color is shown around the node.
-			</li>
-		</ul>
-		<span>
-			You don't have to worry about when converting tracked nodes to group since it can be detected and can auto-add the group node.
-		</span>
-		<ul>
-			<li>
-				However when manually add group node to Hub, Hub will not automatically add widgets from the expanded nodes (probably will allow this in future).
-			</li>
-		</ul>
-		<span>
-			Only built-in widgets (and Box Range) are supported. Other custom widget are probably not going to works.
-		</span>
-		<ul>
-			<li>
-				Of course you can try to group custom widgets as I tried to design Hub to be as "reactive" as possible internally.
-			</li>
-		</ul>
-		<span>
-			Unfortunately due to inherent limitation you cannot resize Hub node.
-		</span>
-		<br><br>
-		<span>
-			Also for DOM/HTML-based widgets (such as multiline text), the element will probably "flick" between the Hub and the actual node.
-		</span>
-		<br><br>
-		<span>
-			Warning:
-		</span>
-		<ul>
-			<li>
-				For any native image upload widgets, the tracked nodes will have preview image may render out of node bound. This is due to inherent limitation and I cannot fix it.
-			</li>
-			<li>
-				Do not convert widget to input from within Hub node. Do it from the tracked node instead. I may handle this case later in future.
-			</li>
-			<li>
-				Image preview also not rendered properly. Therefore it will need a custom widget that I will probably implement.
-		</ul>
-	`.replace(/[\t\n]+/g, ''),
-};
-
-let defs, node_defs = [], combo_defs = [], type_defs = new Set();
-
-(async () => {
-	function rgthree_exec(name, ...args) {
-		return rgthree_utils?.[name]?.apply(null, args);
-	}
-
-	function help_option(node, content, app) {
-		// Guess this is good enough
-		rgthree_exec("addHelpMenuItem", node, content, app);
-	}
-
-	// await lib0246.load_script("https://unpkg.com/interactjs@1.10.23/dist/interact.min.js");
-
-	// Shamelessly imported :3
-	const rgthree_utils =  await lib0246.try_import("../../../extensions/rgthree-comfy/utils.js");
-		// mtb_widgets =  await lib0246.try_import("../../../extensions/comfy_mtb/mtb_widgets.js");
-
-	lib0246.hijack(app, "registerNodesFromDefs", async function (_defs) {
-		defs = _defs;
-
-		for (let key in defs) {
-			node_defs.push(key);
-			for (let idx in defs[key].output)
-				if (!Array.isArray(defs[key].output[idx]))
-					type_defs.add(defs[key].output[idx]);
-			for (let idx in defs[key].input)
-				for (let type in defs[key].input[idx])
-					if (Array.isArray(defs[key].input[idx][type][0]))
-						combo_defs.push([key, idx, type]);
-		}
-
-		type_defs = [...type_defs.values()];
-	}, () => {});
-
-	let PROCESS_WIDGET_NODE;
-
-	/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-	/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-	/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-	async function init_update_raw(node, widget, callback) {
-		if (node.__update || !node.__hash_update)
-			node.__hash_update = lib0246.random_id();
-		node.__update = false;
-		const temp = {
-			data: widget.value,
-			update: node.__hash_update,
-		};
-		if (callback)
-			await callback(node, widget, temp);
-		return temp;
-	}
-
-	function init_update(node, name) {
-		node.__update = false;
-		for (let i = 0; i < node.widgets.length; ++ i) {
-			if (node.widgets[i].name === name) {
-				node.widgets[i].serializeValue = async function (inner_node, index_str) {
-					return await init_update_raw(node, node.widgets[i]);
-				};
-				return;
-			}
-		}
-	}
-
-	function init_update_direct(node, name, callback) {
-		node.__update = false;
-		node.addCustomWidget({
-			name: name,
-			computeSize: () => [0, -4],
-			async serializeValue (inner_node, index_str) {
-				return await init_update_raw(node, this, callback);
-			}
-		});
-	}
-
-	function link_shift_up(node, arr, index, flag, link_callback) {
-		// Disconnect event handler
-		const old_func = node.onConnectionsChange;
-		node.onConnectionsChange = null;
-		const old_in_func = node.onConnectInput;
-		node.onConnectInput = null;
-		const old_out_func = node.onConnectOutput;
-		node.onConnectOutput = null;
-
-		// Shift up all links
-
-		app.canvas.setDirty(true, false);
-		if (flag) {
-			if (arr[index].links.length === 0) {
-				node.removeOutput(index);
-				
-				for (let i = 0, c = 0; i < arr.length; ++ i) {
-					if (BLACKLIST.includes(arr[i].name))
-						continue;
-					arr[i].name = `${arr[i].type}:${c}`;
-					++ c;
-				}
-			}
-		} else {
-			node.removeInput(index);
-
-			for (let i = 0, c = 0; i < arr.length; ++ i) {
-				if (BLACKLIST.includes(arr[i].name))
-					continue;
-				arr[i].name = `${c}:${arr[i].type}`;
-				++ c;
-			}
-		}
-		
-		// Revert things back
-		node.onConnectionsChange = old_func;
-		node.onConnectInput = old_in_func;
-		node.onConnectOutput = old_out_func;
-
-		return;
-	}
-
-	const BLACKLIST = [
-		"_way_in",
-		"_way_out",
-		"_junc_in",
-		"_junc_out",
-		"_pipe_in",
-		"_pipe_out",
-		"_query",
-		"_offset",
-		"_event",
-		"_delimiter",
-		"_script_in",
-		"_script_out",
-		"_exec_mode",
-		"_sort_mode",
-		"_mode",
-		"_pad",
-		"_data", "_width", "_height", "_ratio",
-		"..."
-	];
-
-	const LEGACY_BLACKLIST = {
-		prev: ["_pipe_in", "_pipe_out"],
-		next: ["_way_in", "_way_out"],
-	};
-
-	/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-	/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-	/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-	function setup_sole_pin(node, name, side_name, side_mode, shape) {
-		const upper_name = side_name.charAt(0).toUpperCase() + side_name.slice(1),
-			more_name = side_name + "s";
-
-		lib0246.hijack(node, "onConnect" + upper_name, () => {}, function () {
-			if (this.self[more_name][arguments[0]].name !== name)
-				return true;
-
-			this.self[more_name][arguments[0]].shape = shape;
-			this.self[more_name][arguments[0]].type = arguments[2].type;
-		});
-
-		lib0246.hijack(node, "onConnectionsChange", () => {}, function (type, index, connected, link_info) {
-			if (link_info === null) {
-				// Clean up when copy paste or template load
-				if (this.self[more_name])
-					for (let i = 0; i < this.self[more_name].length; ++ i)
-						if (this.self[more_name][i].name === name) {
-							this.self[more_name][i].type = "*";
-							break;
-						}
-				return;
-			}
-			
-			if (!connected && index < this.self[more_name].length && this.self[more_name][index].name === name && type === side_mode)
-				this.self[more_name][index].type = "*";
-		});
-	}
-
-	function setup_expand(node, name, real, pin, shape, callback) {
-		const upper_name = name.charAt(0).toUpperCase() + name.slice(1),
-			more_name = name + "s";
-
-		node["add" + upper_name](pin, "*");
-
-		if (node[more_name])
-			for (let i = 0; i < node[more_name].length; ++ i)
-				if (node[more_name][i].name === pin) {
-					node[more_name][i].shape = shape;
-					break;
-				}
-
-		lib0246.hijack(node, "configure", () => {}, function (data) {
-			if (this.self[more_name])
-				for (let i = 0; i < this.self[more_name].length; ++ i) {
-					if (!BLACKLIST.includes(this.self[more_name][i].name))
-						++ real[name];
-				}
-		});
-
-		node["onConnect" + upper_name] = function (
-			this_slot_index,
-			other_slot_type,
-			other_slot_obj,
-			other_node,
-			other_slot_index
-		) {
-			this.__update = true;
-
-			if (
-				BLACKLIST.includes(this[more_name][this_slot_index].name) &&
-				this[more_name][this_slot_index].name !== pin
-			)
-				return true;
-
-			const res = callback.apply({ self: this, name: name, mode: 0 }, arguments);
-			if (res === true)
-				return true;
-			if (res === false)
-				return false;
-
-			callback.call({ self: this, name: name, mode: 1 }, real[name] ++, this[more_name][this_slot_index].type, this_slot_index);
-			
-			this["add" + upper_name](pin, "*");
-			this[more_name][this[more_name].length - 1].shape = shape;
-			return true;
-		};
-
-		lib0246.hijack(node, "onConnectionsChange", () => {}, function (type, index, connected, link_info) {
-			if (link_info === null) {
-				// Clean up when copy paste or template load
-				if (this.self[more_name])
-					lib0246.remove_elem_arr(this.self[more_name], (e) => !BLACKLIST.includes(e.name));
-				this.self.computeSize();
-				app.canvas.setDirty(true, false);
-				return;
-			}
-			
-			if (!connected)
-				callback.apply({ self: this.self, name: name, mode: 2 }, arguments);
-		});
-	}
-
-	const INIT_FLAG = Symbol("init_flag"); 
-
-	function highway_impl(nodeType, nodeData, app, shape_in, shape_out) {
-		nodeType.prototype.onNodeMoved = function () {};
-
-		nodeType.prototype.onNodeCreated = function () {
-			init_update(this, "_query");
-
-			const query = this.widgets.find(w => w.name === "_query");
-
-			query.options = query.options ?? {};
-			query.options.multiline = true;
-
-			let last_query = "";
-			
-			lib0246.hijack(this, "configure", () => {}, function (data) {
-				// Patch legacy nodes
-				for (let i = 0; i < this.self.inputs.length; ++ i) {
-					if (LEGACY_BLACKLIST.prev.includes(this.self.inputs[i].name))
-						this.self.inputs[i].name = LEGACY_BLACKLIST.next[i];
-				}
-				for (let i = 0; i < this.self.outputs.length; ++ i) {
-					if (LEGACY_BLACKLIST.prev.includes(this.self.outputs[i].name))
-					this.self.outputs[i].name = LEGACY_BLACKLIST.next[i];
-				}
-				last_query = data.widgets_values[0];
-			});
-
-			lib0246.hijack(this, "clone", () => {}, function () {
-				const node = this.res;
-				// Clean up when copy paste or template load
-				for (let i = 0; i < node.inputs.length; ++ i)
-					if (!BLACKLIST.includes(node.inputs[i].name)) {
-						node.inputs[i].name = app.graph.extra["0246.__NAME__"][this.self.id]["inputs"][i]["name"];
-						node.inputs[i].type = "*";
-					}
-				for (let i = 0; i < node.outputs.length; ++ i)
-					if (!BLACKLIST.includes(node.outputs[i].name)) {
-						node.outputs[i].name = app.graph.extra["0246.__NAME__"][this.self.id]["outputs"][i]["name"];
-						node.outputs[i].type = "*";
-					}
-				node.computeSize();
-			});
-
-			this.addWidget("button", "Update", null, () => {
-				const self = this;
-
-				(async function () {
-					let data = await (await fetch(
-						window.location.origin + "/0246-parse",
-						{
-							method: "POST",
-							headers: {
-								"Content-Type": "application/json",
-							},
-							body: JSON.stringify({
-								"input": query.value,
-							}),
-						}
-					)).json();
-
-					if (!data) {
-						lib0246.error_popup("Server or Network error");
-						return;
-					}
-
-					if (data.error.length > 0) {
-						lib0246.error_popup(data.error.join("\n"));
-						query.value = last_query;
-						return;
-					}
-
-					last_query = query.value;
-
-					save_parse_load_pin(self, shape_in, shape_out, (node, prev, mode) => {
-						if (mode) {
-							for (let i = 0; i < data.order.length; ++ i) {
-								switch (data.order[i][0]) {
-									case "get":{
-										node.addOutput(`-${data.order[i][1]}`, "*");
-									} break;
-									case "eat": {
-										node.addOutput(`!${data.order[i][1]}`, "*");
-									} break;
-								}
-							}
-						} else {
-							for (let i = 0; i < data.order.length; ++ i) {
-								switch (data.order[i][0]) {
-									case "set": {
-										node.addInput(`+${data.order[i][1]}`, "*");
-									} break;
-								}
-							}
-						}
-					});
-
-					// node_fit(self, query, self.widgets.filter(_ => _.name === "Update")[0]);
-				})();
-			}, {
-				serialize: false
-			});
-
-			this.onConnectInput = function (
-				this_target_slot_index,
-				other_origin_slot_type,
-				other_origin_slot_obj,
-				other_origin_node,
-				other_origin_slot_index
-			) {
-				this.__update = true;
-
-				if (BLACKLIST.includes(this.inputs[this_target_slot_index].name))
-					return true;
-
-				if (this.inputs[this_target_slot_index].link !== null) {
-					// Prevent premature link kill
-					app.graph.links[this.inputs[this_target_slot_index].link].replaced = true;
-					return true;
-				}
-				
-				let curr_pin = this.inputs[this_target_slot_index];
-				if (app.graph.extra["0246.__NAME__"][this.id]["inputs"][this_target_slot_index]["type"] === "*")
-					curr_pin.type = other_origin_slot_obj.type;
-				curr_pin.name = `${app.graph.extra["0246.__NAME__"][this.id]["inputs"][this_target_slot_index]["name"]}:${curr_pin.type}`;
-
-				return true;
-			};
-
-			this.onConnectOutput = function (
-				this_origin_slot_index,
-				other_target_slot_type,
-				other_target_slot_obj,
-				other_target_node,
-				other_target_slot_index
-			) {
-				// We detect if we're connecting to Reroute here by checking other_target_node.type === "Reroute"
-				// return false for not allowing connection
-				this.__update = true;
-				
-				if (BLACKLIST.includes(this.outputs[this_origin_slot_index].name))
-					return true;
-
-				let curr_pin = this.outputs[this_origin_slot_index];
-
-				if (app.graph.extra["0246.__NAME__"][this.id]["outputs"][this_origin_slot_index]["type"] === "*") {
-					if (other_target_node.__outputType) // Reroute
-						curr_pin.type = other_target_node.__outputType;
-					else if (other_target_node.defaultConnectionsLayout) // Reroute (rgthree)
-						// rgthree accept this anyways so whatever since too lazy to properly do graph traversal
-						// EDIT: I was wrong, I have to do it, but not here :(
-						curr_pin.type = other_target_slot_obj.type; 
-					else
-						curr_pin.type = other_target_slot_obj.type;
-				}
-
-				curr_pin.name = `${curr_pin.type}:${app.graph.extra["0246.__NAME__"][this.id]["outputs"][this_origin_slot_index]["name"]}`;
-
-				return true;
-			};
-
-			this.onConnectionsChange = function (type, index, connected, link_info) {
-				if (link_info === null) {
-					this[INIT_FLAG] = true;
-					return;
-				}
-
-				if (!connected) {
-					switch (type) {
-						case 1: {
-							if (BLACKLIST.includes(this.inputs[link_info.target_slot].name) || link_info.replaced)
-								return;
-							const curr_data = app.graph.extra?.["0246.__NAME__"]?.[this.id]?.["inputs"]?.[link_info.target_slot];
-							this.inputs[link_info.target_slot].name = curr_data?.["name"] ?? this.inputs[link_info.target_slot].name;
-							if (curr_data?.["type"] === "*" || !app.graph.extra["0246.__NAME__"])
-								this.inputs[link_info.target_slot].type = "*";
-						} break;
-						case 2: {
-							if (this.outputs[link_info.origin_slot].links.length === 0 && !BLACKLIST.includes(this.outputs[link_info.origin_slot].name)) {
-								const curr_data = app.graph.extra?.["0246.__NAME__"]?.[this.id]?.["outputs"]?.[link_info.origin_slot];
-								this.outputs[link_info.origin_slot].name = curr_data?.["name"] ?? this.outputs[link_info.origin_slot].name;
-								if (curr_data?.["type"] === "*" || !app.graph.extra["0246.__NAME__"])
-									this.outputs[link_info.origin_slot].type = "*";
-							}
-						} break;
-						default: {
-							throw new Error("Unsuported type: " + type);
-						}
-					}
-				}
-			};
-
-			lib0246.hijack(this, "onAdded", () => {}, function () {
-				if (this.self[INIT_FLAG]) {
-					delete this.self[INIT_FLAG];
-					this.self.widgets.find(w => w.name === "Update").callback();
-					return;
-				}
-			});
-
-			lib0246.hijack(this, "onRemoved", function () {
-				delete app.graph.extra["0246.__NAME__"][this.self.id];
-			}, () => {});
-		};
-
-		lib0246.hijack(nodeType.prototype, "getExtraMenuOptions", function (canvas, options) {
-			// canvas === app.canvas
-			
-			// value: parent submenu obj
-			// options: this.extra == node, scroll_speed, event: litegraph event
-			// evt: native event object
-			// menu
-			// node
-
-			options.push(
-				{
-					content: "[0246.Highway] Selected node pins -> highway pins",
-					callback: (value, options, evt, menu, node) => {
-						for (let node_id in app.canvas.selected_nodes) {
-							if (node.id === Number(node_id))
-								continue;
-							save_parse_load_pin(node, shape_in, shape_out, (node, prev, mode) => {
-								const from = app.graph.getNodeById(Number(node_id));
-								if (mode) {
-									copy_output_pin(node, from, "output", "<");
-								} else {
-									if (defs[from.comfyClass]?.input?.required)
-										copy_input_pin(node, from, "input", "input", "required", ">");
-									if (defs[from.comfyClass]?.input?.optional)
-										copy_input_pin(node, from, "input", "input", "optional", ">");
-								}
-							});
-						}
-					}
-				},
-				{
-					content: "[0246.Highway] Selected node pins -> highway pins (inverse)",
-					callback: (value, options, evt, menu, node) => {
-						for (let node_id in app.canvas.selected_nodes) {
-							if (node.id === Number(node_id))
-								continue;
-							save_parse_load_pin(node, shape_in, shape_out, (node, prev, mode) => {
-								const from = app.graph.getNodeById(Number(node_id));
-								if (!mode) {
-									copy_output_pin(node, from, "input", ">");
-								} else {
-									if (defs[from.comfyClass]?.input?.required)
-										copy_input_pin(node, from, "input", "output", "required", "<");
-									if (defs[from.comfyClass]?.input?.optional)
-										copy_input_pin(node, from, "input", "output", "optional", "<");
-								}
-							});
-						}
-					}
-				},
-				{
-					content: "[0246.Highway] Selected node pins -> highway _query",
-					callback: (value, options, evt, menu, node) => {
-						for (let node_id in app.canvas.selected_nodes) {
-							if (node.id === Number(node_id))
-								continue;
-							const query = node.widgets.find(w => w.name === "_query"),
-								from = app.graph.getNodeById(Number(node_id));
-							query.value = "";
-							if (defs[from.comfyClass]?.input?.required)
-								querify_input_pin(query, from, "required", ">");
-							if (defs[from.comfyClass]?.input?.optional)
-								querify_input_pin(query, from, "optional", ">");
-							querify_output_pin(query, from, "<");
-						}
-					}
-				},
-				{
-					content: "[0246.Highway] Selected node pins -> highway _query (inverse)",
-					callback: (value, options, evt, menu, node) => {
-						for (let node_id in app.canvas.selected_nodes) {
-							if (node.id === Number(node_id))
-								continue;
-							const query = node.widgets.find(w => w.name === "_query"),
-								from = app.graph.getNodeById(Number(node_id));
-							query.value = "";
-							if (defs[from.comfyClass]?.input?.required)
-								querify_input_pin(query, from, "required", "<");
-							if (defs[from.comfyClass]?.input?.optional)
-								querify_input_pin(query, from, "optional", "<");
-							querify_output_pin(query, from, ">");
-						}
-					}
-				},
-			);
-
-			// HTML format of help
-			help_option(nodeType, HELP["highway"], options);
-			options.push(null);
-		}, () => {});
-
-		rgthree_exec("addConnectionLayoutSupport", nodeType, app);
-	}
-
-	function single_impl_input_raw(inst, app, real, shape_in) {
-		setup_expand(inst, "input", real, "...", shape_in, function () {
-			switch (this.mode) {
-				case 0: {
-					if (this.self.inputs[arguments[0]].link !== null) {
-						app.graph.links[this.self.inputs[arguments[0]].link].replaced = true;
-						return true;
-					}
-					this.self.inputs[arguments[0]].type = arguments[2].type;
-				} break;
-				case 1: {
-					this.self.inputs[arguments[2]].name = `${arguments[0]}:${arguments[1]}`;
-				} break;
-				case 2: {
-					if (arguments[0] === 1) {
-						let link_info = arguments[3];
-						if (BLACKLIST.includes(this.self.inputs[link_info.target_slot].name) || link_info.replaced)
-							return;
-						link_shift_up(this.self, this.self.inputs, link_info.target_slot, false, (link_index, extra_link_index) => {
-							return this.self.inputs[link_index].link;
-						});
-						-- real.input;
-					}
-				} break;
-			}
-		});
-	}
-
-	function single_impl_output_raw(inst, app, real, shape_out) {
-		setup_expand(inst, "output", real, "...", shape_out, function () {
-			switch (this.mode) {
-				case 0: {
-					if (this.self.outputs[arguments[0]].links && this.self.outputs[arguments[0]].links.length > 0)
-						return true;
-					
-					// Avoid node to connect to multiple output while allowing different pins
-					for (let i = 0; i < this.self.outputs.length; ++ i) {
-						if (BLACKLIST.includes(this.self.outputs[i].name))
-							continue;
-						let output_node = this.self.getOutputNodes(i);
-						if (output_node)
-							for (let j = 0; j < output_node.length; ++ j) {
-								if (output_node[j] === arguments[3] && i === arguments[0])
-									return false;
-							}
-					}
-
-					if (arguments[2].__outputType) // Reroute
-						this.self.outputs[arguments[0]].type = arguments[2].__outputType;
-					// else if (arguments[2].defaultConnectionsLayout) // Reroute (rgthree)
-					// 	this.self.outputs[arguments[0]].type = arguments[2].type;
-					else
-						this.self.outputs[arguments[0]].type = arguments[2].type;
-				} break;
-				case 1: {
-					this.self.outputs[arguments[2]].name = `${arguments[1]}:${arguments[0]}`;
-					// node_fit(this.self, this.self.widgets.filter(_ => _.name === "_offset")[0]);
-				} break;
-				case 2: {
-					if (arguments[0] === 2) {
-						let link_info = arguments[3];
-						if (BLACKLIST.includes(this.self.outputs[link_info.origin_slot].name))
-							return;
-						if (!this.self.outputs[link_info.origin_slot].links || this.self.outputs[link_info.origin_slot].links.length === 0) {
-							link_shift_up(this.self, this.self.outputs, link_info.origin_slot, true, (link_index, extra_link_index) => {
-								return this.self.outputs[link_index].links[extra_link_index];
-							});
-							-- real.output;
-							// node_fit(this.self, this.self.widgets.filter(_ => _.name === "_offset")[0]);
-						}
-					}
-				} break;
-			}
-		});
-	}
-
-	function junction_impl(nodeType, nodeData, app, name, shape_in, shape_out) {
-		nodeType.prototype.onNodeCreated = function () {
-			if (typeof name === "string")
-				init_update(this, name);
-
-			const offset = this.widgets.find(w => w.name === "_offset");
-			if (offset) {
-				offset.options = offset.options ?? {};
-				offset.options.multiline = true;
-			}
-
-			const real = {
-				input: 0,
-				output: 0,
-			};
-			
-			single_impl_input_raw(this, app, real, shape_in);
-
-			single_impl_output_raw(this, app, real, shape_out);
-
-			lib0246.hijack(this, "getExtraMenuOptions", function (canvas, options) {
-				help_option(nodeType, HELP["junction"], options);
-			}, () => {});
-		};
-		rgthree_exec("addConnectionLayoutSupport", nodeType, app);
-	}
-
-	function setup_loop_update(node) {
-		for (let i = 0; i < node.widgets.length; ++ i) {
-			if (node.widgets[i].name === "_update") {
-				node.widgets.splice(i, 1);
-				init_update_direct(node, "_update");
-				break;
-			}
-		}
-	}
-
-	function single_impl_input(nodeType, nodeData, app, shape_in, pin_list) {
-		lib0246.hijack(nodeType.prototype, "onNodeCreated", () => {}, function () {
-			setup_loop_update(this.self);
-			
-			if (shape_in !== null)
-				single_impl_input_raw(this.self, app, {
-					input: 0,
-				}, shape_in);
-
-			for (let i = 0; i < pin_list.length; i += 4)
-				setup_sole_pin(this.self, pin_list[i], pin_list[i + 1], pin_list[i + 2], pin_list[i + 3]);
-		});
-	}
-
-	function single_impl_output(nodeType, nodeData, app, shape_out, pin_list) {
-		lib0246.hijack(nodeType.prototype, "onNodeCreated", () => {}, function () {
-			setup_loop_update(this.self);
-
-			if (shape_out !== null)
-				single_impl_output_raw(this.self, app, {
-					output: 0,
-				}, shape_out);
-
-			for (let i = 0; i < pin_list.length; i += 4)
-				setup_sole_pin(this.self, pin_list[i], pin_list[i + 1], pin_list[i + 2], pin_list[i + 3]);
-		});
-	}
-
-	function raw_setup_log(self) {
-		self.log_widget = ComfyWidgets["STRING"](self, "output", ["STRING", { multiline: true }], app).widget;
-		self.log_widget.inputEl.readOnly = true;
-		self.log_widget.serializeValue = async (node, index_str) => {
-			if (node.widgets_values)
-				node.widgets_values[Number(index_str)] = "";
-			return "";
-		};
-	}
-
-	function force_size(node, widget, mode) {
-		let temp_size = node.computeSize();
-		if (!node.size)
-			node.size = temp_size;
-		temp_size[0] = node.size[0];
-		if (widget)
-			temp_size[1] += widget.computedHeight - 32;
-		if (mode)
-			node.setSize(temp_size);
-		else
-			node.size = temp_size;
-	}
-
-	function setup_log(nodeType, history = false) {
-		lib0246.hijack(nodeType.prototype, "onNodeCreated", () => {}, function () {
-			raw_setup_log(this.self);
-			if (history) {
-				this.self.log_history = new lib0246.RingBuffer(30);
-				this.self.log_count = 0;
-			}
-			const node = this.self;
-			node.msgSize = function (event) {
-				force_size(node, node.log_widget, false);
-			};
-			window.setTimeout(() => {
-				// https://github.com/failfa-st/failfast-comfyui-extensions/issues/16
-				api.addEventListener("ue-message-handler", node.msgSize);
-				lib0246.hijack(node, "onRemoved", () => {}, function () {
-					api.removeEventListener("ue-message-handler", node.msgSize);
-				});
-			}, 0);
-		});
-		lib0246.hijack(nodeType.prototype, "onExecuted", () => {}, function (message) {
-			if (this.self.log_history) {
-				this.self.log_history.push({
-					track: this.self.log_count ++,
-					msg: message.text
-				});
-				
-				this.self.log_widget.value = "";
-				for (let item of this.self.log_history)
-					this.self.log_widget.value += `${item.track}: ` + item.msg + "\n\n";
-			} else
-				this.self.log_widget.value = message.text;
-		});
-	}
-
-	function save_parse_load_pin(node, shape_in, shape_out, callback) {
-		node.__update = true;
-
-		let prev = [];
-
-		// Save previous inputs and outputs
-		if (node.inputs) {
-			for (let i = 0; i < node.inputs.length; ++ i) {
-				if (!BLACKLIST.includes(node.inputs[i].name) && node.inputs[i].link !== null)
-					prev.push({
-						flag: false,
-						name: app.graph.extra?.["0246.__NAME__"]?.[node.id]?.["inputs"]?.[i]?.["name"] ?? null,
-						node_id: app.graph.links[node.inputs[i].link].origin_id,
-						slot_id: app.graph.links[node.inputs[i].link].origin_slot,
-						this_id: i
-					});
-			}
-
-			for (let i = node.inputs.length; i -- > 0;) {
-				if (!BLACKLIST.includes(node.inputs[i].name))
-					node.removeInput(i);
-			}
-
-			callback(node, prev, false);
-
-			for (let i = 0; i < node.inputs.length; ++ i) {
-				app.graph.extra["0246.__NAME__"] = app.graph.extra["0246.__NAME__"] ?? {};
-				app.graph.extra["0246.__NAME__"][node.id] = app.graph.extra["0246.__NAME__"][node.id] ?? {
-					inputs: {},
-					outputs: {},
-				};
-				app.graph.extra["0246.__NAME__"][node.id].inputs[i] = app.graph.extra["0246.__NAME__"][node.id].inputs[i] ?? {};
-				app.graph.extra["0246.__NAME__"][node.id].inputs[i].name = node.inputs[i].name;
-				app.graph.extra["0246.__NAME__"][node.id].inputs[i].type = node.inputs[i].type;
-				if (!BLACKLIST.includes(node.inputs[i].name))
-					node.inputs[i].shape = shape_in;
-			}
-		}
-
-		if (node.outputs) {
-			for (let i = 0; i < node.outputs.length; ++ i) {
-				if (!BLACKLIST.includes(node.outputs[i].name) && node.outputs[i].links !== null)
-					for (let j = 0; j < node.outputs[i].links.length; ++ j)
-						prev.push({
-							flag: true,
-							name: app.graph.extra?.["0246.__NAME__"]?.[node.id]?.["outputs"]?.[i]?.["name"] ?? null,
-							node_id: app.graph.links[node.outputs[i].links[j]].target_id,
-							slot_id: app.graph.links[node.outputs[i].links[j]].target_slot,
-							this_id: i
-						});
-			}
-
-			for (let i = node.outputs.length; i -- > 0;) {
-				if (!BLACKLIST.includes(node.outputs[i].name))
-					node.removeOutput(i);
-			}
-
-			callback(node, prev, true);
-
-			for (let i = 0; i < node.outputs.length; ++ i) {
-				app.graph.extra["0246.__NAME__"] = app.graph.extra["0246.__NAME__"] ?? {};
-				app.graph.extra["0246.__NAME__"][node.id] = app.graph.extra["0246.__NAME__"][node.id] ?? {
-					inputs: {},
-					outputs: {},
-				};
-				app.graph.extra["0246.__NAME__"][node.id].outputs[i] = app.graph.extra["0246.__NAME__"][node.id].outputs[i] ?? {};
-				app.graph.extra["0246.__NAME__"][node.id].outputs[i].name = node.outputs[i].name;
-				app.graph.extra["0246.__NAME__"][node.id].outputs[i].type = node.outputs[i].type;
-				if (!BLACKLIST.includes(node.outputs[i].name))
-					node.outputs[i].shape = shape_out;
-			}
-		}
-
-		// Restore previous inputs and outputs
-		for (let i = 0; i < prev.length; ++ i) {
-			// Check if input/output still exists
-			if (prev[i].flag) {
-				if (prev[i].name === null)
-					node.connect(
-						prev[i].this_id,
-						prev[i].node_id,
-						prev[i].slot_id
-					);
-				else for (let j = 0; j < node.outputs.length; ++ j) {
-					if (app.graph.extra["0246.__NAME__"][node.id]["outputs"][j]["name"].slice(0) === prev[i].name.slice(0)) {
-						node.connect(
-							j,
-							prev[i].node_id,
-							prev[i].slot_id
-						);
-						break;
-					}
-				}
-			} else {
-				if (prev[i].name === null)
-					app.graph.getNodeById(prev[i].node_id).connect(
-						prev[i].slot_id,
-						node,
-						prev[i].this_id
-					);
-				else for (let j = 0; j < node.inputs.length; ++ j) {
-					if (app.graph.extra["0246.__NAME__"][node.id]["inputs"][j]["name"].slice(1) === prev[i].name.slice(1)) {
-						app.graph.getNodeById(prev[i].node_id).connect(
-							prev[i].slot_id,
-							node,
-							j
-						);
-						break;
-					}
-				}
-			}
-		}
-	}
-
-	function copy_input_pin(node, from, kind, to_kind, path, ops) {
-		const kind_upper = to_kind.charAt(0).toUpperCase() + to_kind.slice(1);
-		for (let name in defs[from.comfyClass][kind][path])
-			node["add" + kind_upper](
-				`${ops}${name}`,
-				Array.isArray(defs[from.comfyClass][kind][path][name][0]) ?
-					"STRING" : // COMBO is STRING internally anyways
-					defs[from.comfyClass][kind][path][name][0]
-			);
-	}
-
-	function querify_input_pin(widget, from, path, ops) {
-		for (let name in defs[from.comfyClass].input[path])
-			widget.value += `${ops}${name};`;
-	}
-
-	function copy_output_pin(node, from, kind, ops) {
-		const kind_upper = kind.charAt(0).toUpperCase() + kind.slice(1);
-		for (let i = 0; i < defs[from.comfyClass].output_name.length; ++ i)
-			node["add" + kind_upper](
-				`${ops}${defs[from.comfyClass].output_name[i]}`,
-				Array.isArray(defs[from.comfyClass].output[i]) ?
-					"STRING" :
-					defs[from.comfyClass].output[i]
-			);
-	}
-
-	function querify_output_pin(widget, from, ops) {
-		for (let i = 0; i < defs[from.comfyClass].output_name.length; ++ i)
-			widget.value += `${ops}${defs[from.comfyClass].output_name[i]};`;
-	}
-
-	function process_reroute(node, type) {
-		type = type ?? node.widgets[0].value;
-		node.size[0] = 100 + type.length * 8;
-		node.inputs[0].type = type;
-		node.outputs[0].type = type;
-		node.__outputType = type;
-	}
-
-	function node_mouse_pos(node) {
-		return [
-			app.canvas.graph_mouse[0] - node.pos[0],
-			app.canvas.graph_mouse[1] - node.pos[1],
-		];
-	}
-
-	const FLEX_DB = new WeakMap();
-
-	function calc_flex(node, widget, width, height) {
-		node.flex_data = node.flex_data ?? {};
-		node.flex_data.share_count = 0;
-		node.flex_data.share_weight = [];
-		node.flex_data.share_max_h = [];
-		node.flex_data.share_real_h = 0;
-		node.flex_data.off_h = 0;
-		for (let i = 0; i < node.widgets.length; ++ i)
-			if (node.widgets[i]?.flex) {
-				node.flex_data.share_weight.push(node.widgets[i]?.flex?.share);
-				node.flex_data.share_max_h.push(Number.isFinite(node.widgets[i]?.flex?.max_h) && node.widgets[i]?.flex?.max_h > 0 ? node.widgets[i]?.flex?.max_h : null);
-				node.flex_data.share_real_h += node.widgets[i]?.flex?.real_h ?? 0;
-				++ node.flex_data.share_count;
-				if (node.widgets[i] === widget)
-					node.widgets[i].flex.index = node.flex_data.share_count - 1;
-			} else
-				node.flex_data.off_h += (node.widgets[i]?.computedHeight ?? node.widgets[i]?.computeSize?.(width)?.[1] ?? LiteGraph.NODE_WIDGET_HEIGHT) + 4;
-		node.flex_data.avail_h = height - node.flex_data.off_h;
-	}
-
-	function widget_flex(node, widget, options = {}) {
-		widget.flex = {};
-
-		lib0246.hijack(widget, "mouse", function (event, pos, evt_node) {
-			if (evt_node !== node) {
-				// [TODO] Figure out why this does not work
-				// this.self.flex.hold_mouse[0] = this.self.flex.margin_x;
-				// this.self.flex.hold_mouse[1] = this.self.flex.real_y - 2;
-				// this.self.flex.hold_mouse[2] = this.self.flex.real_w - this.self.flex.margin_x * 2;
-				// this.self.flex.hold_mouse[3] = this.self.flex.temp_h - 2;
-				this.self.flex.hold_mouse = this.self.flex.hold_draw;
-			} else
-				lib0246.calc_area(
-					this.self.flex.margin_x, this.self.flex.margin_head_y, this.self.flex.margin_tail_real_y,
-					this.self.flex.real_w, this.self.flex.real_h, this.self.flex.real_max_h,
-					this.self.flex.ratio, this.self.flex.center, (this.self.flex.real_y ?? 0),
-					true, this.self.flex.hold_mouse
-				);
-		}, () => {});
-
-		lib0246.hijack(widget, "draw", function (ctx, draw_node, widget_width, y, widget_height) {
-			this.self.flex.real_y = y;
-			this.self.flex.real_w = widget_width;
-
-			if (draw_node !== node) {
-				this.self.flex.hold_draw[0] = this.self.flex.margin_x;
-				this.self.flex.hold_draw[1] = this.self.flex.real_y - 2;
-				this.self.flex.hold_draw[2] = widget_width - this.self.flex.margin_x * 2;
-				this.self.flex.hold_draw[3] = this.self.flex.temp_h - 2;
-			} else
-				lib0246.calc_area(
-					this.self.flex.margin_x, this.self.flex.margin_head_y, this.self.flex.margin_tail_real_y,
-					widget_width, this.self.flex.real_h, this.self.flex.real_max_h,
-					this.self.flex.ratio, this.self.flex.center, this.self.flex.real_y,
-					true, this.self.flex.hold_draw
-				);
-		}, () => {});
-
-		lib0246.hijack(widget, "computeSize", function (width) {
-			if (PROCESS_WIDGET_NODE && PROCESS_WIDGET_NODE !== node && PROCESS_WIDGET_NODE.isPointInside(app.canvas.graph_mouse[0], app.canvas.graph_mouse[1])) {
-				// [TODO] Maybe somehow find a way to use hold_size since it technically more correct
-				this.res = [width, this.self.flex.hold_draw[3]];
-				this.self.last_y = this.self.flex.real_y + this.self.flex.margin_head_y;
-				this.stop = true;
-				return;
-			}
-
-			// Don't ask why how I came up with this. This took a week of brain power.
-
-			this.self.flex.real_y = this.self.flex.real_y ?? 0;
-			this.self.flex.margin_tail_real_y = this.self.flex.margin_tail_y + this.self.flex.margin_over_y;
-
-			this.self.flex.real_max_h = Infinity;
-
-			this.self.flex.real_min_h = this.self.flex.real_min_h ?? this.self.flex.min_h;
-
-			let raw_size = node.size[1];
-
-			if (app.canvas.resizing_node === node)
-				raw_size = Math.min(node_mouse_pos(node)[1], node.size[1]);
-
-			calc_flex(node, this.self, width, raw_size);
-
-			this.self.flex.real_h = node.flex_data.avail_h + node.flex_data.off_h; // (LiteGraph.NODE_WIDGET_HEIGHT + 4) * (node.flex_data.share_count + 1)
-
-			this.self.flex.real_max_h = lib0246.calc_spread(
-				node.flex_data.share_count,
-				node.flex_data.avail_h,
-				node.flex_data.share_weight,
-				node.flex_data.share_max_h
-			)[this.self.flex.index];
-
-			lib0246.calc_area(
-				this.self.flex.margin_x, this.self.flex.margin_head_y, this.self.flex.margin_tail_real_y,
-				width, this.self.flex.real_h, this.self.flex.real_max_h,
-				this.self.flex.ratio, this.self.flex.center, this.self.flex.real_y,
-				true, this.self.flex.hold_size
-			);
-
-			this.self.flex.temp_h = this.self.flex.hold_size[3]; // + this.self.flex.margin_head_y + this.self.flex.margin_tail_y;
-			
-			if (this.self.flex.real_h < this.self.flex.real_min_h)
-				this.self.flex.real_h = this.self.flex.real_min_h;
-			
-			if (this.self.flex.temp_h < this.self.flex.real_min_h)
-				this.self.flex.temp_h = this.self.flex.real_min_h;
-
-			this.res = [width, this.self.flex.temp_h];
-			this.stop = true;
-		}, () => {});
-
-		if (!FLEX_DB.has(node)) {
-			lib0246.hijack(node, "onRemoved", () => {}, function () {
-				for (let i = 0; i < node.widgets.length; ++ i) {
-					if (node.widgets[i]?.flex)
-						delete node.widgets[i].flex;
-					delete node.widgets[i];
-				}
-				FLEX_DB.delete(node);
-			});
-		}
-
-		widget.flex.hold_draw = [];
-		widget.flex.hold_mouse = [];
-		widget.flex.hold_size = [];
-
-		widget.flex.margin_x = options.margin_x ?? 20;
-		widget.flex.margin_head_y = options.margin_head_y ?? 0;
-		widget.flex.margin_tail_y = options.margin_tail_y ?? 0;
-		widget.flex.margin_over_y = options.margin_over_y ?? 12
-		widget.flex.min_h = options.min_h ?? 0;
-		widget.flex.max_h = options.max_h ?? Infinity;
-		widget.flex.compat = options.compat ?? false;
-		widget.flex.ratio = options.ratio ?? 0;
-		widget.flex.share = options.share ?? false;
-		widget.flex.center = options.center ?? true;
-
-		widget.options = widget.options ?? {};
-		widget.options.getHeight = function () {
-			return this.self.flex.real_h;
-		};
-
-		FLEX_DB.set(node, false);
-	}
-
-	function box_range_eval_state(db, node, widget, event, pos) {
-		for (let i = 0; i < db.length; i += 2) {
-			if (Array.isArray(db[i])) {
-				for (let j = 0; j < db[i].length; ++ j)
-					if (lib0246.equal_dict(widget.box_range.state, db[i][j], true, "*")) {
-						lib0246.update_dict(widget.box_range.state, db[i + 1](node, widget, event, pos) ?? {});
-						return;
-					}
-				continue;
-			} else if (lib0246.equal_dict(widget.box_range.state, db[i], true, "*")) {
-				lib0246.update_dict(widget.box_range.state, db[i + 1](node, widget, event, pos) ?? {});
-				return;
-			}
-		}
-	}
-
-	function box_range_eval_corner(pos, curr_box, widget) {
-		if (lib0246.is_inside_circ(
-			pos[0], pos[1],
-			curr_box[8] + curr_box[10], curr_box[9], widget.box_range.radius
-		)) {
-			// Intentionally prioritize top right
-			widget.box_range.state.where = "tr";
-			return true;
-		} else if (lib0246.is_inside_circ(
-			pos[0], pos[1],
-			curr_box[8], curr_box[9], widget.box_range.radius
-		)) {
-			widget.box_range.state.where = "tl";
-			return true;
-		} else if (lib0246.is_inside_circ(
-			pos[0], pos[1],
-			curr_box[8], curr_box[9] + curr_box[11], widget.box_range.radius
-		)) {
-			widget.box_range.state.where = "bl";
-			return true;
-		} else if (lib0246.is_inside_circ(
-			pos[0], pos[1],
-			curr_box[8] + curr_box[10], curr_box[9] + curr_box[11], widget.box_range.radius
-		)) {
-			widget.box_range.state.where = "br";
-			return true;
-		}
-		return false;
-	}
-
-	function box_range_reset_state(widget) {
-		delete widget.box_range.state.mouse;
-		delete widget.box_range.state.where;
-		delete widget.box_range.state.action;
-		delete widget.box_range.state.select;
-		delete widget.box_range.state.bound;
-	}
-
-	function box_range_process_del(widget) {
-		let index = widget.box_range.boxes.indexOf(widget.box_range.select[widget.box_range.select.length - 1]);
-		if (index !== -1)
-			widget.box_range.boxes.splice(index, 1);
-		widget.box_range.select.length = 0;
-		widget.box_range.delay_state = null;
-	}
-
-	function box_range_grid_snap(pos, widget) {
-		pos[0] = lib0246.lerp(
-			lib0246.snap(
-				lib0246.norm(pos[0], widget.flex.hold_mouse[0], widget.flex.hold_mouse[0] + widget.flex.hold_mouse[2]) + 1 / (widget.row_count * 2),
-				1 / widget.row_count
-			),
-			widget.flex.hold_mouse[0], widget.flex.hold_mouse[0] + widget.flex.hold_mouse[2]
-		);
-		pos[1] = lib0246.lerp(
-			lib0246.snap(
-				lib0246.norm(pos[1], widget.flex.hold_mouse[1], widget.flex.hold_mouse[1] + widget.flex.hold_mouse[3]) + 1 / (widget.col_count * 2),
-				1 / widget.col_count
-			),
-			widget.flex.hold_mouse[1], widget.flex.hold_mouse[1] + widget.flex.hold_mouse[3]
-		);
-	}
-
-	const BOX_RANGE_STATE = [
-		// Selection
-		...[
-			[
-				{
-					mouse: "pointerdown",
-					where: "box",
-					action: "",
-					bound: "in"
-				}, {
-					mouse: "pointerdown",
-					where: "box",
-					action: "select",
-					bound: "in"
-				},
-			], function (node, widget, event, pos) {
-				widget.box_range.select_during = pos;
-				widget.box_range.delay_state = window.performance.now();
-				return {
-					action: "select"
-				};
-			},
-
-			[
-				{
-					mouse: "pointerup",
-					where: "box",
-					action: "select",
-					bound: "in"
-				}
-			], function (node, widget, event, pos) {
-				// [TODO] Maybe also perform delete for this state?
-				let res;
-				if (lib0246.equal_array(widget.box_range.select_during, pos, false)) {
-					if (event.shiftKey && widget.box_range.select.length > 0) {
-						let curr_box = widget.box_range.select[widget.box_range.select.length - 1];
-						app.canvas.prompt("[x, y, width, height]", JSON.stringify(curr_box.slice(0, 4)), (value) => {
-							try {
-								const res = JSON.parse(value);
-								if (res.length !== 4)
-									return;
-								for (let i = 0; i < 4; ++ i)
-									if (typeof res[i] === "string") {
-										try {
-											const BOUND_X = widget.flex.hold_mouse[0],
-												BOUND_Y = widget.flex.hold_mouse[1],
-												BOUND_W = widget.flex.hold_mouse[2],
-												BOUND_H = widget.flex.hold_mouse[3];
-											res[i] = Number(eval(res[i]));
-										} catch (e) {
-											lib0246.error_popup("Invalid box range math expression format.");
-											return;
-										}
-									} else if (!Number.isFinite(res[i]))
-										res[i] = widget.flex.hold_mouse[i];
-								if (lib0246.is_inside_rect_rect(
-									res[0], res[1], res[2], res[3],
-									widget.flex.hold_draw[0], widget.flex.hold_draw[1],
-									widget.flex.hold_draw[2], widget.flex.hold_draw[3]
-								)) {
-									curr_box[0] = res[0];
-									curr_box[1] = res[1];
-									curr_box[2] = res[2];
-									curr_box[3] = res[3];
-								} else
-									lib0246.error_popup("Provided range is outside of the boundary.");
-							} catch (e) {
-								const ratio_widget = node.widgets.find(w => w.name === "box_ratio");
-								let size_box = curr_box.slice(4, 8);
-								if (ratio_widget)
-									size_box = [0, 0, ratio_widget.value.data.width, ratio_widget.value.data.height];
-								try {
-									let old_onmessage = window.onmessage;
-									window.onmessage = () => {};
-									lib0246.safe_eval(`
-										function _ (x, y, w, h) {
-											return calc_flex_norm(
-												x, y, w, h,
-												${size_box[0]}, ${size_box[1]}, ${size_box[2]}, ${size_box[3]},
-												${widget.flex.hold_draw[0]}, ${widget.flex.hold_draw[1]},
-												${widget.flex.hold_draw[2]}, ${widget.flex.hold_draw[3]}
-											);
-										}
-
-										const CURR_X = ${size_box[0]},
-											CURR_Y = ${size_box[1]},
-											CURR_W = ${size_box[2]},
-											CURR_H = ${size_box[3]},
-											CODE = ${"`" + value + "`"};
-
-										return ${value};
-									`).then((res) => {
-										if (!Array.isArray(res) || res.length !== 4) {
-											lib0246.error_popup("Invalid box range data format. Expected [x, y, width, height].");
-											return;
-										}
-										if (lib0246.is_inside_rect_rect(
-											res[0], res[1], res[2], res[3],
-											widget.flex.hold_draw[0], widget.flex.hold_draw[1],
-											widget.flex.hold_draw[2], widget.flex.hold_draw[3]
-										)) {
-											curr_box[0] = res[0];
-											curr_box[1] = res[1];
-											curr_box[2] = res[2];
-											curr_box[3] = res[3];
-
-											curr_box[12] = res[0];
-											curr_box[13] = res[1];
-											curr_box[14] = res[2];
-											curr_box[15] = res[3];
-
-											curr_box[16] = size_box[0];
-											curr_box[17] = size_box[1];
-											curr_box[18] = size_box[2];
-											curr_box[19] = size_box[3];
-										} else
-											lib0246.error_popup("Provided range is outside of the boundary.");
-										window.onmessage = old_onmessage;
-										app.canvas.setDirty(true);
-									});
-								} catch (e) {
-									lib0246.error_popup(`Invalid box range expression format: ${e.message}`);
-									return;
-								}
-							}
-						}, event, true);
-						res = {
-							action: ""
-						};
-					} else {
-						let select_list = [];
-						for (let i = 0; i < widget.box_range.boxes.length; ++ i)
-							if (lib0246.is_inside_rect(
-								pos[0], pos[1],
-								widget.box_range.boxes[i][8], widget.box_range.boxes[i][9],
-								widget.box_range.boxes[i][10], widget.box_range.boxes[i][11]
-							))
-								select_list.push(widget.box_range.boxes[i]);
-
-						if (lib0246.equal_array(widget.box_range.select, select_list, true))
-							widget.box_range.select.push(widget.box_range.select.shift());
-						else
-							widget.box_range.select = select_list;
-					}
-				}
-				widget.box_range.select_during = null;
-				widget.box_range.delay_state = null;
-				return res;
-			}
-		],
-
-		
-		// Box create
-		...[
-			[
-				{
-					mouse: "pointerdown",
-					where: "",
-					action: "",
-					bound: "in"
-				}, {
-					mouse: "pointerdown",
-					where: "",
-					action: "select",
-					bound: "in"
-				}
-			], function (node, widget, event, pos) {
-				widget.box_range.begin_state = pos;
-				widget.box_range.during_state = pos;
-				widget.box_range.select.length = 0;
-				widget.box_range.delay_state = null;
-				return {
-					action: "create"
-				};
-			},
-
-			{
-				mouse: "pointerup",
-				where: "",
-				action: "",
-				bound: "in"
-			}, function (node, widget, event, pos) {
-				widget.box_range.select.length = 0;
-				return {
-					action: ""
-				};
-			},
-
-			{
-				mouse: "pointermove",
-				action: "create",
-				bound: "in"
-			}, function (node, widget, event, pos) {
-				widget.box_range.during_state = pos;
-			},
-
-			{
-				mouse: "pointerup",
-				action: "create",
-				bound: "in"
-			}, function (node, widget, event, pos) {
-				widget.box_range.during_state = pos;
-
-				// Check if equal then terminate early
-				if (!lib0246.equal_array(widget.box_range.begin_state, widget.box_range.during_state, false)) {
-					if (widget.box_range.begin_state[0] > widget.box_range.during_state[0]) {
-						let temp = widget.box_range.begin_state[0];
-						widget.box_range.begin_state[0] = widget.box_range.during_state[0];
-						widget.box_range.during_state[0] = temp;
-					}
-					if (widget.box_range.begin_state[1] > widget.box_range.during_state[1]) {
-						let temp = widget.box_range.begin_state[1];
-						widget.box_range.begin_state[1] = widget.box_range.during_state[1];
-						widget.box_range.during_state[1] = temp;
-					}
-
-					const width = Math.abs(widget.box_range.during_state[0] - widget.box_range.begin_state[0]),
-						height = Math.abs(widget.box_range.during_state[1] - widget.box_range.begin_state[1]);
-
-					if (event.shiftKey) {
-						let old_length = widget.box_range.boxes.length;
-						for (let i = 0; i < old_length; ++ i)
-							if (lib0246.is_inside_rect_rect(
-								widget.box_range.boxes[i][0], widget.box_range.boxes[i][1],
-								widget.box_range.boxes[i][2], widget.box_range.boxes[i][3],
-								widget.box_range.begin_state[0], widget.box_range.begin_state[1],
-								width, height
-							)) {
-								widget.box_range.select.push(widget.box_range.boxes[i]);
-								widget.box_range.boxes.splice(i --, 1);
-								-- old_length;
-							}
-						widget.box_range.select.length = 0;
-					} else
-						widget.box_range.boxes.push([
-							widget.box_range.begin_state[0],
-							widget.box_range.begin_state[1],
-							width, height,
-							...widget.flex.hold_mouse,
-							widget.box_range.begin_state[0],
-							widget.box_range.begin_state[1],
-							width, height,
-						]);
-				}
-
-				widget.box_range.begin_state = null;
-				widget.box_range.during_state = null;
-				return {
-					action: ""
-				};
-			},
-		],
-
-		// Box move
-		...[
-			[
-				{
-					mouse: "pointermove",
-					where: "box",
-					action: "select",
-					bound: "in"
-				}
-			], function (node, widget, event, pos) {
-				if (event.shiftKey)
-					box_range_grid_snap(pos, widget);
-				widget.box_range.begin_state = pos;
-				widget.box_range.during_state = pos;
-				widget.box_range.delay_state = null;
-
-				if (widget.box_range.select.length === 0)
-					return {
-						action: "select"
-					};
-				return {
-					action: "move"
-				};
-			},
-
-			{
-				mouse: "pointermove",
-				action: "move",
-				bound: "in"
-			}, function (node, widget, event, pos) {
-				widget.box_range.during_state = pos;
-				if (event.shiftKey) {
-					box_range_grid_snap(widget.box_range.begin_state, widget);
-					box_range_grid_snap(widget.box_range.during_state, widget);
-				}
-			},
-
-			{
-				mouse: "pointerup",
-				action: "move",
-				bound: "in"
-			}, function (node, widget, event, pos) {
-				const curr_box = widget.box_range.select[widget.box_range.select.length - 1],
-					res = lib0246.calc_flex_norm(
-						curr_box[0], curr_box[1], curr_box[2], curr_box[3],
-						curr_box[4], curr_box[5], curr_box[6], curr_box[7],
-						widget.flex.hold_mouse[0], widget.flex.hold_mouse[1], widget.flex.hold_mouse[2], widget.flex.hold_mouse[3],
-					);
-
-				let new_x = res[0] + widget.box_range.during_state[0] - widget.box_range.begin_state[0],
-					new_y = res[1] + widget.box_range.during_state[1] - widget.box_range.begin_state[1];
-				
-				if (!lib0246.is_inside_rect_rect(
-					new_x, new_y, res[2], res[3],
-					widget.flex.hold_mouse[0], widget.flex.hold_mouse[1],
-					widget.flex.hold_mouse[2], widget.flex.hold_mouse[3]
-				)) {
-					// Champ back to range with a combination of min and max
-					new_x = Math.max(
-						Math.min(new_x, widget.flex.hold_mouse[0] + widget.flex.hold_mouse[2] - res[2]),
-						widget.flex.hold_mouse[0]
-					);
-					new_y = Math.max(
-						Math.min(new_y, widget.flex.hold_mouse[1] + widget.flex.hold_mouse[3] - res[3]),
-						widget.flex.hold_mouse[1]
-					);
-				}
-
-				curr_box[0] = res[0];
-				curr_box[1] = res[1];
-				curr_box[2] = res[2];
-				curr_box[3] = res[3];
-				
-				curr_box[4] = widget.flex.hold_mouse[0];
-				curr_box[5] = widget.flex.hold_mouse[1];
-				curr_box[6] = widget.flex.hold_mouse[2];
-				curr_box[7] = widget.flex.hold_mouse[3];
-
-				curr_box[8] = curr_box[0];
-				curr_box[9] = curr_box[1];
-				curr_box[10] = curr_box[2];
-				curr_box[11] = curr_box[3];
-
-				curr_box[0] = new_x;
-				curr_box[1] = new_y;
-
-				curr_box[8] = new_x
-				curr_box[9] = new_y;
-
-				widget.box_range.begin_state = null;
-				widget.box_range.during_state = null;
-				return {
-					action: "select"
-				};
-			},
-
-			{
-				mouse: "pointerup",
-				action: "move",
-				bound: "out"
-			}, function (node, widget, event, pos) {
-				widget.box_range.begin_state = null;
-				widget.box_range.during_state = null;
-				widget.box_range.select.length = 0;
-				return {
-					action: ""
-				};
-			}
-		],
-
-		// Box resize
-		...[
-			{
-				mouse: "pointerdown",
-				where: "br",
-				action: "select",
-				bound: "in"
-			}, function (node, widget, event, pos) {
-				if (!widget.box_range.delay_state)
-					widget.box_range.delay_state = window.performance.now();
-				else if (window.performance.now() - widget.box_range.delay_state < widget.box_range.delay_dbl) {
-					if (event.shiftKey)
-						box_range_grid_snap(pos, widget);
-					widget.box_range.begin_state = pos;
-					widget.box_range.during_state = pos;
-					widget.box_range.delay_state = null;
-					return {
-						action: "resize"
-					};
-				}
-			},
-
-			[
-				{
-					mouse: "pointermove",
-					action: "resize",
-					bound: "in"
-				},
-			], function (node, widget, event, pos) {
-				if (!pos) return;
-				widget.box_range.during_state = pos;
-				if (event.shiftKey) {
-					box_range_grid_snap(widget.box_range.begin_state, widget);
-					box_range_grid_snap(widget.box_range.during_state, widget);
-				}
-			},
-
-			{
-				mouse: "pointerup",
-				action: "resize",
-				bound: "in"
-			}, function (node, widget, event, pos) {
-				if (!lib0246.equal_array(widget.box_range.during_state, widget.box_range.begin_state, false)) {
-					const curr_box = widget.box_range.select[widget.box_range.select.length - 1];
-
-					let res = lib0246.calc_flex_norm(
-						curr_box[0], curr_box[1], curr_box[2], curr_box[3],
-						curr_box[4], curr_box[5], curr_box[6], curr_box[7],
-						widget.flex.hold_mouse[0], widget.flex.hold_mouse[1], widget.flex.hold_mouse[2], widget.flex.hold_mouse[3],
-					);
-					
-					res = lib0246.calc_resize(
-						res[0], res[1], res[2], res[3],
-						widget.box_range.during_state[0], widget.box_range.during_state[1]
-					);
-
-					curr_box[0] = res[0];
-					curr_box[1] = res[1];
-					curr_box[2] = res[2];
-					curr_box[3] = res[3];
-
-					curr_box[4] = widget.flex.hold_mouse[0];
-					curr_box[5] = widget.flex.hold_mouse[1];
-					curr_box[6] = widget.flex.hold_mouse[2];
-					curr_box[7] = widget.flex.hold_mouse[3];
-
-					curr_box[8] = curr_box[0];
-					curr_box[9] = curr_box[1];
-					curr_box[10] = curr_box[2];
-					curr_box[11] = curr_box[3];
-
-					// Remove index 12 to index 19
-					curr_box.splice(12, 8);
-				}
-
-				widget.box_range.begin_state = null;
-				widget.box_range.during_state = null;
-				return {
-					action: "select"
-				};
-			},
-			
-			{
-				mouse: "pointerup",
-				bound: "in",
-				where: "br",
-				action: "select"
-			}, () => {},
-
-			{
-				mouse: "pointerup",
-				action: "resize",
-				bound: "out"
-			}, function (node, widget, event, pos) {
-				widget.box_range.begin_state = null;
-				widget.box_range.during_state = null;
-				widget.box_range.select.length = 0;
-				return {
-					action: ""
-				};
-			}
-		],
-
-		// Box z-index
-		...[
-			[
-				{
-					mouse: "pointerdown",
-					where: "tl",
-					action: "select",
-					bound: "in"
-				}, {
-					mouse: "pointerdown",
-					where: "bl",
-					action: "select",
-					bound: "in"
-				}
-			], function (node, widget, event, pos) {
-				if (!widget.box_range.delay_state)
-					widget.box_range.delay_state = window.performance.now();
-				else if (window.performance.now() - widget.box_range.delay_state < widget.box_range.delay_dbl) {
-					const curr_index = widget.box_range.boxes.indexOf(widget.box_range.select[widget.box_range.select.length - 1]);
-
-					// Insert box to curr_index + 1 if state.where is bottom left, else curr_index - 1
-					widget.box_range.boxes.splice(
-						lib0246.rem(widget.box_range.state.where === "bl" ? curr_index + 1 : curr_index - 1, widget.box_range.boxes.length),
-						0,
-						widget.box_range.boxes.splice(curr_index, 1)[0]
-					);
-
-					widget.box_range.delay_state = null;
-
-					return {
-						action: "select"
-					};
-				}
-			},
-
-			[
-				{
-					mouse: "pointerup",
-					where: "tl",
-					action: "select",
-					bound: "in"
-				}, {
-					mouse: "pointerup",
-					where: "bl",
-					action: "select",
-					bound: "in"
-				}
-			], () => {}
-		],
-		
-		// Box delete
-		...[
-			{
-				mouse: "pointerdown",
-				where: "tr",
-				action: "select",
-				bound: "in"
-			}, function (node, widget, event, pos) {
-				if (!widget.box_range.delay_state)
-					widget.box_range.delay_state = window.performance.now();
-				else if (window.performance.now() - widget.box_range.delay_state < widget.box_range.delay_dbl) {
-					box_range_process_del(widget);
-					return {
-						action: ""
-					};
-				}
-			},
-
-			{
-				mouse: "pointerup",
-				where: "tr",
-				action: "select",
-				bound: "in"
-			}, () => {},
-		],
-
-		// Reset state if invalid
-		{}, function (node, widget, event, pos) {
-			box_range_reset_state(widget);
-			widget.box_range.select.length = 0;
-			widget.box_range.begin_state = null;
-			widget.box_range.during_state = null;
-			widget.box_range.select_during = null;
-			widget.box_range.delay_state = null;
-		}
-	];
-
-	const NODE_COLOR_LIST = Object.keys(LGraphCanvas.node_colors);
-
-	function BOX_RANGE_WIDGET(node, data_type, data_name, options = {}) {
-		const widget = {
-			type: data_type,
-			name: data_name,
-			get value() {
-				let data = [];
-
-				for (let i = 0; i < this.box_range.boxes.length; ++ i)
-					data.push(lib0246.calc_flex_norm(
-						this.box_range.boxes[i][0], this.box_range.boxes[i][1], this.box_range.boxes[i][2], this.box_range.boxes[i][3],
-						this.box_range.boxes[i][4], this.box_range.boxes[i][5], this.box_range.boxes[i][6], this.box_range.boxes[i][7],
-						this.flex.hold_draw[0], this.flex.hold_draw[1], this.flex.hold_draw[2], this.flex.hold_draw[3]
-					));
-
-				return {
-					type: "box_range",
-					data: data,
-					area: [
-						this.flex.hold_draw[0], this.flex.hold_draw[1],
-						this.flex.hold_draw[2], this.flex.hold_draw[3]
-					],
-					flag: this.flex.ratio === 0
-				};
-			},
-			set value(v) {
-				if (v.flag)
-					this.flex.ratio = 0;
-				else
-					this.flex.ratio = v.area[2] / v.area[3];
-
-				this.box_range.boxes.length = 0;
-
-				for (let i = 0; i < v.data.length; ++ i)
-					this.box_range.boxes.push([
-						...v.data[i],
-						...v.area,
-						...v.data[i],
-					]);
-			},
-			draw: function (ctx, node, widget_width, y, widget_height) {
-				ctx.save();
-
-				ctx.beginPath();
-				ctx.strokeStyle = "#000000";
-				ctx.fillStyle = app.canvas.clear_background_color;
-				ctx.lineWidth = 2;
-				ctx.beginPath();
-				ctx.rect(this.flex.hold_draw[0], this.flex.hold_draw[1], this.flex.hold_draw[2], this.flex.hold_draw[3]);
-				ctx.stroke();
-				ctx.fill();
-				ctx.closePath();
-
-				// Draw evenly spaced grid of both row and column of specified count
-				ctx.beginPath();
-				ctx.strokeStyle = "#000000";
-				ctx.lineWidth = 1;
-				ctx.lineWidth = 0.5;
-				ctx.setLineDash([10, 5]);
-				for (let i = 0; i < this.row_count; ++ i) {
-					ctx.moveTo(this.flex.hold_draw[0], i * this.flex.hold_draw[3] / this.row_count + this.flex.hold_draw[1]);
-					ctx.lineTo(this.flex.hold_draw[2] + this.flex.hold_draw[0], i * this.flex.hold_draw[3] / this.row_count + this.flex.hold_draw[1]);
-					ctx.stroke();
-				}
-				for (let i = 0; i < this.col_count; ++ i) {
-					ctx.moveTo(i * this.flex.hold_draw[2] / this.col_count + this.flex.hold_draw[0], this.flex.hold_draw[1]);
-					ctx.lineTo(i * this.flex.hold_draw[2] / this.col_count + this.flex.hold_draw[0], this.flex.hold_draw[3] + this.flex.hold_draw[1]);
-					ctx.stroke();
-				}
-				ctx.closePath();
-
-				// Map each point to fit the grid by percentage based on previous size to current size
-				if (this?.box_range?.boxes)
-					for (let i = 0; i < this.box_range.boxes.length; ++ i) {
-						let curr = this.box_range.boxes[i];
-						const res = lib0246.calc_flex_norm(
-							curr[0], curr[1], curr[2], curr[3],
-							curr[4], curr[5], curr[6], curr[7],
-							this.flex.hold_draw[0], this.flex.hold_draw[1], this.flex.hold_draw[2], this.flex.hold_draw[3]
-						);
-						curr[8] = res[0];
-						curr[9] = res[1];
-						curr[10] = res[2];
-						curr[11] = res[3];
-					}
-
-				// Draw each box
-				if (this?.box_range?.boxes) {
-					for (let i = 0; i < this.box_range.boxes.length; ++ i) {
-						let curr = this.box_range.boxes[i];
-
-						if (this.box_range.boxes[i] === this.box_range.select[this.box_range.select.length - 1]) {
-							// Draw text metadata bottom left of the entire grid
-							ctx.beginPath();
-							ctx.fillStyle = "#ffffff";
-							ctx.font = "12px Consolas";
-							ctx.fillText(
-								// `%XY2: (${lib0246.floor(lib0246.norm(curr[8] + curr[10], this.flex.hold_draw[0], this.flex.hold_draw[2]), 2)}, ${lib0246.floor(lib0246.norm(curr[9] + curr[11], this.flex.hold_draw[1], this.flex.hold_draw[3]), 2)})`,
-								`%WH: (${lib0246.floor(curr[10] / this.flex.hold_draw[2], 2)}, ${lib0246.floor(curr[11] / this.flex.hold_draw[3], 2)})`,
-								this.flex.hold_draw[0] + 5, this.flex.hold_draw[3] + this.flex.hold_draw[1] - 5
-							);
-							ctx.fillText(
-								`%XY: (${lib0246.floor(lib0246.norm(curr[0], this.flex.hold_draw[0], this.flex.hold_draw[2]), 2)}, ${lib0246.floor(lib0246.norm(curr[1], this.flex.hold_draw[1], this.flex.hold_draw[3]), 2)})`,
-								this.flex.hold_draw[0] + 5, this.flex.hold_draw[3] + this.flex.hold_draw[1] - 20
-							);
-							ctx.fillText(
-								`Z: ${i}`,
-								this.flex.hold_draw[0] + 5, this.flex.hold_draw[3] + this.flex.hold_draw[1] - 35
-							);
-							ctx.fillText(
-								`WH: (${lib0246.floor(curr[10], 2)}, ${lib0246.floor(curr[11], 2)})`,
-								this.flex.hold_draw[0] + 5, this.flex.hold_draw[3] + this.flex.hold_draw[1] - 50
-							);
-							ctx.fillText(
-								`XY: (${lib0246.floor(curr[8], 2)}, ${lib0246.floor(curr[9], 2)})`,
-								this.flex.hold_draw[0] + 5, this.flex.hold_draw[3] + this.flex.hold_draw[1] - 65
-							);
-							ctx.closePath();
-
-							// Draw 4 circles for each corner
-							ctx.beginPath();
-							ctx.lineWidth = 1;
-							ctx.strokeStyle = "#ff7ac1";
-							ctx.setLineDash([]);
-							ctx.arc(curr[8], curr[9], this.box_range.radius, 0, Math.PI * 2);
-							ctx.stroke();
-							ctx.closePath();
-							ctx.beginPath();
-							ctx.strokeStyle = "#800044";
-							ctx.arc(curr[8], curr[9] + curr[11], this.box_range.radius, 0, Math.PI * 2);
-							ctx.stroke();
-							ctx.closePath();
-
-							// Delete
-							ctx.beginPath();
-							ctx.lineWidth = 1;
-							ctx.strokeStyle = "#ff0000";
-							ctx.arc(curr[8] + curr[10], curr[9], this.box_range.radius, 0, Math.PI * 2);
-							ctx.stroke();
-							ctx.closePath();
-
-							// Resize
-							ctx.beginPath();
-							ctx.strokeStyle = "#ffff00";
-							ctx.arc(curr[8] + curr[10], curr[9] + curr[11], this.box_range.radius, 0, Math.PI * 2);
-							ctx.stroke();
-							ctx.closePath();
-						}
-
-						ctx.beginPath();
-						ctx.fillStyle = "rgba(127, 127, 127, 0.1)";
-						if (this.box_range.select.length > 0 && this.box_range.select.indexOf(this.box_range.boxes[i]) === this.box_range.select.length - 1) {
-							ctx.lineWidth = 1.5;
-							ctx.strokeStyle = "#ff0000";
-							ctx.setLineDash([5, 5]);
-						} else {
-							ctx.lineWidth = 1;
-							ctx.strokeStyle = "#ffffff";
-							ctx.setLineDash([]);
-						}
-						ctx.rect(curr[8], curr[9], curr[10], curr[11]);
-						ctx.stroke();
-						ctx.fill();
-						ctx.closePath();
-					}
-
-					for (let i = 0; i < this.box_range.boxes.length; ++ i) {
-						let curr = this.box_range.boxes[i];
-
-						// Draw index text starting from the box top left
-						ctx.beginPath();
-						ctx.fillStyle = LGraphCanvas.node_colors[NODE_COLOR_LIST[i % NODE_COLOR_LIST.length]].groupcolor;
-						ctx.font = "15px Consolas";
-						ctx.fillText(
-							`${i}`,
-							curr[8] + 5, curr[9] + 15
-						);
-						ctx.closePath();
-					}
-				}
-
-				// Draw ghost movement
-				if (this?.box_range?.begin_state && this?.box_range?.during_state) {
-					ctx.beginPath();
-					ctx.lineWidth = 3;
-					ctx.setLineDash([5, 5]);
-					ctx.moveTo(this.box_range.begin_state[0], this.box_range.begin_state[1]);
-					let last_select = this.box_range.select[this.box_range.select.length - 1] ?? [];
-
-					switch (this.box_range.state.action) {
-						case "create": {
-							ctx.strokeStyle = "rgba(0, 255, 0, 0.75)";
-							ctx.rect(
-								this.box_range.begin_state[0], this.box_range.begin_state[1],
-								this.box_range.during_state[0] - this.box_range.begin_state[0], this.box_range.during_state[1] - this.box_range.begin_state[1],
-							);
-						} break;
-						case "resize": {
-							ctx.strokeStyle = "rgba(255, 255, 0, 0.75)";
-							const res = lib0246.calc_resize(
-								last_select[8], last_select[9], last_select[10], last_select[11],
-								this.box_range.during_state[0], this.box_range.during_state[1]
-							);
-							ctx.rect(res[0], res[1], res[2], res[3]);
-						} break;
-						case "move": {
-							ctx.strokeStyle = "rgba(0, 0, 255, 0.75)";
-							ctx.rect(
-								last_select[8] + this.box_range.during_state[0] - this.box_range.begin_state[0],
-								last_select[9] + this.box_range.during_state[1] - this.box_range.begin_state[1],
-								last_select[10], last_select[11]
-							);
-						}
-					}
-
-					ctx.stroke();
-					ctx.closePath();
-
-					ctx.beginPath();
-					ctx.fillStyle = "#ffffff";
-					ctx.font = "12px Consolas";
-					ctx.fillText(
-						`!XY: (${lib0246.floor(this.box_range.during_state[0], 2)}, ${lib0246.floor(this.box_range.during_state[1], 2)})`,
-						this.flex.hold_draw[0] + 5, this.flex.hold_draw[1] + 15
-					);
-					ctx.closePath();
-				}
-
-				ctx.restore();
-			},
-			mouse: function (event, pos, node) {
-				// if (pos[0] < this.flex.hold_mouse[0])
-				// 	pos[0] = this.flex.hold_mouse[0];
-				// if (pos[1] < this.flex.hold_mouse[1])
-				// 	pos[1] = this.flex.hold_mouse[1];
-				// if (pos[0] > this.flex.hold_mouse[2] + this.flex.hold_mouse[0])
-				// 	pos[0] = this.flex.hold_mouse[2] + this.flex.hold_mouse[0];
-				// if (pos[1] > this.flex.hold_mouse[3] + this.flex.hold_mouse[1])
-				// 	pos[1] = this.flex.hold_mouse[3] + this.flex.hold_mouse[1];
-				
-				widget.box_range.state = widget.box_range.state ?? {};
-				widget.box_range.delay_state = widget.box_range.delay_state ?? null;
-				
-				widget.box_range.state.mouse = event.type;
-
-				let box_flag = false;
-				if (widget.box_range.select.length > 0)
-					if (box_range_eval_corner(pos, widget.box_range.select[widget.box_range.select.length - 1], widget))
-						box_flag = true;
-					else if (lib0246.is_inside_rect(
-						pos[0], pos[1],
-						widget.box_range.select[widget.box_range.select.length - 1][8], widget.box_range.select[widget.box_range.select.length - 1][9],
-						widget.box_range.select[widget.box_range.select.length - 1][10], widget.box_range.select[widget.box_range.select.length - 1][11]
-					)) {
-						widget.box_range.state.where = "box";
-						box_flag = true;
-					}
-				
-				if (!box_flag)
-					for (let i = 0; i < widget.box_range.boxes.length; ++ i)
-						if (lib0246.is_inside_rect(
-							pos[0], pos[1],
-							widget.box_range.boxes[i][8], widget.box_range.boxes[i][9],
-							widget.box_range.boxes[i][10], widget.box_range.boxes[i][11]
-						)) {
-							widget.box_range.state.where = "box";
-							box_flag = true;
-							break;
-						} else if (box_range_eval_corner(pos, widget.box_range.boxes[i], widget)) {
-							box_flag = true;
-							break;
-						}
-
-				widget.box_range.state.bound = lib0246.is_inside_rect(
-					pos[0], pos[1],
-					this.flex.hold_mouse[0], this.flex.hold_mouse[1], this.flex.hold_mouse[2], this.flex.hold_mouse[3]
-				) ? "in" : "out";
-
-				if (!widget.box_range.state.where || !box_flag)
-					widget.box_range.state.where = "";
-
-				if (!widget.box_range.state.action)
-					widget.box_range.state.action = "";
-
-				if (window.performance.now() - (widget.box_range.delay_state ?? 0) > widget.box_range.delay_dbl)
-					widget.box_range.delay_state = null;
-
-				box_range_eval_state(BOX_RANGE_STATE, node, widget, event, pos);
-			},
-		};
-
-		widget.box_range = widget.box_range ?? {};
-		widget.box_range.boxes = widget.box_range.boxes ?? [];
-		widget.box_range.select = widget.box_range.select ?? [];
-
-		widget.box_range.delay_dbl = widget.box_range.delay_dbl ?? options.delay_dbl ?? 200;
-		widget.box_range.radius = widget.box_range.radius ?? options.radius ?? 15;
-
-		widget_flex(node, widget, options);
-
-		widget.row_count = options.row_count ?? 20;
-		widget.col_count = options.col_count ?? 20;
-
-		return widget;
-	}
-
-	function draw_chain(
-		ctx,
-		fill_c, stroke_c, line_w,
-		link_w, link_h, spacing,
-		box_x, box_y, box_w, box_h
-	) {
-		// Calculate how many links can fit in the box
-		let links = Math.floor(box_w / (link_w + spacing));
-	
-		// Draw chain links
-		for (let i = 0; i < links; ++ i) {
-			let center_x = box_x + i * (link_w + spacing) + link_w / 2,
-				center_y = box_y + box_h / 2;
-			ctx.beginPath();
-			ctx.fillStyle = fill_c;
-			ctx.strokeStyle = stroke_c;
-			ctx.lineWidth = line_w;
-			ctx.ellipse(center_x, center_y, link_w / 2, link_h / 2, 0, 0, 2 * Math.PI);
-			ctx.stroke();
-			ctx.closePath();
-		}
-	}
-
-	function draw_lock(ctx, x, y, width, height, flag) {
-		const halve_w = 8,
-			off_x = halve_w / 2,
-			off_y = height / 3 + 0.5,
-			calc_w = (width - halve_w) / 2,
-			lift_y = flag ? 1.5 : 0,
-			hole_color = flag ? "#4d4" : "#d44",
-			thick_w = 1;
-
-		// Draw entire red rect of x y width height
-		// ctx.beginPath();
-		// ctx.strokeStyle = "#ff0000";
-		// ctx.rect(x, y, width, height);
-		// ctx.stroke();
-		// ctx.closePath();
-
-		// Draw half arc
-		ctx.beginPath();
-		ctx.strokeStyle = LiteGraph.WIDGET_OUTLINE_COLOR;
-		ctx.lineWidth = 1;
-		ctx.arc(x + calc_w + off_x, y + off_y - lift_y, calc_w + thick_w / 2, Math.PI, 0, false);
-		ctx.stroke();
-		ctx.closePath();
-
-		if (flag) {
-			// Draw vertical line of the left side
-			ctx.beginPath();
-			ctx.strokeStyle = LiteGraph.WIDGET_OUTLINE_COLOR;
-			ctx.lineWidth = 1;
-			ctx.moveTo(x - thick_w / 2 + off_x, y + off_y - lift_y);
-			ctx.lineTo(x - thick_w / 2 + off_x, y + off_y + lift_y);
-			ctx.stroke();
-			ctx.closePath();
-		}
-
-		// Draw round rect
-		ctx.beginPath();
-		ctx.strokeStyle = LiteGraph.WIDGET_OUTLINE_COLOR;
-		ctx.fillStyle = LiteGraph.WIDGET_BGCOLOR;
-		ctx.lineWidth = 1 + thick_w;
-		ctx.roundRect(x + off_x, y + off_y + lift_y, width - halve_w, height - halve_w, [0, 0, 5, 5]);
-		ctx.stroke();
-		ctx.fill();
-		ctx.closePath();
-
-		// Draw circle at center of the rect
-		ctx.beginPath();
-		ctx.fillStyle = hole_color;
-		ctx.lineWidth = 1;
-		ctx.arc(x + calc_w + off_x, y + off_y / 2 + off_y + lift_y, 2, 0, Math.PI * 2);
-		ctx.fill();
-		ctx.closePath();
-
-		// Draw triangle just below the circle
-		ctx.beginPath();
-		ctx.fillStyle = hole_color;
-		ctx.lineWidth = 1;
-		const tri_of_y = -1;
-		ctx.moveTo(x + calc_w + off_x, y + off_y / 2 + off_y + lift_y + tri_of_y);
-		ctx.lineTo(x + calc_w + off_x - 2, y + off_y / 2 + off_y + 6 + lift_y + tri_of_y);
-		ctx.lineTo(x + calc_w + off_x + 2, y + off_y / 2 + off_y + 6 + lift_y + tri_of_y);
-		ctx.fill();
-		ctx.closePath();
-	}
-
-	function draw_number_lock(widget, ctx, x, y, widget_width, widget_height, left_margin, right_margin, text_margin, lock_margin, text_raw, text_real, lock, text_flag) {
-		ctx.textAlign = "left";
-		ctx.strokeStyle = LiteGraph.WIDGET_OUTLINE_COLOR;
-		ctx.fillStyle = LiteGraph.WIDGET_BGCOLOR;
-
-		ctx.beginPath();
-		if (text_flag)
-			ctx.roundRect(x + left_margin + lock_margin, y, widget_width - left_margin - right_margin - lock_margin, widget_height, [widget_height * 0.5]);
-		else
-			ctx.rect(x + left_margin + lock_margin, y, widget_width - left_margin - right_margin - lock_margin, widget_height);
-		ctx.fill();
-		if (text_flag) {
-			if (!widget.disabled)
-				ctx.stroke();
-
-			ctx.fillStyle = LiteGraph.WIDGET_TEXT_COLOR;
-			if (!widget.disabled) {
-				ctx.beginPath();
-				ctx.moveTo(x + left_margin + lock_margin + 16, y + 5);
-				ctx.lineTo(x + left_margin + lock_margin + 6, y + widget_height * 0.5);
-				ctx.lineTo(x + left_margin + lock_margin + 16, y + widget_height - 5);
-				ctx.fill();
-				ctx.beginPath();
-				ctx.moveTo(x + widget_width - right_margin - 16, y + 5);
-				ctx.lineTo(x + widget_width - right_margin - 6, y + widget_height * 0.5);
-				ctx.lineTo(x + widget_width - right_margin - 16, y + widget_height - 5);
-				ctx.fill();
-			}
-			ctx.fillStyle = LiteGraph.WIDGET_SECONDARY_TEXT_COLOR;
-			ctx.fillText(`${widget.label ?? widget.name} (${text_real})`, x + left_margin + text_margin + lock_margin + 5, y + widget_height * 0.7);
-			ctx.fillStyle = LiteGraph.WIDGET_TEXT_COLOR;
-			ctx.textAlign = "right";
-			ctx.fillText(
-				text_raw,
-				x + widget_width - right_margin - text_margin - 20,
-				y + widget_height * 0.7
-			);
-		}
-		
-		draw_lock(ctx, x + left_margin, y, widget_height, widget_height, lock);
-	}
-
-	function ratio_process_calc(widget, mode, old_value) {
-		const data = widget.value.data,
-			lock = widget.value.lock,
-			opt = widget.options;
-		switch (Math.abs(mode)) {
-			case 1: {
-				if (lock.height && lock.width && lock.ratio) {
-					data.height = old_value * data.height / data.width;
-					if (data.height < opt.min) {
-						data.height = opt.min;
-						data.width = data.height * data.ratio;
-					} else if (data.height > opt.max) {
-						data.height = opt.max;
-						data.width = data.height * data.ratio;
-					}
-					data.ratio = data.width / data.height;
-				} else if (lock.height && !lock.ratio) {
-					data.height = data.width / data.ratio;
-					if (data.height < opt.min) {
-						data.height = opt.min;
-						data.width = data.height * data.ratio;
-					} else if (data.height > opt.max) {
-						data.height = opt.max;
-						data.width = data.height * data.ratio;
-					}
-				} else if (!lock.height && lock.ratio) {
-					data.ratio = data.width / data.height;
-					if (data.ratio < opt.min) {
-						data.ratio = opt.min;
-						data.width = data.height * data.ratio;
-					} else if (data.ratio > opt.max) {
-						data.ratio = opt.max;
-						data.width = data.height * data.ratio;
-					}
-				} else {
-					lock.height = false;
-					lock.ratio = false;
-					data.width = old_value;
-				}
-			} break;
-			case 2: {
-				if (lock.height && lock.width && lock.ratio) {
-					data.width = old_value * data.width / data.height;
-					if (data.width < opt.min) {
-						data.width = opt.min;
-						data.height = data.width / data.ratio;
-					} else if (data.width > opt.max) {
-						data.width = opt.max;
-						data.height = data.width / data.ratio;
-					}
-					data.ratio = data.width / data.height;
-				} else if (lock.width && !lock.ratio) {
-					data.width = data.height * data.ratio;
-					if (data.width < opt.min) {
-						data.width = opt.min;
-						data.height = data.width / data.ratio;
-					} else if (data.width > opt.max) {
-						data.width = opt.max;
-						data.height = data.width / data.ratio;
-					}
-				} else if (!lock.width && lock.ratio) {
-					data.ratio = data.width / data.height;
-					if (data.ratio < opt.min) {
-						data.ratio = opt.min;
-						data.height = data.width / data.ratio;
-					} else if (data.ratio > opt.max) {
-						data.ratio = opt.max;
-						data.height = data.width / data.ratio;
-					}
-				} else {
-					lock.width = false;
-					lock.ratio = false;
-					data.height = old_value;
-				}
-			} break;
-			case 3: {
-				if (
-					(lock.height && lock.width && lock.ratio) ||
-					(!lock.height && !lock.width && !lock.ratio)
-				) {
-					data.ratio = old_value;
-				} else if (!lock.height && lock.width) {
-					data.width = data.height * data.ratio;
-					if (data.width < opt.min) {
-						data.width = opt.min;
-						data.height = data.width / data.ratio;
-					} else if (data.width > opt.max) {
-						data.width = opt.max;
-						data.height = data.width / data.ratio;
-					}
-				} else if (!lock.width && lock.height) {
-					data.height = data.width / data.ratio;
-					if (data.height < opt.min) {
-						data.height = opt.min;
-						data.width = data.height * data.ratio;
-					} else if (data.height > opt.max) {
-						data.height = opt.max;
-						data.width = data.height * data.ratio;
-					}
-				} else {
-					lock.height = false;
-					lock.width = false;
-					data.ratio = old_value;
-				}
-			} break;
-		}
-
-		if (!Number.isFinite(data.width))
-			data.width = 0;
-		if (!Number.isFinite(data.height))
-			data.height = 0;
-		if (!Number.isFinite(data.ratio))
-			data.ratio = 0;
-	}
-
-	function ratio_notify(node, widget, name, mode, old_value, value, pos, event, w_f, h_f) {
-		if (/^[0-9+\-*/()\s]+|\d+\.\d+$/.test(value))
-			try {
-				const res = Number(eval(value));
-				if (w_f) {
-					widget.value.data.width = res / widget.value.data.height;
-					if (widget.value.data.width < widget.options.min) {
-						widget.value.data.width = widget.options.min;
-						widget.value.data.height = widget.value.data.width / widget.value.data.ratio;
-					} else if (widget.value.data.width > widget.options.max) {
-						widget.value.data.width = widget.options.max;
-						widget.value.data.height = widget.value.data.width / widget.value.data.ratio;
-					}
-					widget.value.data.ratio = widget.value.data.width / widget.value.data.height;
-					app.canvas.setDirty(true);
-				} else if (h_f) {
-					widget.value.data.height = res / widget.value.data.width;
-					if (widget.value.data.height < widget.options.min) {
-						widget.value.data.height = widget.options.min;
-						widget.value.data.width = widget.value.data.height * widget.value.data.ratio;
-					} else if (widget.value.data.height > widget.options.max) {
-						widget.value.data.height = widget.options.max;
-						widget.value.data.width = widget.value.data.height * widget.value.data.ratio;
-					}
-					widget.value.data.ratio = widget.value.data.width / widget.value.data.height;
-					app.canvas.setDirty(true);
-				} else {
-					widget.value.data[name] = res;
-					ratio_process_calc(widget, mode, old_value);
-				}
-				if (widget.options && widget.options.property && node.properties[widget.options.property] !== undefined)
-					node.setProperty(widget.options.property, value);
-				widget?.callback?.(widget.value, widget, node, pos, event);
-			} catch (e) {}
-	}
-
-	function RATIO_WIDGET(node, data_type, data_name, options = {}) {
-		const widget = {
-			type: data_type,
-			name: data_name,
-			value: {
-				lock: {
-					ratio: false,
-					width: false,
-					height: false,
-				},
-				data: {
-					ratio: 1,
-					width: 512,
-					height: 512,
-				}
-			},
-			options: options,
-			draw: function (ctx, node, widget_width, y, widget_height) {
-				ctx.save();
-
-				const show_text = app.canvas.ds.scale > 0.5,
-					margin = 15,
-					lock_margin = 20,
-					text_margin = 15,
-					calc_width = widget_width / 3;
-
-				this.temp_w = widget_width;
-				this.temp_h = widget_height;
-				this.temp_y = y;
-
-				draw_number_lock(
-					this, ctx, 0, y, calc_width, widget_height, margin, 0, text_margin, lock_margin,
-					lib0246.floor(widget.value.data.width, widget.options.precision ?? 3),
-					`W: ${lib0246.snap(widget.value.data.width, widget.options.snap)}`,
-					widget.value.lock.width, show_text
-				);
-				draw_number_lock(
-					this, ctx, calc_width, y, calc_width, widget_height, 0, 0, text_margin, lock_margin,
-					lib0246.floor(widget.value.data.ratio, widget.options.precision ?? 3),
-					`A: ${lib0246.floor(widget.value.data.width * widget.value.data.height, widget.options.precision ?? 3)}`,
-					widget.value.lock.ratio, show_text
-				);
-				draw_number_lock(
-					this, ctx, calc_width * 2, y, calc_width, widget_height, 0, margin, text_margin, lock_margin,
-					lib0246.floor(widget.value.data.height, widget.options.precision ?? 3),
-					`H: ${lib0246.snap(widget.value.data.height, widget.options.snap)}`,
-					widget.value.lock.height, show_text
-				);
-
-				ctx.restore();
-			},
-			mouse: function (event, pos, node) {
-				const margin = 15,
-					lock_margin = 20,
-					text_margin = 15,
-					calc_width = this.temp_w / 3,
-					hit_width = 20;
-
-				let mode = 0, old_value;
-
-				if (event.type === "pointerdown") {
-					if (lib0246.is_inside_rect(
-						pos[0], pos[1],
-						margin, this.temp_y, this.temp_h, this.temp_h
-					))
-						this.value.lock.width = !this.value.lock.width;
-					else if (lib0246.is_inside_rect(
-						pos[0], pos[1],
-						calc_width, this.temp_y, this.temp_h, this.temp_h
-					))
-						this.value.lock.ratio = !this.value.lock.ratio;
-					else if (lib0246.is_inside_rect(
-						pos[0], pos[1],
-						calc_width * 2, this.temp_y, this.temp_h, this.temp_h
-					))
-						this.value.lock.height = !this.value.lock.height;
-
-					else if (lib0246.is_inside_rect(
-						pos[0], pos[1],
-						margin + lock_margin, this.temp_y, hit_width, this.temp_h
-					)) {
-						mode = 1;
-						old_value = this.value.data.width;
-						this.value.data.width = Math.max(this.options.min, this.value.data.width - this.options.step * 0.1);
-					}
-					else if (lib0246.is_inside_rect(
-						pos[0], pos[1],
-						calc_width - lock_margin, this.temp_y, hit_width, this.temp_h
-					)) {
-						mode = 1;
-						old_value = this.value.data.width;
-						this.value.data.width = Math.max(this.options.min, this.value.data.width + this.options.step * 0.1);
-					}
-
-					else if (lib0246.is_inside_rect(
-						pos[0], pos[1],
-						calc_width + lock_margin, this.temp_y, hit_width, this.temp_h
-					)) {
-						mode = 3;
-						old_value = this.value.data.ratio;
-						this.value.data.ratio = Math.max(this.options.min, this.value.data.ratio - this.options.step * 0.001);
-					}
-					else if (lib0246.is_inside_rect(
-						pos[0], pos[1],
-						calc_width * 2 - lock_margin, this.temp_y, hit_width, this.temp_h
-					)) {
-						mode = 3;
-						old_value = this.value.data.ratio;
-						this.value.data.ratio = Math.max(this.options.min, this.value.data.ratio + this.options.step * 0.001);
-					}
-
-					else if (lib0246.is_inside_rect(
-						pos[0], pos[1],
-						calc_width * 2 + lock_margin, this.temp_y, hit_width, this.temp_h
-					)) {
-						mode = 2;
-						old_value = this.value.data.height;
-						this.value.data.height = Math.max(this.options.min, this.value.data.height - this.options.step * 0.1);
-					}
-					else if (lib0246.is_inside_rect(
-						pos[0], pos[1],
-						this.temp_w - margin - lock_margin, this.temp_y, hit_width, this.temp_h
-					)) {
-						mode = 2;
-						old_value = this.value.data.height;
-						this.value.data.height = Math.max(this.options.min, this.value.data.height + this.options.step * 0.1);
-					}
-				} else {
-					if (lib0246.is_inside_rect(
-						pos[0], pos[1],
-						margin + lock_margin + hit_width, this.temp_y, (calc_width - lock_margin) - (margin + lock_margin + hit_width), this.temp_h
-					)) {
-						mode = 1;
-						old_value = this.value.data.width;
-						if (event.dragging) {
-							this.value.data.width = Math.max(this.options.min, Math.min(this.options.max, this.value.data.width + event.deltaX * 0.1 * this.options.step));
-							this.drag_flag = true;
-						} else if (event.type === "pointerup")
-							if (!this.drag_flag)
-								app.canvas.prompt("Width", this.value.data.width, (value) => ratio_notify(node, this, "width", mode, old_value, value, pos, event), event);
-							else
-								this.drag_flag = false;
-					} else if (lib0246.is_inside_rect(
-						pos[0], pos[1],
-						calc_width + lock_margin + hit_width, this.temp_y, (calc_width * 2 - lock_margin) - (calc_width + lock_margin + hit_width), this.temp_h
-					)) {
-						mode = 3;
-						old_value = this.value.data.ratio;
-						if (event.dragging) {
-							this.value.data.ratio = Math.max(this.options.min, Math.min(this.options.max, this.value.data.ratio + event.deltaX * 0.001 * this.options.step));
-							this.drag_flag = true;
-						} else if (event.type === "pointerup")
-							if (!this.drag_flag) {
-								const w_f = this.value.lock.ratio && this.value.lock.width && this.value.lock.height,
-									h_f = !this.value.lock.ratio && !this.value.lock.width && !this.value.lock.height;
-								app.canvas.prompt(w_f ? "Area (width)" : h_f ? "Area (height)" : "Ratio", this.value.data.ratio, (value) => ratio_notify(
-									node, this, "ratio", mode, old_value, value, pos, event, w_f, h_f
-								), event);
-							} else
-								this.drag_flag = false;
-					} else if (lib0246.is_inside_rect(
-						pos[0], pos[1],
-						calc_width * 2 + lock_margin + hit_width, this.temp_y, (this.temp_w - margin - lock_margin) - (calc_width * 2 + lock_margin + hit_width), this.temp_h
-					)) {
-						mode = 2;
-						old_value = this.value.data.height;
-						if (event.dragging) {
-							this.value.data.height = Math.max(this.options.min, Math.min(this.options.max, this.value.data.height + event.deltaX * 0.1 * this.options.step));
-							this.drag_flag = true;
-						} else if (event.type === "pointerup")
-							if (!this.drag_flag)
-								app.canvas.prompt("Height", this.value.data.height, (value) => ratio_notify(node, this, "height", mode, old_value, value, pos, event), event);
-							else
-								this.drag_flag = false;
-					}
-				}
-				
-				if (mode !== 0) {
-					ratio_process_calc(this, mode, old_value);
-					node?.onWidgetChanged?.(this.name, this.value, old_value, this);
-				}
-			},
-		};
-		widget.options.min = widget.options.min ?? 0;
-		widget.options.max = widget.options.max ?? 2048;
-		widget.options.step = widget.options.step ?? 10;
-		widget.options.precision = widget.options.precision ?? 2;
-		widget.options.snap = widget.options.snap ?? 8;
-		return widget;
-	}
-
-	function SPACE_TITLE_WIDGET() {
-		return {
-			value: -1,
-			type: "space_title",
-			options: {
-				serialize: false,
-			},
-			select: true,
-			select_color: lib0246.rgb_to_hex(
-				lib0246.rand_int(128, 255),
-				lib0246.rand_int(128, 255),
-				lib0246.rand_int(128, 255)
-			),
-			draw: function(ctx, node, widget_width, y, widget_height) {
-				ctx.save();
-				
-				if (this.value > -1) {
-					let widget_text = app.graph.getNodeById(this.value)?.title;
-	
-					if (widget_text)
-						widget_text += ` (${this.value})`;
-					else
-						widget_text = this.value;
-				
-					const side_margin = widget_text.length + 5,
-						text_measure = ctx.measureText(widget_text),
-						text_center_y = (text_measure.actualBoundingBoxAscent + text_measure.actualBoundingBoxDescent) / 2,
-						off_y = y + widget_height / 2;
-
-					ctx.beginPath();
-					ctx.fillStyle = this.select ? this.select_color : "#aaaaaa";
-					ctx.font = "15px Consolas";
-					ctx.textAlign = "center";
-					ctx.fillText(widget_text, widget_width / 2, text_center_y + off_y);
-					ctx.closePath();
-
-					ctx.beginPath();
-					ctx.strokeStyle = "#aaaaaa";
-					ctx.lineWidth = 2;
-					ctx.setLineDash([5, 5]);
-					ctx.moveTo(0, off_y);
-					ctx.lineTo(widget_width / 2 - text_measure.width / 2 - side_margin, off_y);
-					ctx.stroke();
-					ctx.closePath();
-
-					ctx.beginPath();
-					ctx.strokeStyle = "#aaaaaa";
-					ctx.lineWidth = 2;
-					ctx.setLineDash([5, 5]);
-					ctx.moveTo(widget_width / 2 + text_measure.width / 2 + side_margin, off_y);
-					ctx.lineTo(widget_width, off_y);
-					ctx.stroke();
-					ctx.closePath();
-				} else {
-					ctx.beginPath();
-					ctx.strokeStyle = "#aaaaaa";
-					ctx.lineWidth = 2;
-					ctx.setLineDash([5, 5]);
-					ctx.moveTo(0, y + widget_height / 2);
-					ctx.lineTo(widget_width, y + widget_height / 2);
-					ctx.stroke();
-					ctx.closePath();
-				}
-
-				ctx.restore();
-			},
-			mouse: function(event, pos, node) {
-				if (event.type === "pointerdown")
-					this.select = !this.select;
-			},
-			computeSize: function() {
-				return [0, 20];
-			}
-		};
-	}
-
-	const WIDGETS_MAP = new WeakMap();
-
-	function setup_hijack_widget(node, name_fn) {
-		const original_widgets = node.widgets;
-		if (!original_widgets) return;
-	
-		// Store the original widgets before applying the proxy
-		WIDGETS_MAP.set(node, original_widgets);
-	
-		node.widgets = new Proxy(original_widgets, {
-			get(target, prop, receiver) {
-				const original_widget = Reflect.get(target, prop, receiver);
-				if (original_widget && typeof original_widget === 'object') {
-					return new Proxy(original_widget, {
-						get(widget_target, widget_prop) {
-							if (widget_prop === 'name')
-								return name_fn(node, widget_target);
-							return Reflect.get(widget_target, widget_prop);
-						}
-					});
-				}
-				return original_widget;
-			}
-		});
-	}
-	
-	function reset_hijack_widget(node) {
-		if (WIDGETS_MAP.has(node)) {
-			node.widgets = WIDGETS_MAP.get(node);
-			WIDGETS_MAP.delete(node);
-		}
-	}
-
-	const NODE_PARENT = Symbol("node_parent");
-
-	function hijack_widget_name(node, widget) {
-		if (node.comfyClass === "0246.Hub" && widget[NODE_PARENT])
-			return `node:${widget[NODE_PARENT].id}:${widget.name}`;
-		return widget.name;
-	}
-
-	const WIDGET_PIN = Symbol("widget_pin"),
-		PIPE_COMBO = ["HIGHWAY_PIPE", "JUNCTION_PIPE"];
-
-	function hub_combo_pin_type_func(value, canvas, node, pos, event) {
-		if (this[WIDGET_PIN].type !== "COMBO")
-			this[WIDGET_PIN].type = value;
-		for (let i = 0; this[WIDGET_PIN].links && i < this[WIDGET_PIN].links.length; ++ i) {
-			const link = app.graph.links[this[WIDGET_PIN].links[i]],
-				target_node = app.graph.getNodeById(link.target_id),
-				pin = target_node.inputs[link.target_slot];
-			if (!(pin.type === value || pin.type === "*"))
-				target_node.disconnectInput(link.target_slot);
-		}
-	}
-
-	const HUB_PARENT = Symbol("hub_parent"),
-		HUB_SOLE = 7,
-		PASS_DATA = Symbol("pass_data");
-
-	async function hub_serialize_batch_combo(node, index_str) {
-		return node.widgets[Number(index_str)].value.join(":");
-	}
-
-	function hub_setup_widget(node, data, id) {
-		for (let node_id of app.graph.extra["0246.HUB_DATA"][id].node_list)
-			node.hubPushNode(app.graph.getNodeById(node_id), true);
-
-		if (node.outputs && node.outputs.length > 0) {
-			let count = 0, widget;
-			for (let name in node.hub.data.sole_type) {
-				const proc_name = node.hub.data.sole_type[name], // name.split(":"),
-					type_data = proc_name.slice(3, 6);
-				switch (proc_name[2]) {
-					case "int": {
-						widget = node.hubPushWidgetPrim("INT", type_data, name);
-					} break;
-					case "float": {
-						widget = node.hubPushWidgetPrim("FLOAT", type_data, name);
-					} break;
-					case "string": {
-						widget = node.hubPushWidgetPrim("STRING", type_data, name);
-					} break;
-					case "boolean": {
-						widget = node.hubPushWidgetPrim("BOOLEAN", type_data, name);
-					} break;
-					case "combo": {
-						switch (proc_name[3]) {
-							case "__BATCH_PRIM__": {
-								widget = node.hubPushWidgetComboRaw(type_defs, proc_name[3], hub_combo_pin_type_func, type_data, name);
-							} break;
-							case "__BATCH_COMBO__": {
-								widget = node.hubPushWidgetComboRaw(combo_defs, proc_name[3], hub_combo_pin_type_func, type_data, name, hub_serialize_batch_combo);
-							} break;
-							case "__PIPE__": {
-								widget = node.hubPushWidgetComboRaw(PIPE_COMBO, proc_name[3], hub_combo_pin_type_func, type_data, name);
-							} break;
-							default: {
-								widget = node.hubPushWidgetCombo(...type_data, name);
-							} break;
-						}
-					} break;
-				}
-				widget.value = data.widgets_values[HUB_SOLE + 2 + (count ++)];
-			}
-		}
-	}
-
-	/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-	/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-	/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-	app.registerExtension({
-		name: "0246.Node",
-		setup(app) {
-			{
-				const reroute_class = lib0246.clone_class(LiteGraph.registered_node_types.Reroute);
-
-				reroute_class.prototype.onNodeCreated = function() {
-					const DATA_TEMP = [];
-
-					lib0246.hijack(this, "onConnectionsChange", function () {
+import * as wg0246 from "./widgets.js";
+
+app.registerExtension({
+	name: "0246.Node",
+	async setup (app) {
+		{
+			const reroute_class = lib0246.clone_class(LiteGraph.registered_node_types.Reroute);
+
+			reroute_class.prototype.onNodeCreated = function() {
+				const DATA_TEMP = [];
+
+				lib0246.hijack(this, "onConnectionsChange", function () {
+					if (!this.mark) {
 						DATA_TEMP[0] = this.self.inputs[0].type;
 						DATA_TEMP[1] = this.self.outputs[0].type;
 						DATA_TEMP[2] = this.self.size[0];
 						this.self.inputs[0].type = this.self.outputs[0].type = this.self.widgets[0].value;
-					}, function () {
+					} else {
 						this.self.inputs[0].type = DATA_TEMP[0];
 						this.self.outputs[0].type = DATA_TEMP[1];
 						this.self.size[0] = DATA_TEMP[2];
-					});
+					}
+				});
 
-					const type_widget = this.addWidget("combo", "", "*", function(value, widget, node) {
-						let curr_input_node = node.getInputNode(0),
-							curr_output_node = node.getOutputNodes(0),
-							prev_input_slot = app.graph.links?.[node.inputs[0].link]?.origin_slot,
-							prev_output_slot = [];
-						
-						if (node.outputs[0].links)
-							for (let i = 0; i < node.outputs[0].links.length; ++ i)
-								prev_output_slot.push(app.graph.links[node.outputs[0].links[i]].target_slot);
-						
-						node.disconnectInput(0);
-						node.disconnectOutput(0);
+				const type_widget = this.addWidget("combo", "", "*", function(value, widget, node) {
+					let curr_input_node = node.getInputNode(0),
+						curr_output_node = node.getOutputNodes(0),
+						prev_input_slot = app.graph.links?.[node.inputs[0].link]?.origin_slot,
+						prev_output_slot = [];
+					
+					if (node.outputs[0].links)
+						for (let i = 0; i < node.outputs[0].links.length; ++ i)
+							prev_output_slot.push(app.graph.links[node.outputs[0].links[i]].target_slot);
+					
+					node.disconnectInput(0);
+					node.disconnectOutput(0);
 
-						process_reroute(node);
+					wg0246.process_reroute(node);
 
-						if (curr_output_node && curr_output_node.length > 0) {
-							node.inputs[0].widget = curr_output_node[0].inputs[prev_output_slot[0]].widget;
-							for (let i = 0; i < curr_output_node.length; ++ i)
-								node.connect(0, curr_output_node[i], prev_output_slot[i]);
-						} else
-							node.inputs[0].widget = {};
+					if (curr_output_node && curr_output_node.length > 0) {
+						node.inputs[0].widget = curr_output_node[0].inputs[prev_output_slot[0]].widget;
+						for (let i = 0; i < curr_output_node.length; ++ i)
+							node.connect(0, curr_output_node[i], prev_output_slot[i]);
+					} else
+						node.inputs[0].widget = {};
 
-						if (curr_input_node)
-							curr_input_node.connect(prev_input_slot, node, 0);
-					}, {
-						values: type_defs
-					});
+					if (curr_input_node)
+						curr_input_node.connect(prev_input_slot, node, 0);
+				}, {
+					values: wg0246.type_defs
+				});
 
-					type_widget.y = 3;
-					let prev_size = this.computeSize();
-					prev_size[0] = 100;
+				type_widget.y = 3;
+				let prev_size = this.computeSize();
+				prev_size[0] = 100;
 
-					// Prevent error
-					// [TODO] Set widget from output/input pin if exist, else just empty object
-					// this.inputs[0].widget = {};
+				this.serialize_widgets = true;
 
-					this.serialize_widgets = true;
+				this.setSize(prev_size);
+			};
 
-					this.setSize(prev_size);
-				};
-
-				lib0246.hijack(reroute_class.prototype, "onDrawForeground", function () {
-					process_reroute(this.self);
-				}, () => {});
-
-				LiteGraph.registerNodeType(
-					"0246.CastReroute",
-					Object.assign(reroute_class, {
-						title_mode: LiteGraph.NO_TITLE,
-						title: "Cast Reroute",
-						collapsable: false,
-					})
-				);
-
-				reroute_class.category = "0246";
-			}
-
-			lib0246.hijack(app.canvas, "processNodeWidgets", function (node) {
-				PROCESS_WIDGET_NODE = node;
-			}, function (node) {
-				PROCESS_WIDGET_NODE = null;
+			lib0246.hijack(reroute_class.prototype, "onDrawForeground", function () {
+				if (!this.mark)
+					wg0246.process_reroute(this.self);
 			});
 
-			lib0246.hijack(app.canvas, "drawNodeWidgets", function () {
-				const node = arguments[0];
-				FLEX_DB.set(node, true);
-				if (node.comfyClass === "0246.Hub") {
-					node.hub.temp_y = node.hub.temp_y ?? {};
-					const io_height = Math.max(node?.inputs?.length ?? 0, node?.outputs?.length ?? 0) * 24;
-					node.hub.curr_y = io_height;
-					let compute_height = node.size[1],
-						widget_count = 0;
+			LiteGraph.registerNodeType(
+				"0246.CastReroute",
+				Object.assign(reroute_class, {
+					title_mode: LiteGraph.NO_TITLE,
+					title: "Cast Reroute",
+					collapsable: false,
+				})
+			);
 
-					for (; widget_count < node.widgets.length; ++ widget_count) {
-						if (
-							node.widgets[widget_count] === app.graph.getNodeById(node.hub?.data?.node_list?.[0])?.widgets?.[0] ||
-							node.widgets[widget_count].type === "space_title"
-						)
-							break;
-						node.hub.curr_y += LiteGraph.NODE_WIDGET_HEIGHT + 4;
-					}
-
-					if (node.hub.sole_space) {
-						node.hub.curr_y += LiteGraph.NODE_WIDGET_HEIGHT + 8 - node.hub.sole_widget.length * 4;
-						++ widget_count;
-					}
-
-					for (let i = 0; i < node.hub.sole_widget.length; ++ i, ++ widget_count) {
-						const curr_widget = node.hub.sole_widget[i];
-						if (curr_widget.y !== undefined)
-							node.hub.temp_y[widget_count] = curr_widget.y;
-						curr_widget.y = node.hub.curr_y;
-						node.hub.curr_y += LiteGraph.NODE_WIDGET_HEIGHT + 4; // [TODO] Maybe add checks like below
-					}
-
-					if (node.hub.data)
-						for (let i = 0; i < node.hub.data.node_list.length; ++ i) {
-							const curr_node = app.graph.getNodeById(node.hub.data.node_list[i]);
-							if (node.widgets.length <= widget_count || !curr_node)
-								break;
-							node.widgets[widget_count ++].y = node.hub.curr_y;
-							node.hub.curr_y += LiteGraph.NODE_WIDGET_HEIGHT + 4;
-							for (let j = 0; j < curr_node.widgets.length; ++ j, ++ widget_count) {
-								const curr_widget = curr_node.widgets[j];
-								if (curr_widget.y !== undefined)
-									node.hub.temp_y[widget_count] = curr_widget.y;
-								curr_widget.y = node.hub.curr_y;
-								if (curr_widget.flex) {
-									curr_widget.flex.real_w = node.size[0];
-									curr_widget.flex.real_y = node.hub.curr_y;
-									node.hub.curr_y += curr_widget.flex.temp_h;
-								} else if (curr_widget.computedHeight) {
-									node.hub.curr_y += curr_widget.computedHeight + 4;
-									compute_height += curr_widget.computedHeight;
-								} else if (curr_widget.openpose) {
-									node.hub.curr_y += node.size[0];
-								} else if (curr_widget.painter_wrap) {
-									node.hub.curr_y += Math.max((
-										curr_widget.painter_toolbox = curr_widget.painter_toolbox ?? document.querySelector("div.painter_drawning_box")
-									).clientHeight / app.canvas.ds.scale + 4, node.size[0]);
-									app.canvas.setDirty(true);
-								} else if (curr_widget.computeSize) {
-									const curr_height = curr_widget.computeSize(node.size[0], node)[1]; // compute_height, raw_height - io_height + flex_height
-									node.hub.curr_y += curr_height + 4;
-								} else
-									node.hub.curr_y += LiteGraph.NODE_WIDGET_HEIGHT + 4;
-							}
-						}
-				}
-			}, function () {
-				const node = arguments[0];
-				FLEX_DB.set(node, false);
-				if (node.comfyClass === "0246.Hub") {
-					let curr_size = node.computeSize();
-					for (let i = 0; i < node.widgets.length; ++ i) {
-						if (node.hub.temp_y[i] !== undefined)
-							node.widgets[i].y = node.hub.temp_y[i];
-						else
-							node.widgets[i].y = undefined;
-						delete node.hub.temp_y[i];
-					}
-					curr_size[0] = node.size[0];
-					curr_size[1] = node.hub.curr_y + 2;
-					node.setSize(curr_size);
-				}
-			});
-
-			lib0246.hijack(app, "graphToPrompt", async function () {
-				for (let i = 0; i < this.self.graph._nodes.length; ++ i) {
-					const node = this.self.graph._nodes[i];
-					if (node.comfyClass === "0246.Hub")
-						setup_hijack_widget(node, hijack_widget_name);
-				}
-			}, async function () {
-				for (let i = 0; i < this.self.graph._nodes.length; ++ i) {
-					const node = this.self.graph._nodes[i];
-					if (node.comfyClass === "0246.Hub")
-						reset_hijack_widget(node);
-				}
-			});
-		},
-		nodeCreated(node) {
-			switch (node.comfyClass) {
-				case "0246.Highway": {
-					node.color = LGraphCanvas.node_colors.brown.color;
-					node.bgcolor = LGraphCanvas.node_colors.brown.bgcolor;
-				} break;
-				case "0246.HighwayBatch": {
-					node.color = lib0246.mix_color_hue(LGraphCanvas.node_colors.brown.color, "#660029");
-					node.bgcolor = LGraphCanvas.node_colors.brown.bgcolor;
-				} break;
-				case "0246.Junction": {
-					node.color = LGraphCanvas.node_colors.blue.color;
-					node.bgcolor = LGraphCanvas.node_colors.blue.bgcolor;
-				} break;
-				case "0246.JunctionBatch": {
-					node.color = lib0246.mix_color_hue(LGraphCanvas.node_colors.blue.color, "#660029");
-					node.bgcolor = LGraphCanvas.node_colors.blue.bgcolor;
-				} break;
-				case "0246.Loop": {
-					node.color = LGraphCanvas.node_colors.yellow.color;
-					node.bgcolor = LGraphCanvas.node_colors.yellow.bgcolor;
-				} break;
-				case "0246.Count": {
-					node.color = LGraphCanvas.node_colors.green.color;
-					node.bgcolor = LGraphCanvas.node_colors.yellow.bgcolor;
-				} break;
-				case "0246.Hold": {
-					node.color = "#666600";
-					node.bgcolor = LGraphCanvas.node_colors.yellow.bgcolor;
-				} break;
-				case "0246.Beautify": {
-					// Pink UwU
-					node.color = "#652069";
-					node.bgcolor = "#764378";
-				} break;
-				case "0246.RandomInt": {
-					node.color = LGraphCanvas.node_colors.red.color;
-					node.bgcolor = LGraphCanvas.node_colors.green.bgcolor;
-				} break;
-				case "0246.Stringify": {
-					node.color = LGraphCanvas.node_colors.red.color;
-					node.bgcolor = LGraphCanvas.node_colors.green.bgcolor;
-				} break;
-				case "0246.Merge": {
-					node.color = "#660029";
-					node.bgcolor = "#4d001f";
-				} break;
+			reroute_class.category = "0246";
+		}
+	},
+	nodeCreated(node) {
+		switch (node.comfyClass) {
+			case "0246.Highway": {
+				node.color = LGraphCanvas.node_colors.brown.color;
+				node.bgcolor = LGraphCanvas.node_colors.brown.bgcolor;
+			} break;
+			case "0246.HighwayBatch": {
+				node.color = lib0246.mix_color_hue(LGraphCanvas.node_colors.brown.color, "#660029");
+				node.bgcolor = LGraphCanvas.node_colors.brown.bgcolor;
+			} break;
+			case "0246.Junction": {
+				node.color = LGraphCanvas.node_colors.blue.color;
+				node.bgcolor = LGraphCanvas.node_colors.blue.bgcolor;
+			} break;
+			case "0246.JunctionBatch": {
+				node.color = lib0246.mix_color_hue(LGraphCanvas.node_colors.blue.color, "#660029");
+				node.bgcolor = LGraphCanvas.node_colors.blue.bgcolor;
+			} break;
+			case "0246.Loop": {
+				node.color = LGraphCanvas.node_colors.yellow.color;
+				node.bgcolor = LGraphCanvas.node_colors.yellow.bgcolor;
+			} break;
+			case "0246.Count": {
+				node.color = LGraphCanvas.node_colors.green.color;
+				node.bgcolor = LGraphCanvas.node_colors.yellow.bgcolor;
+			} break;
+			case "0246.Hold": {
+				node.color = "#666600";
+				node.bgcolor = LGraphCanvas.node_colors.yellow.bgcolor;
+			} break;
+			case "0246.Beautify": {
+				// Pink UwU
+				node.color = "#652069";
+				node.bgcolor = "#764378";
+			} break;
+			case "0246.RandomInt": {
+				node.color = LGraphCanvas.node_colors.red.color;
+				node.bgcolor = LGraphCanvas.node_colors.green.bgcolor;
+			} break;
+			case "0246.Stringify": {
+				node.color = LGraphCanvas.node_colors.red.color;
+				node.bgcolor = LGraphCanvas.node_colors.green.bgcolor;
+			} break;
+			case "0246.Merge": {
+				node.color = "#660029";
+				node.bgcolor = "#4d001f";
+			} break;
+			case "0246.BoxRange": {
+				node.color = LGraphCanvas.node_colors.green.color;
+				node.bgcolor = LGraphCanvas.node_colors.green.bgcolor;
+			} break;
+			case "0246.ScriptNode": {
+				node.color = lib0246.mix_color_hue(LGraphCanvas.node_colors.green.color, "#660029");
+				node.bgcolor = "#4d001f";
+			} break;
+			case "0246.ScriptRule": {
+				node.color = lib0246.mix_color_hue(LGraphCanvas.node_colors.green.color, "#660029");
+				node.bgcolor = LGraphCanvas.node_colors.green.bgcolor;
+			} break;
+			case "0246.ScriptPile": {
+				node.color = "#660029";
+				node.bgcolor = lib0246.mix_color_hue(LGraphCanvas.node_colors.green.bgcolor, "#660029");
+			} break;
+			case "0246.Script": {
+				node.color = lib0246.mix_color_hue(LGraphCanvas.node_colors.green.color, "#660029");
+				node.bgcolor = lib0246.mix_color_hue(LGraphCanvas.node_colors.green.bgcolor, "#660029");
+			} break;
+			case "0246.Hub": {
+				node.color = "#1a1a1a";
+				node.bgcolor = "#111";
+			} break;
+			case "0246.Cloud": {
+				node.color = "#595959";
+				node.bgcolor = "#676767";
+			} break;
+		}
+		// use_everywhere.js messing with colors :(
+		node._color = node.color;
+		node._bgcolor = node.bgcolor;
+	},
+	async beforeRegisterNodeDef (nodeType, nodeData, app) {
+		if (typeof nodeData.category === "string" && nodeData.category.startsWith("0246")) {
+			switch (nodeData.name) {
 				case "0246.BoxRange": {
-					node.color = LGraphCanvas.node_colors.green.color;
-					node.bgcolor = LGraphCanvas.node_colors.green.bgcolor;
-				} break;
-				case "0246.ScriptNode": {
-					node.color = lib0246.mix_color_hue(LGraphCanvas.node_colors.green.color, "#660029");
-					node.bgcolor = "#4d001f";
-				} break;
-				case "0246.ScriptRule": {
-					node.color = lib0246.mix_color_hue(LGraphCanvas.node_colors.green.color, "#660029");
-					node.bgcolor = LGraphCanvas.node_colors.green.bgcolor;
-				} break;
-				case "0246.ScriptPile": {
-					node.color = "#660029";
-					node.bgcolor = lib0246.mix_color_hue(LGraphCanvas.node_colors.green.bgcolor, "#660029");
-				} break;
-				case "0246.Script": {
-					node.color = lib0246.mix_color_hue(LGraphCanvas.node_colors.green.color, "#660029");
-					node.bgcolor = lib0246.mix_color_hue(LGraphCanvas.node_colors.green.bgcolor, "#660029");
-				} break;
-				case "0246.Hub": {
-					node.color = "#1a1a1a";
-					node.bgcolor = "#111";
-				} break;
-			}
-		},
-		async beforeRegisterNodeDef (nodeType, nodeData, app) {
-			// if (nodeData.category === "group nodes/workflow")
-			// 	GROUP_NODE_CATEGORY_LIST.push(nodeData.comfyClass);
-			if (nodeData.category === "0246") {
-				switch (nodeData.name) {
-					case "0246.BoxRange": {
-						lib0246.hijack(nodeType.prototype, "onNodeCreated", () => {}, function () {
+					lib0246.hijack(nodeType.prototype, "onNodeCreated", function () {
+						if (this.mark) {
 							const node = this.self;
-							const ratio_widget = node.addCustomWidget(RATIO_WIDGET(node, "RATIO_RANGE", "box_ratio"));
-							const box_widget = node.addCustomWidget(BOX_RANGE_WIDGET(node, "BOX_RANGE", "box_range", {
+							const ratio_widget = node.addCustomWidget(wg0246.RATIO_WIDGET("RATIO_RANGE", "box_ratio"));
+							const box_widget = node.addCustomWidget(wg0246.BOX_RANGE_WIDGET("BOX_RANGE", "box_range", {
 								row_count: 10,
 								col_count: 10,
+							}));
+							wg0246.widget_flex(node, box_widget, {
 								ratio: 0,
 								share: 1,
 								min_h: 50,
 								center: true,
-							}));
+							});
 
 							lib0246.hijack(node, "getExtraMenuOptions", function (canvas, options) {
-								help_option(nodeType, HELP["box_range"], options);
-							}, () => {});
+								if (!this.mark)
+									wg0246.help_option(nodeType, wg0246.HELP["box_range"], options);
+							});
 
 							ratio_widget.callback = function (value, widget, node, pos, event) {
 								if (widget.name === "box_ratio") {
@@ -3134,9 +193,9 @@ let defs, node_defs = [], combo_defs = [], type_defs = new Set();
 							};
 
 							lib0246.hijack(node, "onWidgetChanged", function (name, value, old_value, widget) {
-								if (name === "box_ratio")
+								if (!this.mark && name === "box_ratio")
 									box_widget.flex.ratio = value.data.ratio;
-							}, () => {});
+							});
 
 							box_widget.flex.ratio = ratio_widget.value.data.ratio;
 
@@ -3146,41 +205,55 @@ let defs, node_defs = [], combo_defs = [], type_defs = new Set();
 
 							node.serialize_widgets = true;
 							node.setSize(node.computeSize());
-						});
-
-						single_impl_output(nodeType, nodeData, app, LiteGraph.CIRCLE_SHAPE, []);
-					} break;
-					case "0246.Highway": {
-						highway_impl(nodeType, nodeData, app, LiteGraph.CIRCLE_SHAPE, LiteGraph.CIRCLE_SHAPE);
-					} break;
-					case "0246.HighwayBatch": {
-						highway_impl(nodeType, nodeData, app, LiteGraph.GRID_SHAPE, LiteGraph.GRID_SHAPE);
-					} break;
-					case "0246.Junction": {
-						junction_impl(nodeType, nodeData, app, "_offset", LiteGraph.CIRCLE_SHAPE, LiteGraph.CIRCLE_SHAPE);
-					} break;
-					case "0246.JunctionBatch": {
-						// [TODO] Dynamically change shape when _mode is changed
-						junction_impl(nodeType, nodeData, app, "_offset", LiteGraph.GRID_SHAPE, LiteGraph.GRID_SHAPE);
-					} break;
-					case "0246.Loop": {
-						single_impl_input(nodeType, nodeData, app, LiteGraph.CIRCLE_SHAPE, []);
-					} break;
-					case "0246.Count": {
-						single_impl_input(nodeType, nodeData, app, null, [
-							"_node", "input", 1, LiteGraph.CIRCLE_SHAPE
-						]);
-						setup_log(nodeType);
-					} break;
-					case "0246.Hold": {
-						single_impl_input(nodeType, nodeData, app, null, [
-							"_data_in", "input", 1, LiteGraph.CIRCLE_SHAPE,
-							"_data_out", "output", 2, LiteGraph.GRID_SHAPE
-						]);
-						setup_log(nodeType);
-					} break;
-					case "0246.RandomInt": {
-						lib0246.hijack(nodeType.prototype, "onNodeCreated", () => {}, function () {
+						}
+					}, function (mode) {
+						if (mode === 0b100000) {
+							this.self.size[0] = Math.max(this.self.size[0], 350);
+							this.self.size[1] = Math.max(this.self.size[1], 350);
+						}
+					});
+					lib0246.hijack(nodeType.prototype, "onAdded", function () {
+						if (this.mark) {
+							const ratio_widget = this.self.widgets.find(w => w.name === "box_ratio"),
+								box_widget = this.self.widgets.find(w => w.name === "box_range");
+							box_widget.flex.ratio =	ratio_widget.value.data.ratio;
+							app.canvas.setDirty(true);
+						}
+					});
+					wg0246.single_impl_output(nodeType, nodeData, app, LiteGraph.CIRCLE_SHAPE, []);
+				} break;
+				case "0246.Highway": {
+					wg0246.highway_impl(nodeType, nodeData, app, LiteGraph.CIRCLE_SHAPE, LiteGraph.CIRCLE_SHAPE);
+				} break;
+				case "0246.HighwayBatch": {
+					wg0246.highway_impl(nodeType, nodeData, app, LiteGraph.GRID_SHAPE, LiteGraph.GRID_SHAPE);
+				} break;
+				case "0246.Junction": {
+					wg0246.junction_impl(nodeType, nodeData, app, "_offset", LiteGraph.CIRCLE_SHAPE, LiteGraph.CIRCLE_SHAPE);
+				} break;
+				case "0246.JunctionBatch": {
+					// [TODO] Dynamically change shape when _mode is changed
+					wg0246.junction_impl(nodeType, nodeData, app, "_offset", LiteGraph.GRID_SHAPE, LiteGraph.GRID_SHAPE);
+				} break;
+				case "0246.Loop": {
+					wg0246.single_impl_input(nodeType, nodeData, app, LiteGraph.CIRCLE_SHAPE, []);
+				} break;
+				case "0246.Count": {
+					wg0246.single_impl_input(nodeType, nodeData, app, null, [
+						"_node", "input", 1, LiteGraph.CIRCLE_SHAPE
+					]);
+					wg0246.setup_log(nodeType.prototype);
+				} break;
+				case "0246.Hold": {
+					wg0246.single_impl_input(nodeType, nodeData, app, null, [
+						"_data_in", "input", 1, LiteGraph.CIRCLE_SHAPE,
+						"_data_out", "output", 2, LiteGraph.GRID_SHAPE
+					]);
+					wg0246.setup_log(nodeType.prototype);
+				} break;
+				case "0246.RandomInt": {
+					lib0246.hijack(nodeType.prototype, "onNodeCreated", function () {
+						if (this.mark) {
 							const self = this.self;
 							self.outputs[0].shape = LiteGraph.GRID_SHAPE;
 							this.self.addWidget("button", "Random Seed", null, () => {
@@ -3243,33 +316,41 @@ let defs, node_defs = [], combo_defs = [], type_defs = new Set();
 							}, {
 								serialize: false
 							});
-						});
-						setup_log(nodeType, true);
-					} break;
-					case "0246.Beautify": {
-						setup_log(nodeType);
-						lib0246.hijack(nodeType.prototype, "onConnectInput", function () {
+						}
+					}, function (mode) {
+						if (mode === 0b100000)
+							this.self.setSize(this.self.computeSize());
+					});
+					wg0246.setup_log(nodeType.prototype, true);
+				} break;
+				case "0246.Beautify": {
+					wg0246.setup_log(nodeType.prototype);
+					lib0246.hijack(nodeType.prototype, "onConnectInput", function () {
+						if (!this.mark)
 							this.self.inputs[0].type = arguments[1];
-						}, () => {});
-						lib0246.hijack(nodeType.prototype, "onConnectionsChange", function (type, index, connected, link_info) {
-							if (!connected)
-								this.self.inputs[0].type = "*";
-						}, () => {});
-					} break;
-					case "0246.Stringify": {
-						single_impl_input(nodeType, nodeData, app, LiteGraph.CIRCLE_SHAPE, []);
-					} break;
-					case "0246.Merge": {
-						single_impl_input(nodeType, nodeData, app, LiteGraph.CIRCLE_SHAPE, []);
-					} break;
-					case "0246.Hub": {
-						const Hub = nodeType;
+						if (this.self.size[1] < 200)
+							this.self.size[1] = 200;
+					});
+					lib0246.hijack(nodeType.prototype, "onConnectionsChange", function (type, index, connected, link_info) {
+						if (!this.mark && !connected)
+							this.self.inputs[0].type = "*";
+					});
+				} break;
+				case "0246.Stringify": {
+					wg0246.single_impl_input(nodeType, nodeData, app, LiteGraph.CIRCLE_SHAPE, []);
+				} break;
+				case "0246.Merge": {
+					wg0246.single_impl_input(nodeType, nodeData, app, LiteGraph.CIRCLE_SHAPE, []);
+				} break;
+				case "0246.Hub": {
+					const Hub = nodeType;
 
-						// [TODO] Force tracked node render by hijack app.canvas.computeVisibleNodes and
-							// change getBounding of each nodes to be within app.canvas.visible_area
+					// [TODO] Force tracked node render by hijack app.canvas.computeVisibleNodes and
+						// change getBounding of each nodes to be within app.canvas.visible_area
 
-						Hub.prototype.onNodeCreated = function() {
-							const node = this;
+					lib0246.hijack(Hub.prototype, "onNodeCreated", function () {
+						if (this.mark) {
+							const node = this.self;
 
 							const prim_widget = node.addWidget("combo", "base:prim", "INT", () => {}, {
 								serialize: false,
@@ -3287,7 +368,7 @@ let defs, node_defs = [], combo_defs = [], type_defs = new Set();
 							
 							const combo_widget = node.addWidget("combo", "base:combo", ["KSampler", "required", "sampler_name"], () => {}, {
 								serialize: false,
-								values: combo_defs
+								values: wg0246.combo_defs
 							});
 							node.addWidget("button", "Add Sole Combo Widget", null, () => {
 								node.hubPushWidgetCombo(...combo_widget.value);
@@ -3297,7 +378,7 @@ let defs, node_defs = [], combo_defs = [], type_defs = new Set();
 							
 							const node_widget = node.addWidget("combo", "base:node", "KSampler", () => {}, {
 								serialize: false,
-								values: node_defs
+								values: wg0246.node_defs
 							});
 							node.addWidget("button", "Add Sole Primitive Widgets from Node", null, () => {
 								node.hubPushWidgetNode(node_widget.value);
@@ -3321,40 +402,51 @@ let defs, node_defs = [], combo_defs = [], type_defs = new Set();
 							});
 
 							lib0246.hijack(node, "connect", function (slot, target_node, target_slot) {
-								const output_data = this.self.hub.data.sole_type[this.self.outputs[slot].name];
-								if (output_data[2] === "combo") {
-									Hub.nodeData = Hub.nodeData ?? {};
-									Hub.nodeData.output = Hub.nodeData.output ?? {};
-									const curr_type = app.graph.extra["0246.HUB_DATA"][this.self.id].sole_type[this.self.outputs[slot].name];
-									if (curr_type.length === 7)
-										Hub.nodeData.output[slot] = defs[output_data[3]].input[output_data[4]][output_data[5]][0];
-									else if (curr_type[3] === "__BATCH_COMBO__") {
-										const curr_value = this.self.widgets.find(_ => _.name === this.self.outputs[slot].name).value;
-										Hub.nodeData.output[slot] = defs[curr_value[0]].input[curr_value[1]][curr_value[2]][0];
+								if (!this.mark) {
+									const output_data = this.self.hub.data.sole_type[this.self.outputs[slot].name];
+									if (output_data[2] === "combo") {
+										Hub.nodeData = Hub.nodeData ?? {};
+										Hub.nodeData.output = Hub.nodeData.output ?? {};
+										const curr_type = app.graph.extra["0246.HUB_DATA"][this.self.id].sole_type[this.self.outputs[slot].name];
+										if (curr_type.length === 7)
+											Hub.nodeData.output[slot] = wg0246.defs[output_data[3]].input[output_data[4]][output_data[5]][0];
+										else if (curr_type[3] === "__BATCH_COMBO__") {
+											const curr_value = this.self.widgets.find(_ => _.name === this.self.outputs[slot].name).value;
+											Hub.nodeData.output[slot] = wg0246.defs[curr_value[0]].input[curr_value[1]][curr_value[2]][0];
+										}
 									}
+								} else {
+									const output_data = this.self.hub.data.sole_type[this.self.outputs[slot].name];
+									if (output_data[2] === "combo")
+										delete Hub.nodeData.output[slot];
 								}
-							}, function (slot, target_node, target_slot) {
-								const output_data = this.self.hub.data.sole_type[this.self.outputs[slot].name];
-								if (output_data[2] === "combo")
-									delete Hub.nodeData.output[slot];
 							});
 
-							lib0246.hijack(node, "clone", () => {}, function () {
-								for (let i = 0; i < node.widgets.length; ++ i) {
-									this.res.widgets[i] = this.res.widgets[i] ?? {};
-									this.res.widgets[i].value = structuredClone(node.widgets[i].value);
+							lib0246.hijack(node, "clone", function () {
+								if (this.mark) {
+									for (let i = 0; i < node.widgets.length; ++ i) {
+										this.res.widgets[i] = this.res.widgets[i] ?? {};
+										this.res.widgets[i].value = structuredClone(node.widgets[i].value);
+									}
+									lib0246.hijack(this.res, "serialize", function () {
+										if (this.mark) {
+											this.res.__id__ = node.id;
+											// Technically we don't need to call serialize, but only need to update widget values
+											node.widgets_values = node.serialize().widgets_values;
+										}
+									});
 								}
-								lib0246.hijack(this.res, "serialize", () => {}, function () {
-									this.res.__id__ = node.id;
-									// Technically we don't need to call serialize, but only need to update widget values
-									node.widgets_values = node.serialize().widgets_values;
-								});
 							});
+						}
+					}, function (mode) {
+						if (mode === 0b100000)
+							this.self.size[0] = Math.max(this.self.size[0], 350);
+					});
 
-							node.size[0] = 350;
-						};
+					const HUB_PASS_DATA = Symbol("pass_data");
 
-						lib0246.hijack(Hub.prototype, "onAdded", () => {}, function () {
+					lib0246.hijack(Hub.prototype, "onAdded", function () {
+						if (this.mark) {
 							const node = this.self;
 
 							node.hub = node.hub ?? {};
@@ -3377,33 +469,39 @@ let defs, node_defs = [], combo_defs = [], type_defs = new Set();
 							node.hub.sole_widget = [];
 							node.hub.sole_space = null;
 
-							if (node[PASS_DATA]) {
-								Object.assign(node.hub.data, structuredClone(app.graph.extra["0246.HUB_DATA"][node[PASS_DATA].__id__]));
-								node[PASS_DATA].widgets_values = structuredClone(app.graph.getNodeById(node[PASS_DATA].__id__).widgets_values);
-								hub_setup_widget(node, node[PASS_DATA], node[PASS_DATA].__id__);
+							if (node[HUB_PASS_DATA]) {
+								Object.assign(node.hub.data, structuredClone(app.graph.extra["0246.HUB_DATA"][node[HUB_PASS_DATA].__id__]));
+								node[HUB_PASS_DATA].widgets_values = structuredClone(app.graph.getNodeById(node[HUB_PASS_DATA].__id__).widgets_values);
+								wg0246.hub_setup_widget(node, node[HUB_PASS_DATA], node[HUB_PASS_DATA].__id__);
 
-								delete node[PASS_DATA];
+								delete node[HUB_PASS_DATA];
 							}
-						});
+						}
+					});
 
-						lib0246.hijack(Hub.prototype, "onConfigure", () => {}, function (data) {
+					lib0246.hijack(Hub.prototype, "onConfigure", function (data) {
+						if (this.mark) {
 							const node = this.self;
 
 							if (node.id)
-								hub_setup_widget(node, data, node.id);
+								wg0246.hub_setup_widget(node, data, node.id);
 							else
-								node[PASS_DATA] = data;
-						});
+								node[HUB_PASS_DATA] = data;
+						}
+					});
 
-						lib0246.hijack(Hub.prototype, "onRemoved", function () {
+					lib0246.hijack(Hub.prototype, "onRemoved", function () {
+						if (!this.mark) {
 							const node = this.self;
 							if (node.hub.data)
 								while (node.hub.data.node_list.length > 0)
 									node.hubPullNode(node.hub.data.node_list[0]);
 							delete app.graph.extra["0246.HUB_DATA"][node.id];
-						}, () => {});
+						}
+					});
 
-						lib0246.hijack(Hub.prototype, "getExtraMenuOptions", function (canvas, options) {
+					lib0246.hijack(Hub.prototype, "getExtraMenuOptions", function (canvas, options) {
+						if (!this.mark) {
 							const node = this.self;
 							options.push(
 								{
@@ -3455,196 +553,202 @@ let defs, node_defs = [], combo_defs = [], type_defs = new Set();
 								}
 							);
 
-							help_option(Hub, HELP["hub"], options);
+							wg0246.help_option(Hub, wg0246.HELP["hub"], options);
 
 							options.push(null);
-						}, () => {});
+						}
+					});
 
-						Hub.prototype.hubSize = function () {
-							const curr_size = this.computeSize();
-							curr_size[0] = this.size[0] < 350 ? 350 : this.size[0];
-							this.setSize(curr_size);
-						};
+					Hub.prototype.hubSize = function () {
+						const curr_size = this.computeSize();
+						curr_size[0] = this.size[0] < 350 ? 350 : this.size[0];
+						this.setSize(curr_size);
+					};
 
-						Hub.prototype.hubPushWidgetPrim = function (type, ...args) {
-							const node = this;
-							switch (type) {
-								case "INT": {
-									return node.hubPushWidget({
-										type: "number",
-										value: 0,
-										options: {
-											min: Number.MIN_SAFE_INTEGER,
-											max: Number.MAX_SAFE_INTEGER,
-											step: 10, // litegraph.js internally multiply by 0.1
-											precision: 0
-										},
-									}, "int", "INT", ...args);
-								} break;
-								case "FLOAT": {
-									return node.hubPushWidget({
-										type: "number",
-										value: 0,
-										options: {
-											min: -Infinity,
-											max: Infinity,
-											step: 1,
-											precision: 5
-										},
-									}, "float", "FLOAT", ...args);
-								} break;
-								case "STRING": {
-									return node.hubPushWidget({
-										type: "string",
-										value: "",
-										options: {
-											multiline: true
-										}
-									}, "string", "STRING", ...args);
-								} break;
-								case "BOOLEAN": {
-									return node.hubPushWidget({
-										type: "toggle",
-										value: false,
-										options: {}
-									}, "boolean", "BOOLEAN", ...args);
-								} break;
-								case "__BATCH_PRIM__": {
-									return this.hubPushWidgetComboRaw(type_defs, type, hub_combo_pin_type_func, ...args);
-								} break;
-								case "__BATCH_COMBO__": {
-									return this.hubPushWidgetComboRaw(combo_defs, type, hub_combo_pin_type_func, args[0], args[1], hub_serialize_batch_combo);
-								} break;
-								case "__PIPE__": {
-									return this.hubPushWidgetComboRaw(PIPE_COMBO, type, hub_combo_pin_type_func, ...args);
-								} break;
-							}
-						};
-
-						Hub.prototype.hubPushWidgetCombo = function (node_name, part_name, pin_name, full_name) {
-							return this.hubPushWidgetComboRaw(defs[node_name].input[part_name][pin_name][0], "COMBO", () => {}, [node_name, part_name, pin_name], full_name);
-						};
-
-						Hub.prototype.hubPushWidgetComboRaw = function (combo_data, combo_type, func, extra_name, full_name, serialize_func) {
-							const widget = this.hubPushWidget({
-								type: "combo",
-								value: combo_data[0],
-								callback: func ?? (() => {}),
-								options: {
-									values: combo_data
-								},
-							}, "combo", combo_type, extra_name, full_name);
-							if (serialize_func && serialize_func.constructor.name === "AsyncFunction")
-								widget.serializeValue = serialize_func;
-							window.setTimeout(() => {
-								widget.callback(widget.value, app.canvas, this, null, null);
-							}, 0);
-							return widget;
-						};
-
-						Hub.prototype.hubPushWidgetNode = function (node_name, full_name) {
-							for (let part_name in defs[node_name].input)
-								for (let pin_name in defs[node_name].input[part_name]) {
-									const curr_type = defs[node_name].input[part_name][pin_name][0];
-									if (Array.isArray(curr_type))
-										this.hubPushWidgetCombo(node_name, part_name, pin_name, full_name);
-									else
-										this.hubPushWidgetPrim(curr_type, [node_name, part_name, pin_name], full_name);
-								}
-						};
-
-						Hub.prototype.hubPushWidget = function (widget, id_type, pin_type, extra_name = [], full_name = "") {
-							if (!this.hub.sole_space) {
-								this.hub.sole_space = SPACE_TITLE_WIDGET();
-								this.widgets.splice(HUB_SOLE + 1, 0, this.hub.sole_space);
-							}
-
-							this.widgets.splice(HUB_SOLE + 2 + this.hub.sole_widget.length, 0, widget);
-							this.hub.sole_widget.push(widget);
-
-							if (full_name.length > 0) {
-								widget.name = full_name;
-								for (let i = 0; i < this.outputs.length; ++ i)
-									if (this.outputs[i].name === full_name) {
-										widget[WIDGET_PIN] = this.outputs[i];
-										break;
+					Hub.prototype.hubPushWidgetPrim = function (type, ...args) {
+						const node = this;
+						switch (type) {
+							case "INT": {
+								return node.hubPushWidget({
+									type: "number",
+									value: 0,
+									options: {
+										min: Number.MIN_SAFE_INTEGER,
+										max: Number.MAX_SAFE_INTEGER,
+										step: 10, // litegraph.js internally multiply by 0.1
+										precision: 0
+									},
+								}, "int", "INT", ...args);
+							} break;
+							case "FLOAT": {
+								return node.hubPushWidget({
+									type: "number",
+									value: 0,
+									options: {
+										min: -Infinity,
+										max: Infinity,
+										step: 1,
+										precision: 5
+									},
+								}, "float", "FLOAT", ...args);
+							} break;
+							case "STRING": {
+								return node.hubPushWidget({
+									type: "string",
+									value: "",
+									options: {
+										multiline: true
 									}
-							} else {
-								this.hub.data.sole_name[id_type] = this.hub.data.sole_name[id_type] ?? 0;
+								}, "string", "STRING", ...args);
+							} break;
+							case "BOOLEAN": {
+								return node.hubPushWidget({
+									type: "toggle",
+									value: false,
+									options: {}
+								}, "boolean", "BOOLEAN", ...args);
+							} break;
+							case "__BATCH_PRIM__": {
+								return this.hubPushWidgetComboRaw(wg0246.type_defs, type, wg0246.hub_combo_pin_type_func, ...args);
+							} break;
+							case "__BATCH_COMBO__": {
+								return this.hubPushWidgetComboRaw(wg0246.combo_defs, type, wg0246.hub_combo_pin_type_func, args[0], args[1], wg0246.hub_serialize_batch_combo);
+							} break;
+							case "__PIPE__": {
+								return this.hubPushWidgetComboRaw(wg0246.PIPE_COMBO, type, wg0246.hub_combo_pin_type_func, ...args);
+							} break;
+						}
+					};
 
-								let list_name = [
-									"sole", String(this.hub.data.sole_name[id_type] ++),
-									id_type, ...extra_name, pin_type
-								];
+					Hub.prototype.hubPushWidgetCombo = function (node_name, part_name, pin_name, full_name) {
+						return this.hubPushWidgetComboRaw(wg0246.defs[node_name].input[part_name][pin_name][0], "COMBO", () => {}, [node_name, part_name, pin_name], full_name);
+					};
 
-								full_name = list_name.reduce((a, b) =>
-									typeof a !== "string" ? (b ?? "") :
-									typeof b !== "string" ? (a ?? "") :
-									a + ":" + b
-								);
+					Hub.prototype.hubPushWidgetComboRaw = function (combo_data, combo_type, func, extra_name, full_name, serialize_func) {
+						const widget = this.hubPushWidget({
+							type: "combo",
+							value: combo_data[0],
+							callback: func ?? (() => {}),
+							options: {
+								values: combo_data
+							},
+						}, "combo", combo_type, extra_name, full_name);
+						if (serialize_func && serialize_func.constructor.name === "AsyncFunction")
+							widget.serializeValue = serialize_func;
+						window.setTimeout(() => {
+							widget.callback(widget.value, app.canvas, this, null, null);
+						}, 0);
+						return widget;
+					};
 
-								widget[WIDGET_PIN] = this.addOutput(widget.name = full_name, pin_type === "__BATCH_COMBO__" ? "COMBO" : pin_type);
-								this.hub.data.sole_type[full_name] = list_name;
+					Hub.prototype.hubPushWidgetNode = function (node_name, full_name) {
+						for (let part_name in wg0246.defs[node_name].input)
+							for (let pin_name in wg0246.defs[node_name].input[part_name]) {
+								const curr_type = wg0246.defs[node_name].input[part_name][pin_name][0];
+								if (Array.isArray(curr_type))
+									this.hubPushWidgetCombo(node_name, part_name, pin_name, full_name);
+								else
+									this.hubPushWidgetPrim(curr_type, [node_name, part_name, pin_name], full_name);
 							}
+					};
 
-							this.hubSize();
+					Hub.prototype.hubPushWidget = function (widget, id_type, pin_type, extra_name = [], full_name = "") {
+						if (!this.hub.sole_space) {
+							this.hub.sole_space = wg0246.SPACE_TITLE_WIDGET();
+							this.widgets.splice(wg0246.HUB_SOLE + 1, 0, this.hub.sole_space);
+						}
 
-							return widget;
-						};
+						this.widgets.splice(wg0246.HUB_SOLE + 2 + this.hub.sole_widget.length, 0, widget);
+						this.hub.sole_widget.push(widget);
 
-						Hub.prototype.hubPullWidget = function (widget) {
-							const widget_index = this.widgets.indexOf(widget);
-							if (widget_index === -1)
-								return;
-							this.widgets.splice(widget_index, 1);
-							
-							delete this.hub.data.sole_type[widget.name];
+						if (full_name.length > 0) {
+							widget.name = full_name;
+							for (let i = 0; i < this.outputs.length; ++ i)
+								if (this.outputs[i].name === full_name) {
+									widget[wg0246.WIDGET_PIN] = this.outputs[i];
+									break;
+								}
+						} else {
+							this.hub.data.sole_name[id_type] = this.hub.data.sole_name[id_type] ?? 0;
 
-							const output_index = this.outputs.indexOf(this.outputs.find(o => o.name === widget.name));
-							if (output_index > -1) {
-								delete Hub.nodeData.output[output_index];
-								this.removeOutput(output_index);
-							}
+							let list_name = [
+								"sole", String(this.hub.data.sole_name[id_type] ++),
+								id_type, ...extra_name, pin_type
+							];
 
-							const sole_widget_index = this.hub.sole_widget.indexOf(widget);
-							if (sole_widget_index > -1)
-								this.hub.sole_widget.splice(sole_widget_index, 1);
+							full_name = list_name.reduce((a, b) =>
+								typeof a !== "string" ? (b ?? "") :
+								typeof b !== "string" ? (a ?? "") :
+								a + ":" + b
+							);
 
-							if (this.hub.sole_widget.length === 0) {
-								this.widgets.splice(HUB_SOLE + 1, 1);
-								this.hub.sole_space = null;
-							}
+							widget[wg0246.WIDGET_PIN] = this.addOutput(widget.name = full_name, pin_type === "__BATCH_COMBO__" ? "COMBO" : pin_type);
+							this.hub.data.sole_type[full_name] = list_name;
+						}
 
-							this.hubSize();
-						};
+						this.hubSize();
 
-						Hub.prototype.hubPushNode = function (curr_node, flag = false) {
-							const node = this;
+						return widget;
+					};
 
-							if (curr_node[HUB_PARENT] === node || !curr_node.widgets || curr_node.widgets.length === 0)
-								return;
+					Hub.prototype.hubPullWidget = function (widget) {
+						const widget_index = this.widgets.indexOf(widget);
+						if (widget_index === -1)
+							return;
+						this.widgets.splice(widget_index, 1);
+						
+						delete this.hub.data.sole_type[widget.name];
 
-							curr_node[HUB_PARENT] = node;
+						const output_index = this.outputs.indexOf(this.outputs.find(o => o.name === widget.name));
+						if (output_index > -1) {
+							delete Hub.nodeData.output[output_index];
+							this.removeOutput(output_index);
+						}
 
-							if (!flag || (flag && node.hub.data.node_list.indexOf(curr_node.id) === -1))
-								node.hub.data.node_list.push(curr_node.id);
+						const sole_widget_index = this.hub.sole_widget.indexOf(widget);
+						if (sole_widget_index > -1)
+							this.hub.sole_widget.splice(sole_widget_index, 1);
 
-							node.hub.node_func[curr_node.id] = {};
+						if (this.hub.sole_widget.length === 0) {
+							this.widgets.splice(wg0246.HUB_SOLE + 1, 1);
+							this.hub.sole_space = null;
+						}
 
-							node.hub.node_func[curr_node.id].bound = lib0246.hijack(curr_node, "onBounding", () => {}, function (area) {
+						this.hubSize();
+					};
+
+					const HUB_PARENT = Symbol("hub_parent");
+
+					Hub.prototype.hubPushNode = function (curr_node, flag = false) {
+						const node = this;
+
+						if (curr_node[HUB_PARENT] === node || !curr_node.widgets || curr_node.widgets.length === 0)
+							return;
+
+						curr_node[HUB_PARENT] = node;
+
+						if (!flag || (flag && node.hub.data.node_list.indexOf(curr_node.id) === -1))
+							node.hub.data.node_list.push(curr_node.id);
+
+						node.hub.node_func[curr_node.id] = {};
+
+						node.hub.node_func[curr_node.id].bound = lib0246.hijack(curr_node, "onBounding", function (area) {
+							if (this.mark)
 								node.hub.node_area[curr_node.id] = area;
-							});
+						});
 
-							node.hub.node_func[curr_node.id].remove = lib0246.hijack(curr_node, "onRemoved", function () {
+						node.hub.node_func[curr_node.id].remove = lib0246.hijack(curr_node, "onRemoved", function () {
+							if (!this.mark)
 								node.hubPullNode(curr_node.id);
-							}, () => {});
+						});
 
-							node.hub.node_widget[curr_node.id] = curr_node.widgets;
+						node.hub.node_widget[curr_node.id] = curr_node.widgets;
 
-							node.hub.space_widget[curr_node.id] = node.addCustomWidget(SPACE_TITLE_WIDGET());
-							node.hub.space_widget[curr_node.id].value = curr_node.id;
+						node.hub.space_widget[curr_node.id] = node.addCustomWidget(wg0246.SPACE_TITLE_WIDGET());
+						node.hub.space_widget[curr_node.id].value = curr_node.id;
 
-							node.hub.node_func[curr_node.id].draw_bg = lib0246.hijack(curr_node, "onDrawBackground", () => {}, function (ctx, visible_area) {
+						node.hub.node_func[curr_node.id].draw_bg = lib0246.hijack(curr_node, "onDrawBackground", function (ctx, visible_area) {
+							if (this.mark) {
 								const curr_widget = node.hub.space_widget[curr_node.id];
 								if (node.hub.space_widget[curr_node.id].select) {
 									ctx.beginPath();
@@ -3659,64 +763,68 @@ let defs, node_defs = [], combo_defs = [], type_defs = new Set();
 									ctx.stroke();
 									ctx.closePath();
 								}
-							});
-
-							for (let i = 0; i < curr_node.widgets.length; ++ i) {
-								const widget = curr_node.widgets[i];
-								node.addCustomWidget(widget);
-								widget[NODE_PARENT] = curr_node;
 							}
+						});
 
-							if (curr_node.imgs && curr_node.imgs.length > 0)
-								node.hub.data.node_img.push(curr_node.id);
+						for (let i = 0; i < curr_node.widgets.length; ++ i) {
+							const widget = curr_node.widgets[i];
+							node.addCustomWidget(widget);
+							widget[wg0246.NODE_PARENT] = curr_node;
+						}
 
-							node.hubSize();
-						};
+						if (curr_node.imgs && curr_node.imgs.length > 0)
+							node.hub.data.node_img.push(curr_node.id);
 
-						Hub.prototype.hubPullNode = function (curr_id) {
-							const node_index = this.hub.data.node_list.indexOf(curr_id);
-							if (node_index === -1)
-								return;
-							this.hub.data.node_list.splice(node_index, 1);
-							const node_img_index = this.hub.data.node_img.indexOf(curr_id);
-							if (node_img_index > -1)
-								this.hub.data.node_img.splice(node_img_index, 1);
+						node.hubSize();
+					};
 
-							delete this.hub.node_area[curr_id];
-							if (this.hub.node_widget[curr_id]) {
-								for (let widget of this.hub.node_widget[curr_id]) {
-									let widget_index = this.widgets.indexOf(widget);
-									if (widget_index > -1)
-										this.widgets.splice(widget_index, 1);
-								}
-								delete this.hub.node_widget[curr_id];
+					Hub.prototype.hubPullNode = function (curr_id) {
+						const node_index = this.hub.data.node_list.indexOf(curr_id);
+						if (node_index === -1)
+							return;
+						this.hub.data.node_list.splice(node_index, 1);
+						const node_img_index = this.hub.data.node_img.indexOf(curr_id);
+						if (node_img_index > -1)
+							this.hub.data.node_img.splice(node_img_index, 1);
+
+						delete this.hub.node_area[curr_id];
+						if (this.hub.node_widget[curr_id]) {
+							for (let widget of this.hub.node_widget[curr_id]) {
+								let widget_index = this.widgets.indexOf(widget);
+								if (widget_index > -1)
+									this.widgets.splice(widget_index, 1);
 							}
-							const space_widget_index = this.widgets.indexOf(this.hub.space_widget[curr_id]);
-							if (space_widget_index > -1)
-								this.widgets.splice(space_widget_index, 1);
-							delete this.hub.space_widget[curr_id];
+							delete this.hub.node_widget[curr_id];
+						}
+						const space_widget_index = this.widgets.indexOf(this.hub.space_widget[curr_id]);
+						if (space_widget_index > -1)
+							this.widgets.splice(space_widget_index, 1);
+						delete this.hub.space_widget[curr_id];
 
-							const curr_node = app.graph.getNodeById(curr_id);
-							if (curr_node && this.hub.node_func[curr_id]) {
-								delete curr_node[HUB_PARENT];
-								curr_node.onBounding = this.hub.node_func[curr_id].bound;
-								curr_node.onRemoved = this.hub.node_func[curr_id].remove;
-								curr_node.onDrawBackground = this.hub.node_func[curr_id].draw_bg;
-							}
-							delete this.hub.node_func[curr_id];
+						const curr_node = app.graph.getNodeById(curr_id);
+						if (curr_node && this.hub.node_func[curr_id]) {
+							delete curr_node[HUB_PARENT];
+							curr_node.onBounding = this.hub.node_func[curr_id].bound;
+							curr_node.onRemoved = this.hub.node_func[curr_id].remove;
+							curr_node.onDrawBackground = this.hub.node_func[curr_id].draw_bg;
+						}
+						delete this.hub.node_func[curr_id];
 
-							this.hubSize();
-						};
+						this.hubSize();
+					};
 
-						let temp_parent = [];
+					let temp_parent = [];
 
-						lib0246.hijack(GroupNodeHandler, "fromNodes", function (nodes) {
-							for (let i = 0; i < nodes.length; ++ i)
+					lib0246.hijack(GroupNodeHandler, "fromNodes", function (nodes) {
+						if (!this.mark) {
+							for (let i = 0; i < nodes.length; ++ i) {
 								if (nodes[i][HUB_PARENT] && temp_parent.indexOf(nodes[i].id) === -1) {
 									temp_parent.push(nodes[i][HUB_PARENT].id);
 									nodes[i][HUB_PARENT].hubPullNode(nodes[i].id);
 								}
-						}, function () {
+								nodes[i][wg0246.SOFT_REMOVE] = true;
+							}
+						} else {
 							if (this.res) {
 								const node_list = this.res.getInnerNodes();
 
@@ -3725,17 +833,19 @@ let defs, node_defs = [], combo_defs = [], type_defs = new Set();
 								while (temp_parent.length > 0) {
 									const curr_parent = app.graph.getNodeById(temp_parent.pop());
 									curr_parent.hubPushNode(this.res);
-									node_list[count ++][HUB_PARENT] = curr_parent;
+									const curr_count = count ++;
+									node_list[curr_count][HUB_PARENT] = curr_parent;
+									node_list[curr_count][wg0246.SOFT_REMOVE] = false;
 								}
 
 								lib0246.hijack(this.res, "convertToNodes", function () {
-									for (let i = 0; i < node_list.length; ++ i) 
-										if (node_list[i][HUB_PARENT]) {
-											node_list[i][HUB_PARENT].hubPullNode(node_list[i].id);
-											temp_parent.push(node_list[i][HUB_PARENT].id, node_list[i].id);
-										}
-								}, function () {
-									while (temp_parent.length > 0) {
+									if (!this.mark) {
+										for (let i = 0; i < node_list.length; ++ i)
+											if (node_list[i][HUB_PARENT]) {
+												node_list[i][HUB_PARENT].hubPullNode(node_list[i].id);
+												temp_parent.push(node_list[i][HUB_PARENT].id, node_list[i].id);
+											}
+									} else while (temp_parent.length > 0) {
 										const curr_node = app.graph.getNodeById(temp_parent.pop()),
 											curr_parent = app.graph.getNodeById(temp_parent.pop());
 
@@ -3747,29 +857,201 @@ let defs, node_defs = [], combo_defs = [], type_defs = new Set();
 									}
 								});
 							}
-						});
+						}
+					});
 
-						rgthree_exec("addConnectionLayoutSupport", Hub, app);
-					} break;
-					case "0246.Script": {
-						junction_impl(nodeType, nodeData, app, null, LiteGraph.GRID_SHAPE, LiteGraph.GRID_SHAPE);
-					} break;
-					case "0246.ScriptPile": {
-						lib0246.hijack(nodeType.prototype, "onNodeCreated", () => {}, function () {
+					wg0246.rgthree_exec("addConnectionLayoutSupport", Hub, app);
+				} break;
+				case "0246.Script": {
+					wg0246.junction_impl(nodeType, nodeData, app, null, LiteGraph.GRID_SHAPE, LiteGraph.GRID_SHAPE);
+				} break;
+				case "0246.ScriptPile": {
+					lib0246.hijack(nodeType.prototype, "onNodeCreated", function () {
+						if (this.mark) {
 							const regex_widget = this.self.widgets.find(w => w.name === "script_rule_regex");
 							regex_widget.options = regex_widget.options ?? {};
 							regex_widget.options.multiline = true;
-						});
-					} break;
-					case "0246.ScriptNode": {
-						lib0246.hijack(nodeType.prototype, "onNodeCreated", () => {}, function () {
+						}
+					});
+				} break;
+				case "0246.ScriptNode": {
+					lib0246.hijack(nodeType.prototype, "onNodeCreated", function () {
+						if (this.mark) {
 							const regex_widget = this.self.widgets.find(w => w.name === "script_ignore_regex");
 							regex_widget.options = regex_widget.options ?? {};
 							regex_widget.options.multiline = true;
-						});
-					} break;
-				}
+						}
+					});
+				} break;
+				case "0246.Cloud": {
+					const Cloud = nodeType;
+
+					lib0246.hijack(Cloud.prototype, "onNodeCreated", function () {
+						if (this.mark) {
+							const node = this.self;
+							let cloud_widget;
+
+							const insert_widget = node.addWidget(
+								"combo", "base:kind", "Select Kind",
+								function (value, canvas, node, pos, evt) {
+									if (value !== "_")
+										node.widgets.find(w => w.name === "base:data").build(node, value);
+									node.widgets.find(w => w.name === "base:kind").value = "Select Kind";
+								}, {
+									serialize: false,
+									values: [
+										"text", "text_list", "text_json", "weight", "rand", "cycle"
+										// [TODO] Support "mark", "lora" and "embedding"
+										// "lora" and "embedding" are self explanatory
+										// "mark" is basically make a Script to do text-based stuff like cutoff and gligen
+									]
+								}
+							);
+
+							const first_group_widget = node.addWidget("combo", "base:first_group_id", "_", () => {}, {
+								serialize: false,
+								values: function (widget) {
+									let res = ["_", "global", `local:${node.id}`];
+									for (let key in cloud_widget.cloud.data.group) {
+										if (key === "global" || key === `local:${node.id}`)
+											continue;
+										else
+											res.push(key);
+									}
+									return res;
+								}
+							});
+							const second_group_widget = node.addWidget("combo", "base:second_group_id", "_", () => {}, {
+								serialize: false,
+								values: function (widget) {
+									return ["_", ...Object.keys(cloud_widget.cloud.data.group ?? {})];
+								}
+							});
+
+							// wg0246.setup_log(node, true, true);
+
+							const preview_widget = ComfyWidgets["STRING"](node, "base:preview", ["STRING", {
+								multiline: true,
+							}], app).widget;
+							preview_widget.flex.share = 0.75;
+
+							cloud_widget = node.addCustomWidget(wg0246.CLOUD_WIDGET("CLOUD_DATA", "base:data"));
+							wg0246.widget_flex(node, cloud_widget, {
+								ratio: 0,
+								share: 1.5,
+								min_h: 100,
+								center: true,
+								margin_x: 10,
+							});
+							cloud_widget.cloud.node = node.id;
+						}
+					}, function (mode) {
+						if (mode === 0b100000)
+							this.self.size[0] = Math.max(this.self.size[0], 350);
+					});
+
+					let RIGHT_CLICK_NODE;
+
+					lib0246.hijack(nodeType.prototype, "getExtraMenuOptions", function (canvas, options) {
+						if (!this.mark) {
+							RIGHT_CLICK_NODE = this.self;
+							options.push(
+								{
+									content: "[0246.Cloud] ✔️ first_group_id ➡️ picked clouds",
+									callback: (value, options, evt, menu, node) => {
+										node.widgets.find(w => w.name === "base:data")
+											.build_group(node, node.widgets.find(w => w.name === "base:first_group_id").value, null);
+									}
+								}, {
+									content: "[0246.Cloud] 🗑️ second_group_id ➡️ picked clouds",
+									callback: (value, options, evt, menu, node) => {
+										node.widgets.find(w => w.name === "base:data")
+											.remove_group(
+												node,
+												node.widgets.find(w => w.name === "base:second_group_id").value,
+												null
+											);
+									}
+								}, {
+									content: "[0246.Cloud] ✔️ first_group_id ➡️ second_group_id",
+									callback: (value, options, evt, menu, node) => {
+										node.widgets.find(w => w.name === "base:data")
+											.build_group(
+												node,
+												node.widgets.find(w => w.name === "base:first_group_id").value,
+												node.widgets.find(w => w.name === "base:second_group_id").value
+											);
+									}
+								}, {
+									content: "[0246.Cloud] 🗑️ second_group_id ➡️ first_group_id",
+									callback: (value, options, evt, menu, node) => {
+										node.widgets.find(w => w.name === "base:data")
+											.remove_group(
+												node,
+												node.widgets.find(w => w.name === "base:second_group_id").value,
+												node.widgets.find(w => w.name === "base:first_group_id").value
+											);
+									}
+								}, {
+									content: "[0246.Cloud] 🗑️ Picked Clouds",
+									callback: (value, options, evt, menu, node) => {
+										const cloud_widget = node.widgets.find(w => w.name === "base:data");
+										for (let inst_id of cloud_widget.cloud.select)
+											cloud_widget.remove(node, inst_id);
+										cloud_widget.cloud.select.clear();
+									}
+								}, {
+									content: "[0246.Cloud] ✔️ Cloud ➡️ 🗑️ Preview",
+									callback: (value, options, evt, menu, node) => {
+										
+									}
+								}, {
+									content: "[0246.Cloud] ✔️ Preview ➡️ Cloud",
+									callback: (value, options, evt, menu, node) => {
+										
+									}
+								}, {
+									content: "[0246.Cloud] ✔️ Preview ➡️ 🗑️ All Clouds",
+									callback: (value, options, evt, menu, node) => {
+										
+									}
+								}
+							);
+							options.push(null);
+						} else
+							RIGHT_CLICK_NODE = null;
+					});
+
+					Cloud.nodeData.input = Cloud.nodeData.input ?? {};
+					Cloud.nodeData.input.required = new Proxy({}, {
+						get: function (target, prop, receiver) {
+							const widget = RIGHT_CLICK_NODE.widgets.find(w => w.name === prop);
+							return [widget.type === "customtext" ? "STRING" : widget.type, widget.options];
+						}
+					});
+
+					lib0246.hijack(Cloud.prototype, "onConfigure", function (data) {
+						if (this.mark) {
+							const node = this.self,
+								cloud_widget_index = node.widgets.findIndex(w => w.name === "base:data");
+
+							for (let inst_id in data.widgets_values[cloud_widget_index].inst) {
+								const curr_inst = data.widgets_values[cloud_widget_index].inst[inst_id];
+								node.widgets[cloud_widget_index].build(
+									node, curr_inst.kind,
+									curr_inst,
+									data.inputs.filter(_ => curr_inst.widgets_names.includes(_.name)),
+									data
+								);
+							}
+						}
+					});
+
+					wg0246.single_impl_input(Cloud, nodeData, app, LiteGraph.CIRCLE_SHAPE, [], wg0246.cloud_junction_evt);
+				} break;
 			}
-		},
-	});
-})();
+		}
+	},
+});
+
+// [TODO] New node that integrate with rgthree to immediate execute a sole node
