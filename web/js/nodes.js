@@ -81,6 +81,7 @@ app.registerExtension({
 			reroute_class.category = "0246";
 		}
 
+		/*
 		{
 			function Test() {}
 
@@ -117,6 +118,7 @@ app.registerExtension({
 
 			LiteGraph.registerNodeType("0246.Test", Test);
 		}
+		//*/
 	},
 	nodeCreated(node) {
 		switch (node.comfyClass) {
