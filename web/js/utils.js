@@ -429,6 +429,10 @@ export function lerp(norm, min, max) {
 	return (max - min) * norm + min;
 }
 
+export function map(val, src_min, src_max, dst_min, dst_max) {
+	return lerp(norm(val, src_min, src_max), dst_min, dst_max);
+}
+
 export function is_inside_rect(
 	this_x, this_y,
 	other_x, other_y, other_w, other_h
@@ -509,7 +513,7 @@ export function calc_area(margin_x, margin_head_y, margin_tail_y, width, height,
 	area[1] = margin_head_y + at_y;
 
 	area[2] = width - margin_x * 2;
-	area[3] = height - margin_head_y - margin_tail_y - at_y;
+	area[3] = height - margin_head_y - margin_tail_y;// - at_y;
 
 	area[3] = Math.min(area[3], max_height);
 
@@ -540,21 +544,31 @@ export function calc_area(margin_x, margin_head_y, margin_tail_y, width, height,
 	return area;
 }
 
-export function calc_spread(count, total, weight, limit) {
+export function calc_spread(count, total, weight, min, max) {
 	let total_weight = weight.reduce((a, b) => a + b, 0),
-		res = new Array(count).fill(0);
+		res = new Array(count).fill(0),
+		allow = new Array(count).fill(true),
+		remain = total;
 
-	for (let i = 0; i < count; ++ i)
-		if (limit[i] !== null) {
-			res[i] = Math.min(weight[i] / total_weight * total, limit[i]);
-
-			total -= res[i];
+	for (let i = 0; i < count; ++ i) {
+		res[i] = weight[i] / (total_weight === 0 ? 1 : total_weight) * total;
+		if (min[i] !== null && res[i] < min[i]) {
+			res[i] = min[i];
+			remain -= min[i];
 			total_weight -= weight[i];
+			allow[i] = false;
 		}
+		if (max[i] !== null && res[i] > max[i]) {
+			res[i] = max[i];
+			remain -= max[i];
+			total_weight -= weight[i];
+			allow[i] = false;
+		}
+	}
 
 	for (let i = 0; i < count; ++ i)
-		if (limit[i] === null)
-			res[i] = weight[i] / (total_weight === 0 ? 1 : total_weight) * total;
+		if (allow[i])
+			res[i] = weight[i] / (total_weight === 0 ? 1 : total_weight) * remain;
 
 	return res;
 }

@@ -276,7 +276,7 @@ function init_update_direct(node, name, callback) {
 	});
 }
 
-function link_shift_up(node, arr, index, flag, func) {
+function link_shift_up(node, arr, index, flag, data) {
 	// Disconnect event handler
 	const old_func = node.onConnectionsChange;
 	node.onConnectionsChange = null;
@@ -292,7 +292,7 @@ function link_shift_up(node, arr, index, flag, func) {
 			node.removeOutput(index);
 			
 			for (let i = 0, c = 0; i < arr.length; ++ i) {
-				if (func(i) || BLACKLIST.includes(arr[i].name))
+				if (node?.onConnectExpand?.("shift_output", arr[i].name, i, ...data))
 					continue;
 				arr[i].name = `${arr[i].type}:${c}`;
 				++ c;
@@ -302,7 +302,7 @@ function link_shift_up(node, arr, index, flag, func) {
 		node.removeInput(index);
 
 		for (let i = 0, c = 0; i < arr.length; ++ i) {
-			if (func(i) || BLACKLIST.includes(arr[i].name))
+			if (node?.onConnectExpand?.("shift_input", arr[i].name, i, ...data))
 				continue;
 			arr[i].name = `${c}:${arr[i].type}`;
 			++ c;
@@ -340,6 +340,11 @@ const BLACKLIST = [
 	"_cloud_out",
 	"..."
 ];
+
+function expand_blacklist_func(mode, name) {
+	if (this.mark && this.res !== true)
+		this.res = BLACKLIST.includes(name);
+}
 
 const LEGACY_BLACKLIST = {
 	prev: ["_pipe_in", "_pipe_out"],
@@ -420,23 +425,14 @@ function setup_sole_pin(node, name, side_name, side_mode, shape) {
 	});
 }
 
-function expand_y_calc(node, off) {
-	if (Number.isFinite(node.widgets[0]?.y))
-		for (let i = 0; i < node.widgets.length; ++ i)
-			if (node.widgets[i].element) {
-				node.widgets[0].last_y = node.widgets[0].y =
-					(Math.max(node.inputs?.length ?? 0, node.outputs?.length ?? 0) + off) * (LiteGraph.NODE_SLOT_HEIGHT) + 6;
-				break;
-			}
-}
-
 function expand_y_save(node, off, func) {
 	const old_w = node.size[0],
 		calc_h = node.size[1] + LiteGraph.NODE_SLOT_HEIGHT * off;
-	func();
-	node.size[0] = old_w;
-	if (node.size[1] - calc_h !== 20) // For Junction
-		node.size[1] = calc_h;
+	if (!func()) {
+		node.size[0] = old_w;
+		if (node.size[1] !== calc_h && node.flex_data)
+			node.size[1] = calc_h;
+	}
 }
 
 function setup_expand(node, name, real, pin, shape, callback) {
@@ -455,60 +451,67 @@ function setup_expand(node, name, real, pin, shape, callback) {
 	lib0246.hijack(node, "configure", function (data) {
 		if (this.mark && this.self[more_name])
 			for (let i = 0; i < this.self[more_name].length; ++ i) {
-				if (!BLACKLIST.includes(this.self[more_name][i].name))
+				if (!node?.onConnectExpand?.("configure_expand", this.self[more_name][i].name, data, name, i))
 					++ real[name];
 			}
 	});
 
-	node["onConnect" + upper_name] = function (
+	lib0246.hijack(node, "onConnect" + upper_name, function (
 		this_slot_index,
 		other_slot_type,
 		other_slot_obj,
 		other_node,
 		other_slot_index
 	) {
-		this.__update = true;
+		if (this.mark) {
+			this.self.__update = true;
 
-		if (
-			BLACKLIST.includes(this[more_name][this_slot_index].name) &&
-			this[more_name][this_slot_index].name !== pin
-		)
-			return true;
+			if (
+				node?.onConnectExpand?.(`connect_expand_${name}`, this.self[more_name][this_slot_index].name, ...arguments) &&
+				this.self[more_name][this_slot_index].name !== pin
+			) {
+				this.res = true;
+				return;
+			}
 
-		const res = callback.apply({ self: this, name: name, mode: 0 }, arguments);
-		if (res === true)
-			return true;
-		if (res === false)
-			return false;
+			const res = callback.apply({ self: this.self, name: name, mode: 0 }, arguments);
+			if (res === true) {
+				this.res = true;
+				return;
+			}
+			if (res === false) {
+				this.res = false;
+				return;
+			}
 
-		expand_y_calc(this, 1);
-		expand_y_save(this, 1, () => {
-			callback.call({ self: this, name: name, mode: 1 }, real[name] ++, this[more_name][this_slot_index].type, this_slot_index);
-			this["add" + upper_name](pin, "*");
-		});
-		this[more_name][this[more_name].length - 1].shape = shape;
+			expand_y_save(this.self, 1, () => {
+				callback.call({ self: this.self, name: name, mode: 1 }, real[name] ++, this.self[more_name][this_slot_index].type, this_slot_index);
+				this.self["add" + upper_name](pin, "*");
+			});
+			this.self[more_name][this.self[more_name].length - 1].shape = shape;
 
-		app.canvas.setDirty(true, false);
-		return true;
-	};
+			app.canvas.setDirty(true, false);
+			this.res = true;
+		}
+	});
 
 	lib0246.hijack(node, "onConnectionsChange", function (type, index, connected, link_info) {
 		if (this.mark) {
+			const args = arguments;
 			if (link_info === null) {
 				// Clean up when copy paste or template load
 				if (this.self[more_name])
-					lib0246.remove_elem_arr(this.self[more_name], (e) => !BLACKLIST.includes(e.name));
+					lib0246.remove_elem_arr(
+						this.self[more_name],
+						(e) => !node?.onConnectExpand?.(`connection_change_remove_expand_${name}`, e.name, e, ...args)
+					);
 				this.self.computeSize();
 				app.canvas.setDirty(true, false);
 				return;
 			}
 			
-			if (!connected) {
-				expand_y_calc(this.self, -1);
-				expand_y_save(this.self, -1, () => {
-					callback.apply({ self: this.self, name: name, mode: 2 }, arguments);
-				});
-			}
+			if (!connected)
+				expand_y_save(this.self, -1, callback.bind({ self: this.self, name: name, mode: 2 }, ...args));
 		}
 	});
 }
@@ -521,6 +524,8 @@ const INIT_MARK = Symbol("init");
 
 export function highway_impl(nodeType, nodeData, app, shape_in, shape_out) {
 	nodeType.prototype.onNodeMoved = function () {};
+
+	lib0246.hijack(nodeType.prototype, "onConnectExpand", expand_blacklist_func);
 
 	nodeType.prototype.onNodeCreated = function () {
 		init_update(this, "_query");
@@ -552,12 +557,12 @@ export function highway_impl(nodeType, nodeData, app, shape_in, shape_out) {
 				const node = this.res;
 				// Clean up when copy paste or template load
 				for (let i = 0; i < node.inputs.length; ++ i)
-					if (!BLACKLIST.includes(node.inputs[i].name)) {
+					if (!node?.onConnectExpand?.("clone_highway_input", node.inputs[i].name, i)) {
 						node.inputs[i].name = app.graph.extra["0246.__NAME__"][this.self.id]["inputs"][i]["name"];
 						node.inputs[i].type = "*";
 					}
 				for (let i = 0; i < node.outputs.length; ++ i)
-					if (!BLACKLIST.includes(node.outputs[i].name)) {
+					if (!node?.onConnectExpand?.("clone_highway_output", node.outputs[i].name, i)) {
 						node.outputs[i].name = app.graph.extra["0246.__NAME__"][this.self.id]["outputs"][i]["name"];
 						node.outputs[i].type = "*";
 					}
@@ -633,7 +638,7 @@ export function highway_impl(nodeType, nodeData, app, shape_in, shape_out) {
 		) {
 			this.__update = true;
 
-			if (BLACKLIST.includes(this.inputs[this_target_slot_index].name))
+			if (node?.onConnectExpand?.("connect_highway_input", this.inputs[this_target_slot_index].name, ...arguments))
 				return true;
 
 			if (this.inputs[this_target_slot_index].link !== null) {
@@ -661,7 +666,7 @@ export function highway_impl(nodeType, nodeData, app, shape_in, shape_out) {
 			// return false for not allowing connection
 			this.__update = true;
 			
-			if (BLACKLIST.includes(this.outputs[this_origin_slot_index].name))
+			if (node?.onConnectExpand?.("connect_highway_output", this.outputs[this_origin_slot_index].name, ...arguments))
 				return true;
 
 			let curr_pin = this.outputs[this_origin_slot_index];
@@ -691,7 +696,10 @@ export function highway_impl(nodeType, nodeData, app, shape_in, shape_out) {
 			if (!connected) {
 				switch (type) {
 					case 1: {
-						if (BLACKLIST.includes(this.inputs[link_info.target_slot].name) || link_info.replaced)
+						if (
+							node?.onConnectExpand?.("connection_change_remove_highway_input", this.inputs[link_info.target_slot].name, ...arguments) ||
+							link_info.replaced
+						)
 							return;
 						const curr_data = app.graph.extra?.["0246.__NAME__"]?.[this.id]?.["inputs"]?.[link_info.target_slot];
 						this.inputs[link_info.target_slot].name = curr_data?.["name"] ?? this.inputs[link_info.target_slot].name;
@@ -699,7 +707,10 @@ export function highway_impl(nodeType, nodeData, app, shape_in, shape_out) {
 							this.inputs[link_info.target_slot].type = "*";
 					} break;
 					case 2: {
-						if (this.outputs[link_info.origin_slot].links.length === 0 && !BLACKLIST.includes(this.outputs[link_info.origin_slot].name)) {
+						if (
+							this.outputs[link_info.origin_slot].links.length === 0 && 
+							!node?.onConnectExpand?.("connection_change_remove_highway_output", this.outputs[link_info.origin_slot].name, ...arguments)
+						) {
 							const curr_data = app.graph.extra?.["0246.__NAME__"]?.[this.id]?.["outputs"]?.[link_info.origin_slot];
 							this.outputs[link_info.origin_slot].name = curr_data?.["name"] ?? this.outputs[link_info.origin_slot].name;
 							if (curr_data?.["type"] === "*" || !app.graph.extra["0246.__NAME__"])
@@ -830,7 +841,10 @@ function save_parse_load_pin(node, shape_in, shape_out, callback) {
 	// Save previous inputs and outputs
 	if (node.inputs) {
 		for (let i = 0; i < node.inputs.length; ++ i) {
-			if (!BLACKLIST.includes(node.inputs[i].name) && node.inputs[i].link !== null)
+			if (
+				!node?.onConnectExpand?.("save_parse_load_pin_save_input", node.inputs[i].name, i) &&
+				node.inputs[i].link !== null
+			)
 				prev.push({
 					flag: false,
 					name: app.graph.extra?.["0246.__NAME__"]?.[node.id]?.["inputs"]?.[i]?.["name"] ?? null,
@@ -841,7 +855,7 @@ function save_parse_load_pin(node, shape_in, shape_out, callback) {
 		}
 
 		for (let i = node.inputs.length; i -- > 0;) {
-			if (!BLACKLIST.includes(node.inputs[i].name))
+			if (!node?.onConnectExpand?.("save_parse_load_pin_remove_input", node.inputs[i].name, i))
 				node.removeInput(i);
 		}
 
@@ -856,14 +870,16 @@ function save_parse_load_pin(node, shape_in, shape_out, callback) {
 			app.graph.extra["0246.__NAME__"][node.id].inputs[i] = app.graph.extra["0246.__NAME__"][node.id].inputs[i] ?? {};
 			app.graph.extra["0246.__NAME__"][node.id].inputs[i].name = node.inputs[i].name;
 			app.graph.extra["0246.__NAME__"][node.id].inputs[i].type = node.inputs[i].type;
-			if (!BLACKLIST.includes(node.inputs[i].name))
+			if (!node?.onConnectExpand?.("save_parse_load_pin_load_input", node.inputs[i].name, i))
 				node.inputs[i].shape = shape_in;
 		}
 	}
 
 	if (node.outputs) {
 		for (let i = 0; i < node.outputs.length; ++ i) {
-			if (!BLACKLIST.includes(node.outputs[i].name) && node.outputs[i].links !== null)
+			if ((
+				!node?.onConnectExpand?.("save_parse_load_pin_save_output", node.outputs[i].name, i)
+			) && node.outputs[i].links !== null)
 				for (let j = 0; j < node.outputs[i].links.length; ++ j)
 					prev.push({
 						flag: true,
@@ -875,7 +891,7 @@ function save_parse_load_pin(node, shape_in, shape_out, callback) {
 		}
 
 		for (let i = node.outputs.length; i -- > 0;) {
-			if (!BLACKLIST.includes(node.outputs[i].name))
+			if (!node?.onConnectExpand?.("save_parse_load_pin_remove_output", node.outputs[i].name, i))
 				node.removeOutput(i);
 		}
 
@@ -890,7 +906,7 @@ function save_parse_load_pin(node, shape_in, shape_out, callback) {
 			app.graph.extra["0246.__NAME__"][node.id].outputs[i] = app.graph.extra["0246.__NAME__"][node.id].outputs[i] ?? {};
 			app.graph.extra["0246.__NAME__"][node.id].outputs[i].name = node.outputs[i].name;
 			app.graph.extra["0246.__NAME__"][node.id].outputs[i].type = node.outputs[i].type;
-			if (!BLACKLIST.includes(node.outputs[i].name))
+			if (!node?.onConnectExpand?.("save_parse_load_pin_load_output", node.outputs[i].name, i))
 				node.outputs[i].shape = shape_out;
 		}
 	}
@@ -972,7 +988,7 @@ function querify_output_pin(widget, from, ops) {
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-function single_impl_input_raw(inst, app, real, shape_in, func = () => {}) {
+function single_impl_input_raw(inst, app, real, shape_in) {
 	setup_expand(inst, "input", real, "...", shape_in, function () {
 		switch (this.mode) {
 			case 0: {
@@ -986,14 +1002,11 @@ function single_impl_input_raw(inst, app, real, shape_in, func = () => {}) {
 				this.self.inputs[arguments[2]].name = `${arguments[0]}:${arguments[1]}`;
 			} break;
 			case 2: {
-				if (arguments[0] === 1) {
+				if (arguments[0] === LiteGraph.INPUT) {
 					let link_info = arguments[3];
-					if (func(this.self, 1, arguments) || BLACKLIST.includes(this.self.inputs[link_info.target_slot].name)) // || link_info.replaced)
-						return;
-					link_shift_up(this.self, this.self.inputs, link_info.target_slot, false, (i) => func(this.self, 3, arguments, i));
-					// (link_index, extra_link_index) => {
-					// 	return this.self.inputs[link_index].link;
-					// }
+					if (this.self?.onConnectExpand?.("single_impl_input_remove", this.self.inputs[link_info.target_slot].name, ...arguments)) // || link_info.replaced)
+						return true;
+					link_shift_up(this.self, this.self.inputs, link_info.target_slot, false, arguments);
 					-- real.input;
 				}
 			} break;
@@ -1001,7 +1014,7 @@ function single_impl_input_raw(inst, app, real, shape_in, func = () => {}) {
 	});
 }
 
-function single_impl_output_raw(inst, app, real, shape_out, func = () => {}) {
+function single_impl_output_raw(inst, app, real, shape_out) {
 	setup_expand(inst, "output", real, "...", shape_out, function () {
 		switch (this.mode) {
 			case 0: {
@@ -1016,7 +1029,7 @@ function single_impl_output_raw(inst, app, real, shape_out, func = () => {}) {
 				
 				// Avoid node to connect to multiple output while allowing different pins
 				for (let i = 0; i < this.self.outputs.length; ++ i) {
-					if (func(this.self, -2, arguments, i) || BLACKLIST.includes(this.self.outputs[i].name))
+					if (this.self?.onConnectExpand?.("single_impl_output_check", this.self.outputs[i].name, ...arguments, i))
 						continue;
 					let output_node = this.self.getOutputNodes(i);
 					if (output_node)
@@ -1035,20 +1048,15 @@ function single_impl_output_raw(inst, app, real, shape_out, func = () => {}) {
 			} break;
 			case 1: {
 				this.self.outputs[arguments[2]].name = `${arguments[1]}:${arguments[0]}`;
-				// node_fit(this.self, this.self.widgets.filter(_ => _.name === "_offset")[0]);
 			} break;
 			case 2: {
-				if (arguments[0] === 2) {
+				if (arguments[0] === LiteGraph.OUTPUT) {
 					let link_info = arguments[3];
-					if (func(this.self, -1, arguments) || BLACKLIST.includes(this.self.outputs[link_info.origin_slot].name))
-						return;
+					if (this.self?.onConnectExpand?.("single_impl_output_remove", this.self.outputs[link_info.origin_slot].name, ...arguments))
+						return true;
 					if (!this.self.outputs[link_info.origin_slot].links || this.self.outputs[link_info.origin_slot].links.length === 0) {
-						link_shift_up(this.self, this.self.outputs, link_info.origin_slot, true, (i) => func(this.self, -3, arguments, i));
-						// (link_index, extra_link_index) => {
-						// 	return this.self.outputs[link_index].links[extra_link_index];
-						// }
+						link_shift_up(this.self, this.self.outputs, link_info.origin_slot, true, arguments);
 						-- real.output;
-						// node_fit(this.self, this.self.widgets.filter(_ => _.name === "_offset")[0]);
 					}
 				}
 			} break;
@@ -1056,7 +1064,12 @@ function single_impl_output_raw(inst, app, real, shape_out, func = () => {}) {
 	});
 }
 
-export function junction_impl(nodeType, nodeData, app, name, shape_in, shape_out, func = () => {}) {
+export function junction_impl(nodeType, nodeData, app, name, shape_in, shape_out) {
+	lib0246.hijack(nodeType.prototype, "onConnectExpand", expand_blacklist_func);
+	const real = {
+		input: 0,
+		output: 0,
+	};
 	nodeType.prototype.onNodeCreated = function () {
 		if (typeof name === "string")
 			init_update(this, name);
@@ -1067,14 +1080,15 @@ export function junction_impl(nodeType, nodeData, app, name, shape_in, shape_out
 			offset.options.multiline = true;
 		}
 
-		const real = {
-			input: 0,
-			output: 0,
-		};
+		// const node_real = structuredClone(real);
 		
-		single_impl_input_raw(this, app, real, shape_in, func);
+		single_impl_input_raw(this, app, {
+			input: 0,
+		}, shape_in);
 
-		single_impl_output_raw(this, app, real, shape_out, func);
+		single_impl_output_raw(this, app, {
+			output: 0,
+		}, shape_out);
 
 		lib0246.hijack(this, "getExtraMenuOptions", function (canvas, options) {
 			if (!this.mark)
@@ -1084,7 +1098,8 @@ export function junction_impl(nodeType, nodeData, app, name, shape_in, shape_out
 	rgthree_exec("addConnectionLayoutSupport", nodeType, app);
 }
 
-export function single_impl_input(nodeType, nodeData, app, shape_in, pin_list, func = () => {}) {
+export function single_impl_input(nodeType, nodeData, app, shape_in, pin_list) {
+	lib0246.hijack(nodeType.prototype, "onConnectExpand", expand_blacklist_func);
 	lib0246.hijack(nodeType.prototype, "onNodeCreated", function () {
 		if (this.mark) {
 			setup_loop_update(this.self);
@@ -1092,7 +1107,7 @@ export function single_impl_input(nodeType, nodeData, app, shape_in, pin_list, f
 			if (shape_in !== null)
 				single_impl_input_raw(this.self, app, {
 					input: 0,
-				}, shape_in, func);
+				}, shape_in);
 
 			for (let i = 0; i < pin_list.length; i += 4)
 				setup_sole_pin(this.self, pin_list[i], pin_list[i + 1], pin_list[i + 2], pin_list[i + 3]);
@@ -1100,7 +1115,8 @@ export function single_impl_input(nodeType, nodeData, app, shape_in, pin_list, f
 	});
 }
 
-export function single_impl_output(nodeType, nodeData, app, shape_out, pin_list, func = () => {}) {
+export function single_impl_output(nodeType, nodeData, app, shape_out, pin_list) {
+	lib0246.hijack(nodeType.prototype, "onConnectExpand", expand_blacklist_func);
 	lib0246.hijack(nodeType.prototype, "onNodeCreated", function () {
 		if (this.mark) {
 			setup_loop_update(this.self);
@@ -1108,7 +1124,7 @@ export function single_impl_output(nodeType, nodeData, app, shape_out, pin_list,
 			if (shape_out !== null)
 				single_impl_output_raw(this.self, app, {
 					output: 0,
-				}, shape_out, func);
+				}, shape_out);
 
 			for (let i = 0; i < pin_list.length; i += 4)
 				setup_sole_pin(this.self, pin_list[i], pin_list[i + 1], pin_list[i + 2], pin_list[i + 3]);
@@ -1220,27 +1236,28 @@ function node_mouse_pos(node) {
 	];
 }
 
-function calc_flex(node, widget, width, height, dom_flag) {
+function calc_flex(node, widget, width) {
 	node.flex_data = node.flex_data ?? {};
 	node.flex_data.share_count = 0;
 	node.flex_data.share_weight = [];
+	node.flex_data.share_min_h = [];
 	node.flex_data.share_max_h = [];
 	node.flex_data.off_h = 0;
 	node.flex_data.left_h = 0;
-	node.flex_data.dom_h = 0;
+	node.flex_data.dom_h = 0; // For native dom widget is supported
 	for (let i = 0; i < node.widgets.length; ++ i)
 		if (node.widgets[i]?.flex) {
 			if (node.widgets[i]?.type === "converted-widget")
 				continue;
 			node.flex_data.share_weight.push(node.widgets[i]?.flex?.share);
-			node.flex_data.share_max_h.push(Number.isFinite(node.widgets[i]?.flex?.max_h) && node.widgets[i]?.flex?.max_h > 0 ? node.widgets[i]?.flex?.max_h : null);
+			node.flex_data.share_min_h.push(Number.isFinite(node.widgets[i]?.flex?.real_min_h) && node.widgets[i]?.flex?.real_min_h > 0 ? node.widgets[i]?.flex?.real_min_h : null);
+			node.flex_data.share_max_h.push(Number.isFinite(node.widgets[i]?.flex?.real_max_h) && node.widgets[i]?.flex?.real_max_h > 0 ? node.widgets[i]?.flex?.real_max_h : null);
 			++ node.flex_data.share_count;
 			if (node.widgets[i] === widget)
 				node.widgets[i].flex.index = node.flex_data.share_count - 1;
 			node.flex_data.left_h += 4;
 		} else
 			node.flex_data.off_h += (node.widgets[i]?.computedHeight ?? node.widgets[i]?.computeSize?.(width)?.[1] ?? LiteGraph.NODE_WIDGET_HEIGHT) + 4;
-	node.flex_data.avail_h = height - node.flex_data.off_h - node.flex_data.left_h - (dom_flag ? node.flex_data.dom_h : 0);
 }
 
 let PROCESS_WIDGET_NODE;
@@ -1290,9 +1307,11 @@ export function widget_flex(node, widget, options = {}) {
 	});
 
 	lib0246.hijack(widget, "computeSize", function (width) {
+		// if (window.test_func)
+		// 	return window.test_func.call(this, width, node, calc_flex, lib0246, PROCESS_WIDGET_NODE);
 		if (!this.mark) {
-			const slot_count = Math.max(node.inputs?.length ?? 0, node.outputs?.length ?? 0, 1),
-				slot_h = (slot_count + 0.7) * LiteGraph.NODE_SLOT_HEIGHT;
+			const slot_count = Math.max(node.inputs?.length ?? 0, node.outputs?.length ?? 0),
+				slot_h = (slot_count + 0.2) * LiteGraph.NODE_SLOT_HEIGHT;
 	
 			this.self.flex.temp_h = 0;
 			if (PROCESS_WIDGET_NODE && PROCESS_WIDGET_NODE.isPointInside(app.canvas.graph_mouse[0], app.canvas.graph_mouse[1])) {
@@ -1309,67 +1328,60 @@ export function widget_flex(node, widget, options = {}) {
 			// Don't ask why how I came up with this. This took a week of brain power.
 	
 			this.self.flex.real_y = this.self.flex.real_y ?? 0;
-			this.self.flex.margin_tail_real_y = this.self.flex.margin_tail_y + this.self.flex.margin_over_y;
+			this.self.flex.margin_tail_real_y = this.self.flex.margin_tail_y;
 	
 			this.self.flex.real_max_h = Infinity;
 	
 			this.self.flex.real_min_h = this.self.flex.min_h ?? 0;
 	
 			let raw_size = node.size?.[1] ?? this.self.flex.real_min_h;
-	
+			
+			// dom_flag = width === undefined
+			calc_flex(node, this.self, width);
+
 			if (app.canvas.resizing_node === node) {
-				let sum_h = 28 + slot_h; // WHy 16? For Cloud with "rand" that have widgets changed to pin
-				for (let i = 0; i < node.widgets.length; ++ i)
-					sum_h += (
-						node.widgets[i]?.flex?.real_min_h ??
-						node.widgets[i]?.computedHeight ??
-						node.widgets[i]?.computeSize?.(width)[1] ??
-						LiteGraph.NODE_WIDGET_HEIGHT
-					) + 4;
-				raw_size = Math.max(app.canvas.graph_mouse[1] - node.pos[1], sum_h);
-				if (raw_size !== node.size?.[1]) {
-					node.size[1] = raw_size;
-					app.canvas.setDirty(true);
-				}
+				raw_size = app.canvas.graph_mouse[1] - node.pos[1];
+				const min_h = node.flex_data.share_min_h.reduce((a, b) => a + b, slot_h + 10 + node.flex_data.off_h);
+				if (raw_size < min_h)
+					raw_size = min_h;
+				node.size[1] = raw_size;
 			}
 	
-			const dom_flag = width === undefined; // [UNUSED]
-	
-			calc_flex(node, this.self, width, raw_size, dom_flag);
-			this.self.flex.real_h = node.flex_data.avail_h + node.flex_data.off_h + node.flex_data.left_h + (dom_flag ? node.flex_data.dom_h : 0);
-	
-			this.self.flex.real_max_h = lib0246.calc_spread(
+			this.self.flex.real_h = lib0246.calc_spread(
 				node.flex_data.share_count,
-				// LGraphNode.prototype.getConnectionPos
-				node.flex_data.avail_h - slot_h,
+				raw_size - node.flex_data.off_h - slot_h - 10 - node.flex_data.left_h,
 				node.flex_data.share_weight,
+				node.flex_data.share_min_h,
 				node.flex_data.share_max_h
 			)[this.self.flex.index];
 	
-			if (this.self.flex.real_max_h < this.self.flex.real_min_h)
-				this.self.flex.real_max_h = this.self.flex.real_min_h;
-	
-			lib0246.calc_area(
-				this.self.flex.margin_x, this.self.flex.margin_head_y, this.self.flex.margin_tail_real_y,
-				width, this.self.flex.real_h, this.self.flex.real_max_h,
-				this.self.flex.ratio, this.self.flex.center, this.self.flex.real_y,
-				true, this.self.flex.hold_size
-			);
-	
-			this.self.flex.temp_h += this.self.flex.hold_size[3];
-	
-			if (this.self.flex.real_h < this.self.flex.real_min_h)
-				this.self.flex.real_h = this.self.flex.real_min_h;
-	
-			if (this.self.flex.temp_h < this.self.flex.real_min_h)
-				this.self.flex.temp_h = this.self.flex.real_min_h;
-	
+			this.self.flex.temp_h += this.self.flex.real_h;
 			this.self.computedHeight = this.self.flex.temp_h;
 	
 			this.res = [width, this.self.flex.temp_h];
 			this.stop = true;
 		}
 	});
+
+	if (node.configure && !node.configure[lib0246.HIJACK_MARK]) {
+		let temp_compute_size, temp_compute_flag = false;
+		lib0246.hijack(node, "configure", function (data) {
+			if (!this.mark) {
+				temp_compute_size = node.computeSize;
+				temp_compute_flag = true;
+				const hold_w = data.size[0], hold_h = data.size[1];
+				node.computeSize = function () {
+					return [hold_w, hold_h];
+				};
+			}
+		}, function (mode) {
+			if (mode === 0b100000 && temp_compute_flag) {
+				temp_compute_flag = false;
+				node.size = node.computeSize();
+				node.computeSize = temp_compute_size;
+			}
+		});
+	}
 
 	widget.flex.hold_draw = [];
 	widget.flex.hold_mouse = [];
@@ -1378,10 +1390,8 @@ export function widget_flex(node, widget, options = {}) {
 	widget.flex.margin_x = options.margin_x ?? 20;
 	widget.flex.margin_head_y = options.margin_head_y ?? 0;
 	widget.flex.margin_tail_y = options.margin_tail_y ?? 0;
-	widget.flex.margin_over_y = options.margin_over_y ?? 12
 	widget.flex.min_h = options.min_h ?? 0;
 	widget.flex.max_h = options.max_h ?? Infinity;
-	widget.flex.compat = options.compat ?? false;
 	widget.flex.ratio = options.ratio ?? 0;
 	widget.flex.share = options.share ?? false;
 	widget.flex.center = options.center ?? true;
@@ -1524,6 +1534,7 @@ Object.defineProperty(LGraphNode.prototype, "addDOMWidget", {
 		this.addCustomWidget(widget);
 		widget_flex(this, widget, options.flex);
 		widget.onAdd(this, false);
+		widget.options.flex = options.flex;
 		return widget;
 	}
 });
@@ -3012,13 +3023,13 @@ export function SPACE_TITLE_WIDGET() {
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-export const WIDGET_PIN = Symbol("widget_pin");
+export const HUB_WIDGET_PIN = Symbol("widget_pin");
 
 export function hub_combo_pin_type_func(value, canvas, node, pos, event) {
-	if (this[WIDGET_PIN].type !== "COMBO")
-		this[WIDGET_PIN].type = value;
-	for (let i = 0; this[WIDGET_PIN].links && i < this[WIDGET_PIN].links.length; ++ i) {
-		const link = app.graph.links[this[WIDGET_PIN].links[i]],
+	if (this[HUB_WIDGET_PIN].type !== "COMBO")
+		this[HUB_WIDGET_PIN].type = value;
+	for (let i = 0; this[HUB_WIDGET_PIN].links && i < this[HUB_WIDGET_PIN].links.length; ++ i) {
+		const link = app.graph.links[this[HUB_WIDGET_PIN].links[i]],
 			target_node = app.graph.getNodeById(link.target_id),
 			pin = target_node.inputs[link.target_slot];
 		if (!(pin.type === value || pin.type === "*"))
@@ -3432,10 +3443,10 @@ function cloud_after_func(node, inst_id, step) {
 		case "rand": {
 			this.value = lib0246.rand_int(-1125899906842624, 1125899906842624);
 		} break;
-		case "+": {
+		case "add": {
 			this.value += step ? step.value : this.cloud.widgets[inst_id][1].options.step / 10;
 		} break;
-		case "-": {
+		case "sub": {
 			this.value -= step ? step.value : this.cloud.widgets[inst_id][1].options.step / 10;
 		} break;
 		case "fix": {
@@ -3482,7 +3493,13 @@ function cloud_widget_view_text_basic(inst, mark = "", snip = true) {
 }
 
 function cloud_build(node, kind, data = null, input = null, full = null) {
-	const inst_id = data?.id ?? String(this.cloud.data.id ++);
+	const inst_id = data?.id ?? String(this.cloud.data.id ++),
+		hold_inst = data === null ? {
+			id: inst_id,
+			kind: kind,
+			widgets_values: [],
+			widgets_names: [],
+		} : this.cloud.data.inst.find(_ => _.id === inst_id);
 	switch (kind) {
 		case "text": {
 			this.cloud.widgets[inst_id] = [
@@ -3557,7 +3574,7 @@ function cloud_build(node, kind, data = null, input = null, full = null) {
 					afterQueued: cloud_after_func.bind(this, node, inst_id),
 					options: {
 						// Allow serialize for server-side generation
-						values: ["seed", "fix", "rand", "+", "-"],
+						values: ["seed", "fix", "rand", "add", "sub"],
 					},
 				}
 			];
@@ -3591,24 +3608,26 @@ function cloud_build(node, kind, data = null, input = null, full = null) {
 					value: "+",
 					options: {
 						// Allow serialize for server-side generation
-						values: ["fix", "+", "-"],
+						values: ["fix", "add", "sub"],
 					},
 				}
 			];
 			this.cloud.widgets[inst_id][2].afterQueued = cloud_after_func.bind(this, node, inst_id, this.cloud.widgets[inst_id][1]);
 			cloud_widget_build_basic(node, this, inst_id, `cloud:${inst_id}:cycle:offset`, input, data);
 		} break;
+		case "pin": {
+			let pin_count = 0;
+			for (let i = 0; i < this.cloud.data.inst.length; ++ i)
+				if (this.cloud.data.inst[i].kind === "pin")
+					++ pin_count;
+			hold_inst.widgets_values[0] = hold_inst.widgets_values[0] ?? pin_count;
+		} break;
 		default: {
 			this.options?.build?.(node, kind, data);
 		} break;
 	}
 	if (data === null)
-		this.cloud.data.inst.push({
-			id: inst_id,
-			kind: kind,
-			widgets_values: [],
-			widgets_names: [],
-		});
+		this.cloud.data.inst.push(hold_inst);
 }
 
 function cloud_select(node, inst_id, flag) {
@@ -3624,12 +3643,6 @@ function cloud_select(node, inst_id, flag) {
 				this.cloud.widgets[inst_id][0].onRemove(node, true);
 			}
 		} break;
-		case "text_list": {
-		} break;
-		case "text_file_list": {
-		} break;
-		case "text_file_json": {
-		} break;
 		case "weight": {
 			cloud_widget_select_basic.call(this, node, inst_id, `cloud:${inst_id}:weight:weight_input`, flag);
 		} break;
@@ -3643,11 +3656,6 @@ function cloud_select(node, inst_id, flag) {
 			this.options?.select?.(node, inst_id, flag);
 		}	break;
 	}
-	const curr_size = node.computeSize();
-	curr_size[0] = Math.max(curr_size[0], node.size[0]);
-	curr_size[1] = Math.max(curr_size[1], node.size[1]);
-	node.setSize(curr_size);
-	app.canvas.setDirty(true);
 }
 
 const CLOUD_KIND = ["text", "text_list", "text_file_list", "text_file_json", "weight", "rand", "cycle"];
@@ -3660,12 +3668,6 @@ function cloud_view(node, inst) {
 				`~0~` :
 				this.cloud.widgets[inst.id][0].options.getValue();
 		} break;
-		case "text_list": {
-		} break;
-		case "text_file_list": {
-		} break;
-		case "text_file_json": {
-		} break;
 		case "weight": {
 			text = this.cloud.widgets[inst.id][0].type === "converted-widget" ?
 				`~0~` :
@@ -3676,6 +3678,9 @@ function cloud_view(node, inst) {
 		} break;
 		case "cycle": {
 			text = cloud_widget_view_text_basic.call(this, inst, " ");
+		} break;
+		case "pin": {
+			text = `!${inst.widgets_values[0]}!`;
 		} break;
 		default: {
 			text += this.options?.view?.(node, inst);
@@ -3907,26 +3912,9 @@ function cloud_draw_msg(ctx, widget, inst_id, text, prev_p) {
 	// return curr_p;
 }
 
-export function cloud_junction_evt(node, mode, args, i) {
-	switch (mode) {
-		case 1: {
-			if (node.inputs[args[3].target_slot].name.startsWith("cloud"))
-				return true;
-		} break;
-		case -1: {
-			if (node.outputs[args[3].origin_slot].name.startsWith("cloud"))
-				return true;
-		} break;
-		case 3: {
-			if (node.inputs[i].name.startsWith("cloud"))
-				return true;
-		} break;
-		case -3: {
-			if (node.outputs[i].name.startsWith("cloud"))
-				return true;
-		} break;
-	}
-	return false;
+export function cloud_expand_func(mode, name) {
+	if (this.mark && this.res !== true)
+		this.res = name.startsWith("cloud");
 }
 
 export function CLOUD_WIDGET(data_type, data_name, options = {}) {
@@ -4357,6 +4345,8 @@ app.registerExtension({
 	},
 });
 
-window.test = [
-	0, 0, 0, 0, 0, 0, 0, 0, 0, 0
-];
+// LiteGraph.LGraphCanvas.link_type_colors
+
+// window.test = [
+// 	0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+// ];

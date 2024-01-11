@@ -1032,3 +1032,4 @@ def parse_lang(input: str):
 # https://pastebin.com/raw/9WLKRhJp
 # https://pastebin.com/raw/AWK6EX0Z
 # https://pastebin.com/raw/fhpJqfJw: OG type widget implementation
+# https://pastebin.com/raw/0UL26G7p

@@ -2038,13 +2038,41 @@ class Cloud:
 	FUNCTION = "execute"
 	CATEGORY = "0246"
 
-	def execute(self, _id = None, _prompt = None, _workflow = None, **kwargs):
+	def execute(self, _id = None, _prompt = None, _workflow = None, _cloud_in = None, **kwargs):
 		pass
 
 	def text_to_cloud(self):
 		pass
 
 	def cloud_to_text(self):
+		pass
+
+######################################################################################
+	
+class Meta:
+	def INPUT_TYPES(s):
+		return {
+			"required": {
+				"data": (lib0246.TautologyStr("*"), ),
+				"query": ("STRING", {
+					"default": "batch_size, pipe_size, key, name",
+					"multiline": False
+				}),
+			},
+			"hidden": {
+				"_prompt": "PROMPT",
+				"_id": "UNIQUE_ID",
+				"_workflow": "EXTRA_PNGINFO"
+			}
+		}
+	
+	RETURN_TYPES = lib0246.TautologyDictStr()
+	INPUT_IS_LIST = True
+	OUTPUT_IS_LIST = lib0246.TautologyAll()
+	FUNCTION = "execute"
+	CATEGORY = "0246"
+
+	def execute(self, _id = None, _prompt = None, _workflow = None, data = None, query = None, **kwargs):
 		pass
 
 ########################################################################################
@@ -2074,6 +2102,7 @@ NODE_CLASS_MAPPINGS = {
 	"0246.Script": Script,
 	"0246.Hub": Hub,
 	# "0246.Cloud": Cloud,
+	"0246.Meta": Meta,
 	# "0246.Pick": Pick,
 	# "0246.StrAdd": StrAdd,
 	# "0246.StrAddBatch": StrAddBatch,
@@ -2099,6 +2128,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
 	"0246.Script": "Script",
 	"0246.Hub": "Hub",
 	# "0246.Cloud": "Cloud",
+	"0246.Meta": "Meta",
 	# "0246.Pick": "Pick",
 	# "0246.StrAdd": "Str Add",
 	# "0246.StrAddBatch": "Str Add Batch",

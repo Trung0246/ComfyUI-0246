@@ -81,7 +81,6 @@ app.registerExtension({
 			reroute_class.category = "0246";
 		}
 
-		/*
 		{
 			function Test() {}
 
@@ -118,7 +117,6 @@ app.registerExtension({
 
 			LiteGraph.registerNodeType("0246.Test", Test);
 		}
-		//*/
 	},
 	nodeCreated(node) {
 		switch (node.comfyClass) {
@@ -243,7 +241,7 @@ app.registerExtension({
 							regex_widget.options.multiline = true;
 
 							node.serialize_widgets = true;
-							node.setSize(node.computeSize());
+							node.setSize([node.size[0], Math.max(node.computeSize()[1], node.size[1])]);
 						}
 					}, function (mode) {
 						if (mode === 0b100000) {
@@ -364,11 +362,13 @@ app.registerExtension({
 				} break;
 				case "0246.Beautify": {
 					wg0246.setup_log(nodeType.prototype);
+					lib0246.hijack(nodeType.prototype, "onNodeCreated", () => {}, function (mode) {
+						if (mode === 0b100000)
+							this.self.size[1] = Math.max(this.self.size[1], 100);
+					});
 					lib0246.hijack(nodeType.prototype, "onConnectInput", function () {
 						if (!this.mark)
 							this.self.inputs[0].type = arguments[1];
-						if (this.self.size[1] < 200)
-							this.self.size[1] = 200;
 					});
 					lib0246.hijack(nodeType.prototype, "onConnectionsChange", function (type, index, connected, link_info) {
 						if (!this.mark && !connected)
@@ -704,7 +704,7 @@ app.registerExtension({
 							widget.name = full_name;
 							for (let i = 0; i < this.outputs.length; ++ i)
 								if (this.outputs[i].name === full_name) {
-									widget[wg0246.WIDGET_PIN] = this.outputs[i];
+									widget[wg0246.HUB_WIDGET_PIN] = this.outputs[i];
 									break;
 								}
 						} else {
@@ -721,7 +721,7 @@ app.registerExtension({
 								a + ":" + b
 							);
 
-							widget[wg0246.WIDGET_PIN] = this.addOutput(widget.name = full_name, pin_type === "__BATCH_COMBO__" ? "COMBO" : pin_type);
+							widget[wg0246.HUB_WIDGET_PIN] = this.addOutput(widget.name = full_name, pin_type === "__BATCH_COMBO__" ? "COMBO" : pin_type);
 							this.hub.data.sole_type[full_name] = list_name;
 						}
 
@@ -939,8 +939,8 @@ app.registerExtension({
 								}, {
 									serialize: false,
 									values: [
-										"text", "text_list", "text_json", "weight", "rand", "cycle"
-										// [TODO] Support "mark", "lora" and "embedding"
+										"text", "weight", "rand", "cycle"
+										// [TODO] Support "text_list", "text_json", "mark", "lora" and "embedding"
 										// "lora" and "embedding" are self explanatory
 										// "mark" is basically make a Script to do text-based stuff like cutoff and gligen
 									]
@@ -983,10 +983,56 @@ app.registerExtension({
 								margin_x: 10,
 							});
 							cloud_widget.cloud.node = node.id;
+
+							lib0246.hijack(node, "clone", function () {
+								if (this.mark) {
+									const cloud_widget = this.res.widgets.find(w => w.name === "base:data");
+									for (let i = 0; i < cloud_widget.cloud.data.inst.length; ++ i)
+										if (cloud_widget.cloud.data.inst[i].kind === "pin") {
+											cloud_widget.remove(this.res, cloud_widget.cloud.data.inst[i].id);
+											-- i;
+										}
+								}
+							});
 						}
 					}, function (mode) {
 						if (mode === 0b100000)
 							this.self.size[0] = Math.max(this.self.size[0], 350);
+					});
+
+					lib0246.hijack(Cloud.prototype, "onConnectInput", function (
+						this_slot_index,
+						other_slot_type,
+						other_slot_obj,
+						other_node,
+						other_slot_index
+					) {
+						if (this.mark && this_slot_index > 0) {
+							this.self.widgets.find(w => w.name === "base:data").build(this.self, "pin");
+						}
+					});
+
+					lib0246.hijack(Cloud.prototype, "onConnectionsChange", function (
+						type, index, connected, link_info
+					) {
+						if (this.mark)
+							if (!connected && type === LiteGraph.INPUT) {
+								const curr_pin_index = Number(this.self.inputs[index].name.split(":")?.[0]);
+								if (!Number.isNaN(curr_pin_index)) {
+									const cloud_widget = this.self.widgets.find(w => w.name === "base:data"),
+											curr_inst = cloud_widget.cloud.data.inst.findLast(
+												_ => _.kind === "pin" && _.widgets_values[0] === curr_pin_index
+											);
+									cloud_widget.remove(this.self, curr_inst.id);
+									cloud_widget.cloud.select.delete(curr_inst.id);
+									for (let i = 0; i < cloud_widget.cloud.data.inst.length; ++ i)
+										if (
+											cloud_widget.cloud.data.inst[i].kind === "pin" &&
+											cloud_widget.cloud.data.inst[i].widgets_values[0] > curr_pin_index
+										)
+											-- cloud_widget.cloud.data.inst[i].widgets_values[0];
+								}
+							}
 					});
 
 					let RIGHT_CLICK_NODE;
@@ -996,6 +1042,42 @@ app.registerExtension({
 							RIGHT_CLICK_NODE = this.self;
 							options.push(
 								{
+									content: "[0246.Cloud] 🗑️ Picked Clouds",
+									callback: (value, options, evt, menu, node) => {
+										const cloud_widget = node.widgets.find(w => w.name === "base:data");
+										for (let inst_id of cloud_widget.cloud.select)
+											if (cloud_widget.cloud.data.inst.find(_ => _.id === inst_id).kind !== "pin")
+												cloud_widget.remove(node, inst_id);
+										cloud_widget.cloud.select.clear();
+										node.setSize([node.size[0], Math.max(node.computeSize()[1], node.size[1])]);
+										app.canvas.setDirty(true);
+									}
+								}, {
+									content: "[0246.Cloud] ✔️ Pick All Clouds",
+									callback: (value, options, evt, menu, node) => {
+										const cloud_widget = node.widgets.find(w => w.name === "base:data");
+										for (let i = 0; i < cloud_widget.cloud.data.inst.length; ++ i)
+											if (!cloud_widget.cloud.select.has(cloud_widget.cloud.data.inst[i].id)) {
+												cloud_widget.cloud.select.add(cloud_widget.cloud.data.inst[i].id);
+												cloud_widget.select(node, cloud_widget.cloud.data.inst[i].id, true);
+											}
+										node.setSize([node.size[0], Math.max(node.computeSize()[1], node.size[1])]);
+										app.canvas.setDirty(true);
+									}
+								}, {
+									content: "[0246.Cloud] 🗑️ Unpick All Clouds",
+									callback: (value, options, evt, menu, node) => {
+										const cloud_widget = node.widgets.find(w => w.name === "base:data");
+										for (let i = 0; i < cloud_widget.cloud.data.inst.length; ++ i)
+											if (cloud_widget.cloud.select.has(cloud_widget.cloud.data.inst[i].id)) {
+												cloud_widget.select(node, cloud_widget.cloud.data.inst[i].id, false);
+												cloud_widget.cloud.select.delete(cloud_widget.cloud.data.inst[i].id);
+											}
+										node.setSize([node.size[0], Math.max(node.computeSize()[1], node.size[1])]);
+										app.canvas.setDirty(true);
+									}
+								},
+								null, {
 									content: "[0246.Cloud] ✔️ first_group_id ➡️ picked clouds",
 									callback: (value, options, evt, menu, node) => {
 										node.widgets.find(w => w.name === "base:data")
@@ -1033,14 +1115,6 @@ app.registerExtension({
 									}
 								},
 								null, {
-									content: "[0246.Cloud] 🗑️ Picked Clouds",
-									callback: (value, options, evt, menu, node) => {
-										const cloud_widget = node.widgets.find(w => w.name === "base:data");
-										for (let inst_id of cloud_widget.cloud.select)
-											cloud_widget.remove(node, inst_id);
-										cloud_widget.cloud.select.clear();
-									}
-								}, {
 									content: "[0246.Cloud] ✔️ Cloud ➡️ 🗑️ Preview",
 									callback: (value, options, evt, menu, node) => {
 										
@@ -1088,6 +1162,7 @@ app.registerExtension({
 					});
 
 					wg0246.single_impl_input(Cloud, nodeData, app, LiteGraph.CIRCLE_SHAPE, [], wg0246.cloud_junction_evt);
+					lib0246.hijack(Cloud.prototype, "onConnectExpand", wg0246.cloud_expand_func);
 				} break;
 			}
 		}
