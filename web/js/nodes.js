@@ -1,5 +1,4 @@
 import { app } from "../../../scripts/app.js";
-import { ComfyWidgets } from "../../../scripts/widgets.js";
 import { GroupNodeHandler } from "../../../extensions/core/groupNode.js";
 
 import * as lib0246 from "./utils.js";
@@ -79,43 +78,6 @@ app.registerExtension({
 			);
 
 			reroute_class.category = "0246";
-		}
-
-		{
-			function Test() {}
-
-			Test.title = "Test";
-			Test.category = "0246";
-			Test.comfyClass = "0246.Test";
-			Test.collapsable = true;
-			Test.title_mode = LiteGraph.NORMAL_TITLE;
-
-			Test.prototype.onNodeCreated = function() {
-				const node = this;
-				const box_widget = node.addCustomWidget(wg0246.BOX_RANGE_WIDGET("BOX_RANGE", "box_range", {
-					row_count: 10,
-					col_count: 10,
-				}));
-
-				node.addInput("input", "number");
-				node.addOutput("output", "number");
-				node.addOutput("output2", "number");
-				node.addOutput("output3", "number");
-				node.addOutput("output4", "number");
-
-				wg0246.widget_flex(node, box_widget, {
-					ratio: 0,
-					share: 1,
-					min_h: 50,
-					center: true,
-				});
-
-				node.addWidget("button", "Random Value", null, () => {}, {
-					serialize: false
-				});
-			}
-
-			LiteGraph.registerNodeType("0246.Test", Test);
 		}
 	},
 	nodeCreated(node) {
@@ -205,17 +167,8 @@ app.registerExtension({
 					lib0246.hijack(nodeType.prototype, "onNodeCreated", function () {
 						if (this.mark) {
 							const node = this.self;
-							const ratio_widget = node.addCustomWidget(wg0246.RATIO_WIDGET("RATIO_RANGE", "box_ratio"));
-							const box_widget = node.addCustomWidget(wg0246.BOX_RANGE_WIDGET("BOX_RANGE", "box_range", {
-								row_count: 10,
-								col_count: 10,
-							}));
-							wg0246.widget_flex(node, box_widget, {
-								ratio: 0,
-								share: 1,
-								min_h: 50,
-								center: true,
-							});
+							const ratio_widget = node.widgets.find(w => w.name === "box_range_ratio"),
+								box_widget = node.widgets.find(w => w.name === "box_range");
 
 							lib0246.hijack(node, "getExtraMenuOptions", function (canvas, options) {
 								if (!this.mark)
@@ -223,14 +176,14 @@ app.registerExtension({
 							});
 
 							ratio_widget.callback = function (value, widget, node, pos, event) {
-								if (widget.name === "box_ratio") {
+								if (widget.name === "box_range_ratio") {
 									box_widget.flex.ratio =	widget.value.data.ratio;
 									app.canvas.setDirty(true);
 								}
 							};
 
 							lib0246.hijack(node, "onWidgetChanged", function (name, value, old_value, widget) {
-								if (!this.mark && name === "box_ratio")
+								if (!this.mark && name === "box_range_ratio")
 									box_widget.flex.ratio = value.data.ratio;
 							});
 
@@ -251,13 +204,13 @@ app.registerExtension({
 					});
 					lib0246.hijack(nodeType.prototype, "onAdded", function () {
 						if (this.mark) {
-							const ratio_widget = this.self.widgets.find(w => w.name === "box_ratio"),
+							const ratio_widget = this.self.widgets.find(w => w.name === "box_range_ratio"),
 								box_widget = this.self.widgets.find(w => w.name === "box_range");
 							box_widget.flex.ratio =	ratio_widget.value.data.ratio;
 							app.canvas.setDirty(true);
 						}
 					});
-					wg0246.single_impl_output(nodeType, nodeData, app, LiteGraph.CIRCLE_SHAPE, []);
+					wg0246.single_impl_output(nodeType, nodeData, app, LiteGraph.CIRCLE_SHAPE);
 				} break;
 				case "0246.Highway": {
 					wg0246.highway_impl(nodeType, nodeData, app, LiteGraph.CIRCLE_SHAPE, LiteGraph.CIRCLE_SHAPE);
@@ -273,18 +226,15 @@ app.registerExtension({
 					wg0246.junction_impl(nodeType, nodeData, app, "_offset", LiteGraph.GRID_SHAPE, LiteGraph.GRID_SHAPE);
 				} break;
 				case "0246.Loop": {
-					wg0246.single_impl_input(nodeType, nodeData, app, LiteGraph.CIRCLE_SHAPE, []);
+					wg0246.single_impl_input(nodeType, nodeData, app, LiteGraph.CIRCLE_SHAPE);
 				} break;
 				case "0246.Count": {
-					wg0246.single_impl_input(nodeType, nodeData, app, null, [
-						"_node", "input", 1, LiteGraph.CIRCLE_SHAPE
-					]);
 					wg0246.setup_log(nodeType.prototype);
 				} break;
 				case "0246.Hold": {
-					wg0246.single_impl_input(nodeType, nodeData, app, null, [
-						"_data_in", "input", 1, LiteGraph.CIRCLE_SHAPE,
-						"_data_out", "output", 2, LiteGraph.GRID_SHAPE
+					wg0246.single_impl_pin(nodeType, [
+						"_data_in", LiteGraph.INPUT, LiteGraph.CIRCLE_SHAPE,
+						"_data_out", LiteGraph.OUTPUT, LiteGraph.GRID_SHAPE
 					]);
 					wg0246.setup_log(nodeType.prototype);
 				} break;
@@ -366,20 +316,15 @@ app.registerExtension({
 						if (mode === 0b100000)
 							this.self.size[1] = Math.max(this.self.size[1], 100);
 					});
-					lib0246.hijack(nodeType.prototype, "onConnectInput", function () {
-						if (!this.mark)
-							this.self.inputs[0].type = arguments[1];
-					});
-					lib0246.hijack(nodeType.prototype, "onConnectionsChange", function (type, index, connected, link_info) {
-						if (!this.mark && !connected)
-							this.self.inputs[0].type = "*";
-					});
+					wg0246.single_impl_pin(nodeType, [
+						"data", LiteGraph.INPUT, LiteGraph.GRID_SHAPE,
+					]);
 				} break;
 				case "0246.Stringify": {
-					wg0246.single_impl_input(nodeType, nodeData, app, LiteGraph.CIRCLE_SHAPE, []);
+					wg0246.single_impl_input(nodeType, nodeData, app, LiteGraph.CIRCLE_SHAPE);
 				} break;
 				case "0246.Merge": {
-					wg0246.single_impl_input(nodeType, nodeData, app, LiteGraph.CIRCLE_SHAPE, []);
+					wg0246.single_impl_input(nodeType, nodeData, app, LiteGraph.CIRCLE_SHAPE);
 				} break;
 				case "0246.Hub": {
 					const Hub = nodeType;
@@ -925,251 +870,20 @@ app.registerExtension({
 				case "0246.Cloud": {
 					const Cloud = nodeType;
 
-					lib0246.hijack(Cloud.prototype, "onNodeCreated", function () {
-						if (this.mark) {
-							const node = this.self;
-							let cloud_widget;
-
-							const insert_widget = node.addWidget(
-								"combo", "base:kind", "Select Kind",
-								function (value, canvas, node, pos, evt) {
-									if (value !== "_")
-										node.widgets.find(w => w.name === "base:data").build(node, value);
-									node.widgets.find(w => w.name === "base:kind").value = "Select Kind";
-								}, {
-									serialize: false,
-									values: [
-										"text", "weight", "rand", "cycle"
-										// [TODO] Support "text_list", "text_json", "mark", "lora" and "embedding"
-										// "lora" and "embedding" are self explanatory
-										// "mark" is basically make a Script to do text-based stuff like cutoff and gligen
-									]
-								}
-							);
-
-							const first_group_widget = node.addWidget("combo", "base:first_group_id", "_", () => {}, {
-								serialize: false,
-								values: function (widget) {
-									let res = ["_", "global", `local:${node.id}`];
-									for (let key in cloud_widget.cloud.data.group) {
-										if (key === "global" || key === `local:${node.id}`)
-											continue;
-										else
-											res.push(key);
-									}
-									return res;
-								}
-							});
-							const second_group_widget = node.addWidget("combo", "base:second_group_id", "_", () => {}, {
-								serialize: false,
-								values: function (widget) {
-									return ["_", ...Object.keys(cloud_widget.cloud.data.group ?? {})];
-								}
-							});
-
-							// wg0246.setup_log(node, true, true);
-
-							const preview_widget = ComfyWidgets["STRING"](node, "base:preview", ["STRING", {
-								multiline: true,
-							}], app).widget;
-							preview_widget.flex.share = 0.75;
-
-							node.addWidget("string", "base:group", "", function (value, canvas, node, pos, evt) {
-
-							}, {
-								serialize: false,
-								multiline: true
-							});
-
-							cloud_widget = node.addCustomWidget(wg0246.CLOUD_WIDGET("CLOUD_DATA", "base:data"));
-							wg0246.widget_flex(node, cloud_widget, {
-								ratio: 0,
-								share: 1.25,
-								min_h: 100,
-								center: true,
-								margin_x: 10,
-							});
-							cloud_widget.cloud.node = node.id;
-
-							lib0246.hijack(node, "clone", function () {
-								if (this.mark) {
-									const cloud_widget = this.res.widgets.find(w => w.name === "base:data");
-									for (let i = 0; i < cloud_widget.cloud.data.inst.length; ++ i)
-										if (cloud_widget.cloud.data.inst[i].kind === "pin") {
-											cloud_widget.remove(this.res, cloud_widget.cloud.data.inst[i].id);
-											-- i;
-										}
-								}
-							});
-						}
-					}, function (mode) {
+					lib0246.hijack(Cloud.prototype, "onNodeCreated", function () {}, function (mode) {
 						if (mode === 0b100000)
 							this.self.size[0] = Math.max(this.self.size[0], 350);
 					});
 
-					lib0246.hijack(Cloud.prototype, "onConnectInput", function (
-						this_slot_index,
-						other_slot_type,
-						other_slot_obj,
-						other_node,
-						other_slot_index
-					) {
-						// [TODO] Properly call onConnectExpand?
-						if (this.mark && this_slot_index > 0)
-							this.self.widgets.find(w => w.name === "base:data").build(this.self, "pin");
-					});
-
-					lib0246.hijack(Cloud.prototype, "onConnectionsChange", function (
-						type, index, connected, link_info
-					) {
-						if (this.mark)
-							if (!connected && type === LiteGraph.INPUT) {
-								const curr_pin_index = Number(this.self.inputs[index].name.split(":")?.[0]);
-								if (!Number.isNaN(curr_pin_index)) {
-									const cloud_widget = this.self.widgets.find(w => w.name === "base:data"),
-											curr_inst = cloud_widget.cloud.data.inst.findLast(
-												_ => _.kind === "pin" && _.widgets_values[0] === curr_pin_index
-											);
-									cloud_widget.remove(this.self, curr_inst.id);
-									cloud_widget.cloud.select.delete(curr_inst.id);
-									for (let i = 0; i < cloud_widget.cloud.data.inst.length; ++ i)
-										if (
-											cloud_widget.cloud.data.inst[i].kind === "pin" &&
-											cloud_widget.cloud.data.inst[i].widgets_values[0] > curr_pin_index
-										)
-											-- cloud_widget.cloud.data.inst[i].widgets_values[0];
-								}
-							}
-					});
-
-					let RIGHT_CLICK_NODE;
-
 					lib0246.hijack(nodeType.prototype, "getExtraMenuOptions", function (canvas, options) {
 						if (!this.mark) {
-							RIGHT_CLICK_NODE = this.self;
-							options.push(
-								{
-									content: "[0246.Cloud] 🗑️ Picked Clouds",
-									callback: (value, options, evt, menu, node) => {
-										const cloud_widget = node.widgets.find(w => w.name === "base:data");
-										for (let inst_id of cloud_widget.cloud.select)
-											if (cloud_widget.cloud.data.inst.find(_ => _.id === inst_id).kind !== "pin")
-												cloud_widget.remove(node, inst_id);
-										cloud_widget.cloud.select.clear();
-										node.setSize([node.size[0], Math.max(node.computeSize()[1], node.size[1])]);
-										app.canvas.setDirty(true);
-									}
-								}, {
-									content: "[0246.Cloud] ✔️ Pick All Clouds",
-									callback: (value, options, evt, menu, node) => {
-										const cloud_widget = node.widgets.find(w => w.name === "base:data");
-										for (let i = 0; i < cloud_widget.cloud.data.inst.length; ++ i)
-											if (!cloud_widget.cloud.select.has(cloud_widget.cloud.data.inst[i].id)) {
-												cloud_widget.cloud.select.add(cloud_widget.cloud.data.inst[i].id);
-												cloud_widget.select(node, cloud_widget.cloud.data.inst[i].id, true);
-											}
-										node.setSize([node.size[0], Math.max(node.computeSize()[1], node.size[1])]);
-										app.canvas.setDirty(true);
-									}
-								}, {
-									content: "[0246.Cloud] 🗑️ Unpick All Clouds",
-									callback: (value, options, evt, menu, node) => {
-										const cloud_widget = node.widgets.find(w => w.name === "base:data");
-										for (let i = 0; i < cloud_widget.cloud.data.inst.length; ++ i)
-											if (cloud_widget.cloud.select.has(cloud_widget.cloud.data.inst[i].id)) {
-												cloud_widget.select(node, cloud_widget.cloud.data.inst[i].id, false);
-												cloud_widget.cloud.select.delete(cloud_widget.cloud.data.inst[i].id);
-											}
-										node.setSize([node.size[0], Math.max(node.computeSize()[1], node.size[1])]);
-										app.canvas.setDirty(true);
-									}
-								},
-								null, {
-									content: "[0246.Cloud] ✔️ first_group_id ➡️ picked clouds",
-									callback: (value, options, evt, menu, node) => {
-										node.widgets.find(w => w.name === "base:data")
-											.build_group(node, node.widgets.find(w => w.name === "base:first_group_id").value, null);
-									}
-								}, {
-									content: "[0246.Cloud] 🗑️ second_group_id ➡️ picked clouds",
-									callback: (value, options, evt, menu, node) => {
-										node.widgets.find(w => w.name === "base:data")
-											.remove_group(
-												node,
-												node.widgets.find(w => w.name === "base:second_group_id").value,
-												null
-											);
-									}
-								}, {
-									content: "[0246.Cloud] ✔️ first_group_id ➡️ second_group_id",
-									callback: (value, options, evt, menu, node) => {
-										node.widgets.find(w => w.name === "base:data")
-											.build_group(
-												node,
-												node.widgets.find(w => w.name === "base:first_group_id").value,
-												node.widgets.find(w => w.name === "base:second_group_id").value
-											);
-									}
-								}, {
-									content: "[0246.Cloud] 🗑️ second_group_id ➡️ first_group_id",
-									callback: (value, options, evt, menu, node) => {
-										node.widgets.find(w => w.name === "base:data")
-											.remove_group(
-												node,
-												node.widgets.find(w => w.name === "base:second_group_id").value,
-												node.widgets.find(w => w.name === "base:first_group_id").value
-											);
-									}
-								},
-								null, {
-									content: "[0246.Cloud] ✔️ Cloud ➡️ 🗑️ Preview",
-									callback: (value, options, evt, menu, node) => {
-										
-									}
-								}, {
-									content: "[0246.Cloud] ✔️ Preview ➡️ Cloud",
-									callback: (value, options, evt, menu, node) => {
-										// This should allow to specify how to split the preview from a popup using regex
-										// By default it will not splite and convert entire thing directly to string
-									}
-								}, {
-									content: "[0246.Cloud] ✔️ Preview ➡️ 🗑️ All Clouds",
-									callback: (value, options, evt, menu, node) => {
-										
-									}
-								},
-								null
-							);
+							this.self.constructor.nodeData[wg0246.CLOUD_MARK].self = this.self;
+							wg0246.cloud_menu("cloud", options);
 						} else
-							RIGHT_CLICK_NODE = null;
+							this.self.constructor.nodeData[wg0246.CLOUD_MARK].self = null;
 					});
 
-					Cloud.nodeData.input = Cloud.nodeData.input ?? {};
-					Cloud.nodeData.input.required = new Proxy({}, {
-						get: function (target, prop, receiver) {
-							const widget = RIGHT_CLICK_NODE.widgets.find(w => w.name === prop);
-							return [widget.type === "customtext" ? "STRING" : widget.type, widget.options];
-						}
-					});
-
-					lib0246.hijack(Cloud.prototype, "onConfigure", function (data) {
-						if (this.mark) {
-							const node = this.self,
-								cloud_widget_index = node.widgets.findIndex(w => w.name === "base:data");
-
-							for (let inst_id in data.widgets_values[cloud_widget_index].inst) {
-								const curr_inst = data.widgets_values[cloud_widget_index].inst[inst_id];
-								node.widgets[cloud_widget_index].build(
-									node, curr_inst.kind,
-									curr_inst,
-									data.inputs.filter(_ => curr_inst.widgets_names.includes(_.name)),
-									data
-								);
-							}
-						}
-					});
-
-					wg0246.single_impl_input(Cloud, nodeData, app, LiteGraph.CIRCLE_SHAPE, [], wg0246.cloud_junction_evt);
+					wg0246.single_impl_input(Cloud, nodeData, app, LiteGraph.CIRCLE_SHAPE);
 					lib0246.hijack(Cloud.prototype, "onConnectExpand", wg0246.cloud_expand_func);
 				} break;
 			}

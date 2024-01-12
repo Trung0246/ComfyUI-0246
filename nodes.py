@@ -911,6 +911,7 @@ class Hold:
 	CATEGORY = "0246"
 
 	def execute(self, _data_in = None, _id = None, _hold = None, _mode = None, _key_id = None, **kwargs):
+		_data_in = kwargs.get(next(filter(lambda x: x.startswith("_data_in"), kwargs.keys())), _data_in)
 		mode = _mode[0] if _mode else None
 
 		if _id[0] not in Hold.HOLD_DB:
@@ -1111,8 +1112,10 @@ class Beautify:
 	@classmethod
 	def INPUT_TYPES(s):
 		return {
-			"required": {
+			"optional": {
 				"data": lib0246.ByPassTypeTuple(("*", )),
+			},
+			"required": {
 				"mode": (["basic", "more", "full", "json"], ),
 			},
 		}
@@ -1124,6 +1127,7 @@ class Beautify:
 	CATEGORY = "0246"
 
 	def execute(self, data = None, mode = None, **kwargs):
+		data = kwargs.get(next(filter(lambda x: x.startswith("data"), kwargs.keys())), data)
 
 		raw_mode = 0
 		res_str = None
@@ -1212,6 +1216,21 @@ class BoxRange:
 					"default": "box",
 					"multiline": False
 				}),
+				"box_range": ("BOX_RANGE", {
+					"ratio": {
+						"data": {
+							"width": 512,
+							"height": 512,
+						},
+					},
+					"row_count": 10,
+					"col_count": 10,
+					"flex": {
+						"share": 1,
+						"min_h": 50,
+						"center": True,
+					}
+				}),
 			}),
 			"hidden": {
 				"_id": "UNIQUE_ID"
@@ -1236,7 +1255,7 @@ class BoxRange:
 
 	@classmethod
 	def process_box(
-		cls, build_fn, box_range, box_ratio, #res_dict = None, res_list = None,
+		cls, build_fn, box_range, box_range_ratio, #res_dict = None, res_list = None,
 		_W = False, _H = False, _S8W = False, _S8H = False, _R = False, _A = False,
 		_x = False, _y = False, _w = False, _h = False,
 		_px = False, _py = False, _pw = False, _ph = False,
@@ -1244,42 +1263,42 @@ class BoxRange:
 		_s8x = False, _s8y = False, _s8w = False, _s8h = False,
 	):
 		if _W:
-			build_fn(box_ratio["data"]["width"], "W")
+			build_fn(box_range_ratio["data"]["width"], "W")
 		if _H:
-			build_fn(box_ratio["data"]["height"], "H")
+			build_fn(box_range_ratio["data"]["height"], "H")
 		if _S8W:
-			build_fn(lib0246.snap(box_ratio["data"]["width"], 8), "S8W")
+			build_fn(lib0246.snap(box_range_ratio["data"]["width"], 8), "S8W")
 		if _S8H:
-			build_fn(lib0246.snap(box_ratio["data"]["height"], 8), "S8H")
+			build_fn(lib0246.snap(box_range_ratio["data"]["height"], 8), "S8H")
 		if _R:
-			build_fn(box_ratio["data"]["ratio"], "R")
+			build_fn(box_range_ratio["data"]["ratio"], "R")
 		if _A:
-			build_fn(box_ratio["data"]["width"] * box_ratio["data"]["height"], "A")
+			build_fn(box_range_ratio["data"]["width"] * box_range_ratio["data"]["height"], "A")
 
 		for i in range(len(box_range["data"])):
 			if _x:
 				build_fn(lib0246.map(
 					box_range["data"][i][0],
 					box_range["area"][0], box_range["area"][0] + box_range["area"][2],
-					0, box_ratio["data"]["width"]
+					0, box_range_ratio["data"]["width"]
 				), "x")
 			if _y:
 				build_fn(lib0246.map(
 					box_range["data"][i][1],
 					box_range["area"][1], box_range["area"][1] + box_range["area"][3],
-					0, box_ratio["data"]["height"]
+					0, box_range_ratio["data"]["height"]
 				), "y")
 			if _w:
 				build_fn(lib0246.map(
 					box_range["data"][i][2],
 					0, box_range["area"][2],
-					0, box_ratio["data"]["width"]
+					0, box_range_ratio["data"]["width"]
 				), "w")
 			if _h:
 				build_fn(lib0246.map(
 					box_range["data"][i][3],
 					0, box_range["area"][3],
-					0, box_ratio["data"]["height"]
+					0, box_range_ratio["data"]["height"]
 				), "h")
 			if _px:
 				build_fn(lib0246.norm(
@@ -1303,25 +1322,25 @@ class BoxRange:
 				build_fn(lib0246.snap(lib0246.map(
 					box_range["data"][i][0],
 					box_range["area"][0], box_range["area"][0] + box_range["area"][2],
-					0, box_ratio["data"]["width"]
+					0, box_range_ratio["data"]["width"]
 				), 8), "s8x")
 			if _s8y:
 				build_fn(lib0246.snap(lib0246.map(
 					box_range["data"][i][1],
 					box_range["area"][1], box_range["area"][1] + box_range["area"][3],
-					0, box_ratio["data"]["height"]
+					0, box_range_ratio["data"]["height"]
 				), 8), "s8y")
 			if _s8w:
 				build_fn(lib0246.snap(lib0246.map(
 					box_range["data"][i][2],
 					0, box_range["area"][2],
-					0, box_ratio["data"]["width"]
+					0, box_range_ratio["data"]["width"]
 				), 8), "s8w")
 			if _s8h:
 				build_fn(lib0246.snap(lib0246.map(
 					box_range["data"][i][3],
 					0, box_range["area"][3],
-					0, box_ratio["data"]["height"]
+					0, box_range_ratio["data"]["height"]
 				), 8), "s8h")
 
 	@classmethod
@@ -1330,15 +1349,15 @@ class BoxRange:
 		if curr_index >= 0:
 			batch[curr_index].append(data)
 
-	def execute(self, _id = None, script_box_regex = None, script_order = None, box_range = None, box_ratio = None):
+	def execute(self, _id = None, script_box_regex = None, script_order = None, box_range = None, box_range_ratio = None):
 		if isinstance(script_box_regex, list):
 			script_box_regex = script_box_regex[0]
 		if isinstance(script_order, list):
 			script_order = script_order[0]
 		if isinstance(box_range, list):
 			box_range = box_range[0]
-		if isinstance(box_ratio, list):
-			box_ratio = box_ratio[0]
+		if isinstance(box_range_ratio, list):
+			box_range_ratio = box_range_ratio[0]
 
 		full_res = [None]
 
@@ -1350,7 +1369,7 @@ class BoxRange:
 
 		BoxRange.process_box(
 			lambda _, name: BoxRange.process_box_batch(batch_res, _, name),
-			box_range, box_ratio,
+			box_range, box_range_ratio,
 			**{("_" + key): script_regex.match("@" + key) is not None for key in BoxRange.FUNC_KEY_LIST}
 		)
 
@@ -1372,7 +1391,7 @@ class BoxRange:
 									track[res_key] += 1
 					BoxRange.process_box(
 						lambda _, name: result[name].append(_),
-						box_range, box_ratio,
+						box_range, box_range_ratio,
 						**{("_" + key): track[key] > 0 for key in BoxRange.FUNC_KEY_LIST}
 					)
 					return True
@@ -1386,19 +1405,19 @@ class BoxRange:
 		else:
 			full_res[0] = {
 				"box": box_range,
-				"dim": box_ratio
+				"dim": box_range_ratio
 			}
 
 		BoxRange.process_box(
 			lambda _, name: full_res.append([_]),
-			box_range, box_ratio,
+			box_range, box_range_ratio,
 			**{("_" + key): script_regex.match("%" + key) is not None for key in BoxRange.FUNC_KEY_LIST}
 		)
 
 		return full_res
 	
 	@classmethod
-	def IS_CHANGED(self, script_box_regex = None, script_order = None, box_range = {}, box_ratio = {}, *args, **kwargs):
+	def IS_CHANGED(self, script_box_regex = None, script_order = None, box_range = {}, box_range_ratio = {}, *args, **kwargs):
 		if isinstance(box_range, list):
 			box_range = box_range[0]
 		return box_range
@@ -2056,6 +2075,7 @@ class Cloud:
 			"required": lib0246.WildDict(),
 			"optional": {
 				"_cloud_in": ("CLOUD_PIPE", ),
+				"cloud": ("CLOUD_DATA", )
 			},
 			"hidden": {
 				"_prompt": "PROMPT",
@@ -2072,7 +2092,8 @@ class Cloud:
 	CATEGORY = "0246"
 
 	def execute(self, _id = None, _prompt = None, _workflow = None, _cloud_in = None, **kwargs):
-		pass
+		print(kwargs)
+		return ([None], )
 
 	def text_to_cloud(self):
 		pass

@@ -482,3 +482,40 @@ app.registerExtension({
 		});
 	}
 });
+
+// {
+// 	function Test() {}
+
+// 	Test.title = "Test";
+// 	Test.category = "0246";
+// 	Test.comfyClass = "0246.Test";
+// 	Test.collapsable = true;
+// 	Test.title_mode = LiteGraph.NORMAL_TITLE;
+
+// 	Test.prototype.onNodeCreated = function() {
+// 		const node = this;
+// 		const box_widget = node.addCustomWidget(wg0246.BOX_RANGE_WIDGET("BOX_RANGE", "box_range", {
+// 			row_count: 10,
+// 			col_count: 10,
+// 		}));
+
+// 		node.addInput("input", "number");
+// 		node.addOutput("output", "number");
+// 		node.addOutput("output2", "number");
+// 		node.addOutput("output3", "number");
+// 		node.addOutput("output4", "number");
+
+// 		wg0246.widget_flex(node, box_widget, {
+// 			ratio: 0,
+// 			share: 1,
+// 			min_h: 50,
+// 			center: true,
+// 		});
+
+// 		node.addWidget("button", "Random Value", null, () => {}, {
+// 			serialize: false
+// 		});
+// 	}
+
+// 	LiteGraph.registerNodeType("0246.Test", Test);
+// }
