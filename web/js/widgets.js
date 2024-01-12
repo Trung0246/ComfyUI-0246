@@ -638,7 +638,7 @@ export function highway_impl(nodeType, nodeData, app, shape_in, shape_out) {
 		) {
 			this.__update = true;
 
-			if (node?.onConnectExpand?.("connect_highway_input", this.inputs[this_target_slot_index].name, ...arguments))
+			if (this?.onConnectExpand?.("connect_highway_input", this.inputs[this_target_slot_index].name, ...arguments))
 				return true;
 
 			if (this.inputs[this_target_slot_index].link !== null) {
@@ -666,7 +666,7 @@ export function highway_impl(nodeType, nodeData, app, shape_in, shape_out) {
 			// return false for not allowing connection
 			this.__update = true;
 			
-			if (node?.onConnectExpand?.("connect_highway_output", this.outputs[this_origin_slot_index].name, ...arguments))
+			if (this?.onConnectExpand?.("connect_highway_output", this.outputs[this_origin_slot_index].name, ...arguments))
 				return true;
 
 			let curr_pin = this.outputs[this_origin_slot_index];
@@ -697,7 +697,7 @@ export function highway_impl(nodeType, nodeData, app, shape_in, shape_out) {
 				switch (type) {
 					case 1: {
 						if (
-							node?.onConnectExpand?.("connection_change_remove_highway_input", this.inputs[link_info.target_slot].name, ...arguments) ||
+							this?.onConnectExpand?.("connection_change_remove_highway_input", this.inputs[link_info.target_slot].name, ...arguments) ||
 							link_info.replaced
 						)
 							return;
@@ -709,7 +709,7 @@ export function highway_impl(nodeType, nodeData, app, shape_in, shape_out) {
 					case 2: {
 						if (
 							this.outputs[link_info.origin_slot].links.length === 0 && 
-							!node?.onConnectExpand?.("connection_change_remove_highway_output", this.outputs[link_info.origin_slot].name, ...arguments)
+							!this?.onConnectExpand?.("connection_change_remove_highway_output", this.outputs[link_info.origin_slot].name, ...arguments)
 						) {
 							const curr_data = app.graph.extra?.["0246.__NAME__"]?.[this.id]?.["outputs"]?.[link_info.origin_slot];
 							this.outputs[link_info.origin_slot].name = curr_data?.["name"] ?? this.outputs[link_info.origin_slot].name;
@@ -3935,6 +3935,7 @@ export function CLOUD_WIDGET(data_type, data_name, options = {}) {
 			};
 		},
 		set value(v) {
+			// [TODO] Hopefully no one touch these, otherwise we have to manage inputs. Good enough for now
 			this.cloud.data.inst = v.inst;
 			this.cloud.data.group = v.group;
 			this.cloud.data.id = v.id;

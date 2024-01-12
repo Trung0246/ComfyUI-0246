@@ -2016,6 +2016,39 @@ class Hub:
 
 ######################################################################################
 
+CLOUD_METHOD = {
+	"text": {
+		"func": False, # Can be used as function
+		"bind": False, # Can affect other clouds if itself is affected
+		"many": False, # Can output multiple clouds
+		"sole": False # Can only exist once for same kind within a group
+	},
+	"weight": {
+		"func": True,
+		"bind": False,
+		"many": False,
+		"sole": True,
+	},
+	"rand": {
+		"func": True,
+		"bind": True,
+		"many": True,
+		"sole": True,
+	},
+	"cycle": {
+		"func": True,
+		"bind": True,
+		"many": True,
+		"sole": True,
+	},
+	"merge": {
+		"func": True,
+		"bind": True,
+		"many": False,
+		"sole": True,
+	},
+}
+
 class Cloud:
 	@classmethod
 	def INPUT_TYPES(s):
@@ -2050,6 +2083,7 @@ class Cloud:
 ######################################################################################
 	
 class Meta:
+	@classmethod
 	def INPUT_TYPES(s):
 		return {
 			"required": {

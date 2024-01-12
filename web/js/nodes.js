@@ -974,6 +974,13 @@ app.registerExtension({
 							}], app).widget;
 							preview_widget.flex.share = 0.75;
 
+							node.addWidget("string", "base:group", "", function (value, canvas, node, pos, evt) {
+
+							}, {
+								serialize: false,
+								multiline: true
+							});
+
 							cloud_widget = node.addCustomWidget(wg0246.CLOUD_WIDGET("CLOUD_DATA", "base:data"));
 							wg0246.widget_flex(node, cloud_widget, {
 								ratio: 0,
@@ -1007,9 +1014,9 @@ app.registerExtension({
 						other_node,
 						other_slot_index
 					) {
-						if (this.mark && this_slot_index > 0) {
+						// [TODO] Properly call onConnectExpand?
+						if (this.mark && this_slot_index > 0)
 							this.self.widgets.find(w => w.name === "base:data").build(this.self, "pin");
-						}
 					});
 
 					lib0246.hijack(Cloud.prototype, "onConnectionsChange", function (
@@ -1122,7 +1129,8 @@ app.registerExtension({
 								}, {
 									content: "[0246.Cloud] ✔️ Preview ➡️ Cloud",
 									callback: (value, options, evt, menu, node) => {
-										
+										// This should allow to specify how to split the preview from a popup using regex
+										// By default it will not splite and convert entire thing directly to string
 									}
 								}, {
 									content: "[0246.Cloud] ✔️ Preview ➡️ 🗑️ All Clouds",
