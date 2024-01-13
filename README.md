@@ -18,7 +18,8 @@ Piping:
 
 Misc:
 - `BoxRange`: visualization of boxes. usefull for anything that requires boxes (which is `x`, `y`, `width`, `height`).
-    - Currently only `ConditioningSetAreaPercentage` and anything that have `percentage size` and have exact `x,y,width,height` input name are supported. More will come in the future.
+    - ~~Currently only `ConditioningSetAreaPercentage` and anything that have `percentage size` and have exact `x,y,width,height` input name are supported. More will come in the future.~~
+    - Reworked to now output generic int and float data based on the regex provided.
     - Double click on each corner and discover what each will do.
 - `Beautify`: the beautification of data for easy troubleshooting.
 - `Stringify`: anything to string, optionally together.
