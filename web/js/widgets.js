@@ -1257,7 +1257,7 @@ function node_mouse_pos(node) {
 	];
 }
 
-function calc_flex(node, widget, width) {
+function calc_flex(node, width) {
 	node.flex_data = node.flex_data ?? {};
 	node.flex_data.share_count = 0;
 	node.flex_data.share_weight = [];
@@ -1275,11 +1275,17 @@ function calc_flex(node, widget, width) {
 			node.flex_data.share_min_h.push(Number.isFinite(node.widgets[i]?.flex?.real_min_h) && node.widgets[i]?.flex?.real_min_h > 0 ? node.widgets[i]?.flex?.real_min_h : null);
 			node.flex_data.share_max_h.push(Number.isFinite(node.widgets[i]?.flex?.real_max_h) && node.widgets[i]?.flex?.real_max_h > 0 ? node.widgets[i]?.flex?.real_max_h : null);
 			++ node.flex_data.share_count;
-			if (node.widgets[i] === widget)
-				node.widgets[i].flex.index = node.flex_data.share_count - 1;
+			node.widgets[i].flex.index = node.flex_data.share_count - 1;
 			node.flex_data.left_h += 4;
 		} else
 			node.flex_data.off_h += (node.widgets[i]?.computedHeight ?? node.widgets[i]?.computeSize?.(width ?? LiteGraph.NODE_WIDGET_WIDTH)?.[1] ?? LiteGraph.NODE_WIDGET_HEIGHT) + 4;
+	node.flex_data.slot_c = Math.max(node.inputs?.length ?? 0, node.outputs?.length ?? 0);
+	node.flex_data.slot_h = (node.flex_data.slot_c + 0.2) * LiteGraph.NODE_SLOT_HEIGHT + (node.flex_data.slot_c === 0 ? 32 : 10);
+	node.flex_data.take_h = node.flex_data.off_h + node.flex_data.left_h + node.flex_data.slot_h;
+	node.size[1] = Math.max(
+		node.flex_data.share_min_h.reduce((a, b) => a + b, node.flex_data.take_h + node.flex_data.img_h),
+		(app.canvas.resizing_node === node) ? app.canvas.graph_mouse[1] - node.pos[1] : node.size[1]
+	);
 }
 
 let PROCESS_WIDGET_NODE;
@@ -1329,12 +1335,7 @@ export function widget_flex(node, widget, options = {}) {
 	});
 
 	lib0246.hijack(widget, "computeSize", function (width) {
-		// if (window.test_func)
-		// 	return window.test_func.call(this, width, node, calc_flex, lib0246, PROCESS_WIDGET_NODE);
 		if (!this.mark) {
-			const slot_count = Math.max(node.inputs?.length ?? 0, node.outputs?.length ?? 0),
-				slot_h = (slot_count + 0.2) * LiteGraph.NODE_SLOT_HEIGHT;
-	
 			this.self.flex.temp_h = 0;
 			if (PROCESS_WIDGET_NODE && PROCESS_WIDGET_NODE.isPointInside(app.canvas.graph_mouse[0], app.canvas.graph_mouse[1])) {
 				// Intentional double-ifs
@@ -1348,32 +1349,22 @@ export function widget_flex(node, widget, options = {}) {
 			}
 	
 			// Don't ask why how I came up with this. This took a week of brain power.
-	
 			this.self.flex.real_y = this.self.flex.real_y ?? 0;
 			this.self.flex.margin_tail_real_y = this.self.flex.margin_tail_y;
-	
 			this.self.flex.real_max_h = Infinity;
-	
 			this.self.flex.real_min_h = this.self.flex.min_h ?? 0;
-	
-			let raw_size = node.size?.[1] ?? this.self.flex.real_min_h;
 
 			// dom_flag = width === undefined
-			calc_flex(node, this.self, width);
+			if (!node.flex_data)
+				calc_flex(node, width);
+			
 			if (!node.imgs || node.widgets.find(_ => _.name === ANIM_PREVIEW_WIDGET))
 				node.flex_data.img_h = 0;
 
-			if (app.canvas.resizing_node === node) {
-				raw_size = app.canvas.graph_mouse[1] - node.pos[1];
-				const min_h = node.flex_data.share_min_h.reduce((a, b) => a + b, slot_h + 10 + node.flex_data.off_h + node.flex_data.img_h);
-				if (raw_size < min_h)
-					raw_size = min_h;
-				node.size[1] = raw_size;
-			}
-	
+			// [TODO] Caching this?
 			this.self.flex.real_h = lib0246.calc_spread(
 				node.flex_data.share_count,
-				raw_size - node.flex_data.off_h - slot_h - 10 - node.flex_data.left_h - node.flex_data.img_h,
+				node.size[1] - node.flex_data.take_h - node.flex_data.img_h,
 				node.flex_data.share_weight,
 				node.flex_data.share_min_h,
 				node.flex_data.share_max_h
@@ -1387,29 +1378,24 @@ export function widget_flex(node, widget, options = {}) {
 		}
 	});
 
-	if (node.configure && !node.configure[lib0246.HIJACK_MARK]) {
-		let temp_compute_size, temp_compute_flag = false;
-		lib0246.hijack(node, "configure", function (data) {
+	if (!node.computeSize[lib0246.HIJACK_MARK]) {
+		lib0246.hijack(node, "computeSize", function () {
+			const node = this.self;
 			if (!this.mark) {
-				temp_compute_size = this.self.computeSize;
-				temp_compute_flag = true;
-				const hold_w = data.size[0], hold_h = data.size[1];
-				this.self.computeSize = function () {
-					return [hold_w, hold_h];
-				};
-			}
-		}, function (mode) {
-			if (mode === 0b100000 && temp_compute_flag) {
-				temp_compute_flag = false;
-				this.self.size = this.self.computeSize();
-				this.self.computeSize = temp_compute_size;
+				if (!node.size) {
+					this.stop = true;
+					this.res = [LiteGraph.NODE_MIN_WIDTH, 100];
+					return;
+				}
+				calc_flex(node, node.size[0]);
 			}
 		});
 
-		lib0246.hijack(node, "onResize", function (size) {
-			if (!this.mark && Number.isFinite(this.self.flex_data.force_h)) {
-				this.self.size[1] = this.self.flex_data.force_h;
-				this.self.flex_data.force_h = null;
+		lib0246.hijack(node, "setSize", function (size) {
+			const node = this.self;
+			if (!this.mark && Number.isFinite(node?.flex_data?.force_h)) {
+				size[1] = node.flex_data.force_h;
+				node.flex_data.force_h = null;
 			}
 		});
 
@@ -1466,7 +1452,7 @@ export function DOM_WIDGET(data_type, data_name, element, options = {}) {
 				widget.flex.hold_draw[3] <= 0 ||
 				widget.type === "converted-widget";
 			this.element.hidden = hidden;
-			this.element.style.display = hidden ? "none" : null;
+			this.element.style.display = hidden ? "none" : "inherit";
 			if (hidden) {
 				widget.options.onHide?.(widget);
 				return;
@@ -1556,7 +1542,7 @@ export function DOM_WIDGET(data_type, data_name, element, options = {}) {
 	return widget;
 }
 
-//*
+/*
 Object.defineProperty(LGraphNode.prototype, "addDOMWidget", {
 	// Secret A/B testing ;)
 	// If no one complaining then it works I guess
@@ -1583,7 +1569,6 @@ Object.defineProperty(LGraphNode.prototype, "addDOMWidget", {
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
 
 function eval_state(db, state, node, widget, event, pos) {
 	for (let i = 0; i < db.length; i += 2) {
@@ -3135,7 +3120,7 @@ export function hub_setup_widget(node, data, id) {
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-function cloud_group_query_inst(group_curr, group_dict, group_list, inst_id) {
+function cloud_inst_query_group(group_curr, group_dict, group_list, inst_id) {
 	let stack = [];
 	for (let ii = 0; ii < group_list.length; ++ ii)
 		if (group_dict[group_list[ii]]?.inst?.includes?.(inst_id)) {
@@ -3143,6 +3128,19 @@ function cloud_group_query_inst(group_curr, group_dict, group_list, inst_id) {
 			stack.push(group_list[ii]);
 		}
 	cloud_group_query_group(group_curr, group_dict, group_list, stack);
+	return group_curr;
+}
+
+function cloud_group_query_inst(inst_curr, group_dict, group_id) {
+	let stack = [group_id];
+	while (stack.length > 0) {
+		const temp = group_dict[stack.pop()];
+		if (temp?.inst)
+			inst_curr.push(...temp.inst);
+		if (temp?.group)
+			stack.push(...temp.group);
+	}
+	return inst_curr;
 }
 
 function cloud_group_query_group(group_curr, group_dict, group_list, group_stack) {
@@ -3158,6 +3156,7 @@ function cloud_group_query_group(group_curr, group_dict, group_list, group_stack
 				seen.add(group_list[ii]);
 			}
 	}
+	return group_curr;
 }
 
 function shelf_layout(
@@ -3205,7 +3204,7 @@ function shelf_layout(
 		group_y = 0;
 		for (; i < key_list.length; ++ i) {
 			let group_curr = [];
-			cloud_group_query_inst(group_curr, group_dict, group_list, key_list[i]);
+			cloud_inst_query_group(group_curr, group_dict, group_list, key_list[i]);
 			
 			const text_data = ctx.measureText(view_dict[key_list[i]]);
 
@@ -3509,7 +3508,7 @@ function cloud_widget_build_basic(node, widget, inst_id, name, input, data) {
 	}
 	if (data !== null)
 		for (let i = 0; i < widget.cloud.widgets[inst_id].length; ++ i)
-			widget.cloud.widgets[inst_id][i].value = data.widgets_values[i];
+			widget.cloud.widgets[inst_id][i].value = data.widgets_values[i][0];
 }
 
 function cloud_widget_select_basic(node, inst_id, name, flag) {
@@ -3562,7 +3561,7 @@ function cloud_build(node, kind, data = null, input = null, full = null) {
 				node.widgets.splice(node.widgets.length - 1, 1);
 
 			if (data !== null)
-				this.cloud.widgets[inst_id][0].options.setValue(data.widgets_values[0]);
+				this.cloud.widgets[inst_id][0].options.setValue(data.widgets_values[0][0]);
 		} break;
 		case "text_list": {
 		} break;
@@ -3593,22 +3592,22 @@ function cloud_build(node, kind, data = null, input = null, full = null) {
 		case "rand": {
 			this.cloud.widgets[inst_id] = [
 				{
-					name: `cloud:${name}:${inst_id}:rand:count`,
-					type: "number",
-					value: 1,
-					options: {
-						min: 1,
-						max: Number.MAX_SAFE_INTEGER,
-						step: 10,
-						precision: 0
-					},
-				}, {
 					name: `cloud:${name}:${inst_id}:rand:seed`,
 					type: "number",
 					value: 1,
 					options: {
 						min: -1125899906842624,
 						max: 1125899906842624,
+						step: 10,
+						precision: 0
+					},
+				}, {
+					name: `cloud:${name}:${inst_id}:rand:count`,
+					type: "number",
+					value: 1,
+					options: {
+						min: 1,
+						max: Number.MAX_SAFE_INTEGER,
 						step: 10,
 						precision: 0
 					},
@@ -3624,7 +3623,7 @@ function cloud_build(node, kind, data = null, input = null, full = null) {
 					},
 				}
 			];
-			cloud_widget_build_basic(node, this, inst_id, `cloud:${name}:${inst_id}:rand:count`, input, data);
+			cloud_widget_build_basic(node, this, inst_id, `cloud:${name}:${inst_id}:rand:seed`, input, data);
 		} break;
 		case "cycle": {
 			this.cloud.widgets[inst_id] = [
@@ -3649,6 +3648,26 @@ function cloud_build(node, kind, data = null, input = null, full = null) {
 						precision: 0
 					},
 				}, {
+					name: `cloud:${name}:${inst_id}:cycle:space`,
+					type: "number",
+					value: 0,
+					options: {
+						min: Number.MIN_SAFE_INTEGER,
+						max: Number.MAX_SAFE_INTEGER,
+						step: 10,
+						precision: 0
+					},
+				}, {
+					name: `cloud:${name}:${inst_id}:rand:count`,
+					type: "number",
+					value: 1,
+					options: {
+						min: 1,
+						max: Number.MAX_SAFE_INTEGER,
+						step: 10,
+						precision: 0
+					},
+				}, {
 					name: `cloud:${name}:${inst_id}:cycle:mode`,
 					type: "combo",
 					value: "add",
@@ -3658,7 +3677,7 @@ function cloud_build(node, kind, data = null, input = null, full = null) {
 					},
 				}
 			];
-			this.cloud.widgets[inst_id][2].afterQueued = cloud_after_func.bind(this, node, inst_id, this.cloud.widgets[inst_id][1]);
+			this.cloud.widgets[inst_id][3].afterQueued = cloud_after_func.bind(this, node, inst_id, this.cloud.widgets[inst_id][1]);
 			cloud_widget_build_basic(node, this, inst_id, `cloud:${name}:${inst_id}:cycle:offset`, input, data);
 		} break;
 		case "pin": {
@@ -3706,7 +3725,7 @@ function cloud_select(node, inst_id, flag) {
 			cloud_widget_select_basic.call(this, node, inst_id, `cloud:${name}:${inst_id}:weight:weight_input`, flag);
 		} break;
 		case "rand": {
-			cloud_widget_select_basic.call(this, node, inst_id, `cloud:${name}:${inst_id}:rand:count`, flag);
+			cloud_widget_select_basic.call(this, node, inst_id, `cloud:${name}:${inst_id}:rand:seed`, flag);
 		} break;
 		case "cycle": {
 			cloud_widget_select_basic.call(this, node, inst_id, `cloud:${name}:${inst_id}:cycle:offset`, flag);
@@ -3718,9 +3737,7 @@ function cloud_select(node, inst_id, flag) {
 			this.options?.select?.(node, inst_id, flag);
 		}	break;
 	}
-	if (this.cloud.select.size === 1) {
-		// node.widgets.find(_ => _.name === "base:inst_group_order").value = 
-	}
+	node.computeSize();
 }
 
 const CLOUD_KIND = ["text", "text_list", "text_file_list", "text_file_json", "weight", "rand", "cycle", "merge"];
@@ -3849,8 +3866,8 @@ function cloud_build_group(node, mode, second = null, color = undefined) {
 				}
 			} break;
 		}
-		cloud_clean_group(this.cloud.data.group);
 	}
+	cloud_clean_group(this.cloud.data.group);
 }
 
 function cloud_remove_group(node, group_id, mode) {
@@ -3922,6 +3939,10 @@ function cloud_clean_group(group_dict) {
 		} else if (!valid_group.has(key))
 			delete group_dict[key];
 	}
+
+	// for (let group_id in group_dict)
+	// 	if (cloud_group_query_inst([], group_dict, group_id).length < 2)
+	// 		delete group_dict[group_id];
 }
 
 function cloud_clean_dupe(group_dict) {
@@ -3993,7 +4014,7 @@ export function CLOUD_WIDGET(data_type, data_name, options = {}) {
 			for (let i = 0; i < this.cloud.data.inst.length; ++ i)
 				if (this.cloud.widgets[this.cloud.data.inst[i].id])
 					for (let j = 0; j < this.cloud.widgets[this.cloud.data.inst[i].id].length; ++ j) {
-						this.cloud.data.inst[i].widgets_values[j] = this.cloud.widgets[this.cloud.data.inst[i].id][j].value;
+						this.cloud.data.inst[i].widgets_values[j] = [this.cloud.widgets[this.cloud.data.inst[i].id][j].value];
 						this.cloud.data.inst[i].widgets_names[j] = this.cloud.widgets[this.cloud.data.inst[i].id][j].name;
 					}
 			return {
@@ -4248,7 +4269,7 @@ export function cloud_menu(name, options) {
 					if (cloud_widget.cloud.data.inst.find(_ => _.id === inst_id).kind !== "pin")
 						cloud_widget.remove(node, inst_id);
 				cloud_widget.cloud.select.clear();
-				node.setSize([node.size[0], Math.max(node.computeSize()[1], node.size[1])]);
+				// node.setSize([node.size[0], Math.max(node.computeSize()[1], node.size[1])]);
 				app.canvas.setDirty(true);
 			}
 		}, {
@@ -4260,7 +4281,7 @@ export function cloud_menu(name, options) {
 						cloud_widget.cloud.select.add(cloud_widget.cloud.data.inst[i].id);
 						cloud_widget.select(node, cloud_widget.cloud.data.inst[i].id, true);
 					}
-				node.setSize([node.size[0], Math.max(node.computeSize()[1], node.size[1])]);
+				// node.setSize([node.size[0], Math.max(node.computeSize()[1], node.size[1])]);
 				app.canvas.setDirty(true);
 			}
 		}, {
@@ -4272,45 +4293,45 @@ export function cloud_menu(name, options) {
 						cloud_widget.select(node, cloud_widget.cloud.data.inst[i].id, false);
 						cloud_widget.cloud.select.delete(cloud_widget.cloud.data.inst[i].id);
 					}
-				node.setSize([node.size[0], Math.max(node.computeSize()[1], node.size[1])]);
+				// node.setSize([node.size[0], Math.max(node.computeSize()[1], node.size[1])]);
 				app.canvas.setDirty(true);
 			}
 		},
 		null, {
 			content: "[0246.Cloud] ✔️ first_group_id ➡️ picked clouds",
 			callback: (value, options, evt, menu, node) => {
-				node.widgets.find(w => w.name === `cloud:${name}`)
-					.build_group(node, node.widgets.find(w => w.name === `cloud:${name}:first_group_id`).value, null);
+				node.widgets.find(w => w.name === `cloud:${name}`).build_group(
+					node,
+					node.widgets.find(w => w.name === `cloud:${name}:first_group_id`).value,
+					null
+				);
 			}
 		}, {
 			content: "[0246.Cloud] 🗑️ second_group_id ➡️ picked clouds",
 			callback: (value, options, evt, menu, node) => {
-				node.widgets.find(w => w.name === `cloud:${name}`)
-					.remove_group(
-						node,
-						node.widgets.find(w => w.name === `cloud:${name}:second_group_id`).value,
-						null
-					);
+				node.widgets.find(w => w.name === `cloud:${name}`).remove_group(
+					node,
+					node.widgets.find(w => w.name === `cloud:${name}:second_group_id`).value,
+					null
+				);
 			}
 		}, {
 			content: "[0246.Cloud] ✔️ first_group_id ➡️ second_group_id",
 			callback: (value, options, evt, menu, node) => {
-				node.widgets.find(w => w.name === `cloud:${name}`)
-					.build_group(
-						node,
-						node.widgets.find(w => w.name === `cloud:${name}:first_group_id`).value,
-						node.widgets.find(w => w.name === `cloud:${name}:second_group_id`).value
-					);
+				node.widgets.find(w => w.name === `cloud:${name}`).build_group(
+					node,
+					node.widgets.find(w => w.name === `cloud:${name}:first_group_id`).value,
+					node.widgets.find(w => w.name === `cloud:${name}:second_group_id`).value
+				);
 			}
 		}, {
 			content: "[0246.Cloud] 🗑️ second_group_id ➡️ first_group_id",
 			callback: (value, options, evt, menu, node) => {
-				node.widgets.find(w => w.name === `cloud:${name}`)
-					.remove_group(
-						node,
-						node.widgets.find(w => w.name === `cloud:${name}:second_group_id`).value,
-						node.widgets.find(w => w.name === `cloud:${name}:first_group_id`).value
-					);
+				node.widgets.find(w => w.name === `cloud:${name}`).remove_group(
+					node,
+					node.widgets.find(w => w.name === `cloud:${name}:second_group_id`).value,
+					node.widgets.find(w => w.name === `cloud:${name}:first_group_id`).value
+				);
 			}
 		},
 		null, {
@@ -4371,7 +4392,7 @@ function reset_hijack_widget(node) {
 	}
 }
 
-const NODE_PARENT = Symbol("node_parent");
+export const NODE_PARENT = Symbol("node_parent");
 
 function hijack_widget_name(node, widget) {
 	if (node.comfyClass === "0246.Hub" && widget[NODE_PARENT])
@@ -4382,7 +4403,7 @@ function hijack_widget_name(node, widget) {
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
+window.test = 0;
 app.registerExtension({
 	name: "0246.Widget",
 	async init() {
@@ -4405,82 +4426,24 @@ app.registerExtension({
 			if (!this.mark) {
 				const node = arguments[0];
 				if (node.comfyClass === "0246.Hub") {
-					node.hub.temp_y = node.hub.temp_y ?? {};
-					const io_height = Math.max(node?.inputs?.length ?? 0, node?.outputs?.length ?? 0) * 24;
-					node.hub.curr_y = io_height;
-					let compute_height = node.size[1],
-						widget_count = 0;
-
-					for (; widget_count < node.widgets.length; ++ widget_count) {
-						if (
-							node.widgets[widget_count] === app.graph.getNodeById(node.hub?.data?.node_list?.[0])?.widgets?.[0] ||
-							node.widgets[widget_count].type === "space_title"
-						)
-							break;
-						node.hub.curr_y += LiteGraph.NODE_WIDGET_HEIGHT + 4;
-					}
-
-					if (node.hub.sole_space) {
-						node.hub.curr_y += LiteGraph.NODE_WIDGET_HEIGHT + 8 - node.hub.sole_widget.length * 4;
-						++ widget_count;
-					}
-
-					for (let i = 0; i < node.hub.sole_widget.length; ++ i, ++ widget_count) {
-						const curr_widget = node.hub.sole_widget[i];
-						if (curr_widget.y !== undefined)
-							node.hub.temp_y[widget_count] = curr_widget.y;
-						curr_widget.y = node.hub.curr_y;
-						node.hub.curr_y += LiteGraph.NODE_WIDGET_HEIGHT + 4; // [TODO] Maybe add checks like below
-					}
-
-					if (node.hub.data)
-						for (let i = 0; i < node.hub.data.node_list.length; ++ i) {
-							const curr_node = app.graph.getNodeById(node.hub.data.node_list[i]);
-							if (node.widgets.length <= widget_count || !curr_node)
-								break;
-							node.widgets[widget_count ++].y = node.hub.curr_y;
-							node.hub.curr_y += LiteGraph.NODE_WIDGET_HEIGHT + 4;
-							for (let j = 0; j < curr_node.widgets.length; ++ j, ++ widget_count) {
-								const curr_widget = curr_node.widgets[j];
-								if (curr_widget.y !== undefined)
-									node.hub.temp_y[widget_count] = curr_widget.y;
-								curr_widget.y = node.hub.curr_y;
-								if (curr_widget.flex) {
-									curr_widget.flex.real_w = node.size[0];
-									curr_widget.flex.real_y = node.hub.curr_y;
-									node.hub.curr_y += curr_widget.flex.temp_h;
-								} else if (curr_widget.computedHeight) {
-									node.hub.curr_y += curr_widget.computedHeight + 4;
-									compute_height += curr_widget.computedHeight;
-								} else if (curr_widget.openpose) {
-									node.hub.curr_y += node.size[0];
-								} else if (curr_widget.painter_wrap) {
-									node.hub.curr_y += Math.max((
-										curr_widget.painter_toolbox = curr_widget.painter_toolbox ?? document.querySelector("div.painter_drawning_box")
-									).clientHeight / app.canvas.ds.scale + 4, node.size[0]);
-									app.canvas.setDirty(true);
-								} else if (curr_widget.computeSize) {
-									const curr_height = curr_widget.computeSize(node.size[0], node)[1]; // compute_height, raw_height - io_height + flex_height
-									node.hub.curr_y += curr_height + 4;
-								} else
-									node.hub.curr_y += LiteGraph.NODE_WIDGET_HEIGHT + 4;
-							}
-						}
-				}
-			} else {
-				const node = arguments[0];
-				if (node.comfyClass === "0246.Hub") {
-					let curr_size = node.computeSize();
-					for (let i = 0; i < node.widgets.length; ++ i) {
-						if (node.hub.temp_y[i] !== undefined)
-							node.widgets[i].y = node.hub.temp_y[i];
-						else
-							node.widgets[i].y = undefined;
-						delete node.hub.temp_y[i];
-					}
-					curr_size[0] = node.size[0];
-					curr_size[1] = node.hub.curr_y + 2;
-					node.setSize(curr_size);
+					// [TODO] Temporary. Probably we wants to rebuild widget list dynamically
+					// for (let i = 7; i < node.widgets.length; ++ i) {
+					// 	let found = false;
+					// 	for (let id in node.hub.node_widget)
+					// 		if (
+					// 			node.hub.node_widget[id].indexOf(node.widgets[i]) > -1 ||
+					// 			this.hub.sole_widget.includes(node.widgets[i])
+					// 		) {
+					// 			found = true;
+					// 			break;
+					// 		}
+					// 	if (!found && node.widgets[i].type !== "space_title")
+					// 		node.widgets.splice(i --, 1);
+					// }
+					// calc_flex(node, node.size[0]);
+					// console.log(node.size);
+					node.hubSize();
+					// app.canvas.setDirty(true);
 				}
 			}
 		});
@@ -4561,20 +4524,22 @@ app.registerExtension({
 				const first_group_widget = node.addWidget("combo", `cloud:${inputName}:first_group_id`, "_", () => {}, {
 					serialize: false,
 					values: function (widget) {
-						let res = ["_", "global", `local:${node.id}`];
-						for (let key in cloud_widget.cloud.data.group) {
-							if (key === "global" || key === `local:${node.id}`)
-								continue;
-							else
-								res.push(key);
-						}
-						return res;
+						// let res = ["_", "global", `local:${node.id}`];
+						// for (let key in cloud_widget.cloud.data.group) {
+						// 	if (key === "global" || key === `local:${node.id}`)
+						// 		continue;
+						// 	else
+						// 		res.push(key);
+						// }
+						// return res;
+						return ["_", ...Object.keys(cloud_widget.cloud.data.group ?? {})];
 					}
 				});
-				const second_group_widget = node.addWidget("combo", `cloud:${inputName}:second_group_id`, "_", () => {}, {
+				const second_group_widget = node.addWidget("combo", `cloud:${inputName}:second_group_id`, "", () => {}, {
 					serialize: false,
 					values: function (widget) {
-						return ["_", ...Object.keys(cloud_widget.cloud.data.group ?? {})];
+						// return ["_", ...Object.keys(cloud_widget.cloud.data.group ?? {})];
+						return Object.keys(cloud_widget.cloud.data.group ?? {});
 					}
 				});
 
@@ -4627,7 +4592,7 @@ app.registerExtension({
 					});
 
 					lib0246.hijack(node, "clone", function () {
-						const node = this.self;
+						const node = this.res;
 						if (this.mark)
 							for (let j = 0; j < node.widgets.length; ++ j)
 								if (node.widgets[j].type === "CLOUD_DATA")

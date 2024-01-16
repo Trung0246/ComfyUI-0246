@@ -20,6 +20,7 @@ try:
 except:
 	subprocess.Popen([sys.executable, "-m", "pip", "install", "wrapt"]).wait()
 	subprocess.Popen([sys.executable, "-m", "pip", "install", "natsort"]).wait()
+	subprocess.Popen([sys.executable, "-m", "pip", "install", "toposort"]).wait()
 	wrapt = __import__("wrapt")
 	natsort = __import__("natsort")
 

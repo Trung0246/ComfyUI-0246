@@ -13,8 +13,10 @@ import builtins
 import json
 import copy
 import functools
+import itertools
 import copy
 import re
+import uuid
 
 # Self Code
 from . import utils as lib0246
@@ -22,6 +24,7 @@ from . import utils as lib0246
 # 3rd Party
 import aiohttp.web
 import natsort
+import toposort
 
 # ComfyUI
 from server import PromptServer
@@ -327,9 +330,11 @@ def junction_unpack_raw(
 	return base_dict
 
 def update_hold_db(key, data):
-	if data is not None:
-		Hold.HOLD_DB[key]["data"].extend(data)
-	return [None] if not Hold.HOLD_DB[key]["data"] else Hold.HOLD_DB[key]["data"]
+	if key in Hold.HOLD_DB:
+		if data is not None:
+			Hold.HOLD_DB[key]["data"].extend(data)
+		return [None] if not Hold.HOLD_DB[key]["data"] else Hold.HOLD_DB[key]["data"]
+	return [None]
 
 def junction_pack_loop(_junc_in, name, value):
 	_junc_in[("type", name)] = type(value).__name__
@@ -911,46 +916,72 @@ class Hold:
 	CATEGORY = "0246"
 
 	def execute(self, _data_in = None, _id = None, _hold = None, _mode = None, _key_id = None, **kwargs):
-		_data_in = kwargs.get(next(filter(lambda x: x.startswith("_data_in"), kwargs.keys())), _data_in)
-		mode = _mode[0] if _mode else None
+		for key in kwargs:
+			if key.startswith("_data_in"):
+				_data_in = kwargs[key]
+				break
 
-		if _id[0] not in Hold.HOLD_DB:
-			Hold.HOLD_DB[_id[0]] = {
+		if isinstance(_id, list):
+			_id = str(_id[0]) if len(_id) > 0 else None
+		if isinstance(_hold, list):
+			_hold = _hold[0] if len(_hold) > 0 else None
+		if isinstance(_mode, list):
+			_mode = _mode[0] if len(_mode) > 0 else None
+		if isinstance(_key_id, list):
+			_key_id = str(_key_id[0]) if len(_key_id) > 0 else None
+
+		if _id not in Hold.HOLD_DB:
+			Hold.HOLD_DB[_id] = {
 				"track": PROMPT_ID,
 				"data": []
 			}
 
-		if Hold.HOLD_DB[_id[0]]["track"] != PROMPT_ID:
-			Hold.HOLD_DB[_id[0]]["track"] = PROMPT_ID
+		ui_text = f"Id: {_id}, "
 
-			if mode != "save":
-				Hold.HOLD_DB[_id[0]]["data"] = []
+		ext_db = _key_id in Hold.HOLD_DB
 
-		ui_text = f"Id: {_id[0]}, "
-
-		# Check if _key_id is specified and process accordingly
-		if _key_id and len(_key_id[0]) > 0:
-			if mode == "clear":
-				Hold.HOLD_DB[_key_id[0]]["data"] = []
-			result = update_hold_db(_key_id[0], _data_in)
-			ui_text += f"Size: {lib0246.len_zero_arr(result)}, Key: {_key_id[0]}, "
-		# Check if _hold is specified and process accordingly
-		elif _hold and _hold[0]:
-			result = _data_in if _data_in is not None else [None]
-			ui_text += f"Size: {lib0246.len_zero_arr(result)}, Passed, "
-		else:
-			# Update the outputs and HOLD_DB for _id if specified
-			if _id:
-				result = update_hold_db(_id[0], None if (mode == "ignore" and len(Hold.HOLD_DB[_id[0]]["data"]) > 0) else _data_in)
-				BASE_EXECUTOR.outputs[_id[0]] = Hold.HOLD_DB[_id[0]]["data"]
-				ui_text += f"Size: {len(result)}, "
-				if mode == "clear":
-					Hold.HOLD_DB[_id[0]]["data"] = []
+		result = None
+		if _hold:
+			result = Hold.HOLD_DB[_id]["data"]
+			if ext_db:
+				if _mode == "clear":
+					Hold.HOLD_DB[_key_id]["data"].clear()
+				elif _mode == "ignore":
+					result = Hold.HOLD_DB[_key_id]["data"]
+				elif _mode == "save":
+					Hold.HOLD_DB[_id]["data"].extend(Hold.HOLD_DB[_key_id]["data"])
+			if _mode != "save":
+				Hold.HOLD_DB[_id]["data"].clear()
+			Hold.HOLD_DB[_id]["data"].extend(_data_in)
+			ui_text += f"Passed, Size: {len(result)}, "
+		elif ext_db:
+			result = _data_in
+			if _data_in is None or (
+				Hold.HOLD_DB[_key_id]["track"] == PROMPT_ID and
+				len(Hold.HOLD_DB[_key_id]["data"]) > 0
+			):
+				if _mode == "ignore":
+					result = Hold.HOLD_DB[_key_id]["data"]
+				else:
+					result = update_hold_db(_key_id, _data_in)
+			ui_text += f"Key: {_key_id}, Size: {len(result)}, "
+		elif _data_in and len(_data_in) > 0:
+			if Hold.HOLD_DB[_id]["track"] != PROMPT_ID:
+				Hold.HOLD_DB[_id]["track"] = PROMPT_ID
+				if _mode != "save":
+					Hold.HOLD_DB[_id]["data"].clear()
+				result = []
+			elif _mode == "clear":
+				result = _data_in
+				Hold.HOLD_DB[_id]["data"] = _data_in
 			else:
-				ui_text += f"None, "
-				result = [None]
+				result = update_hold_db(_id, _data_in)
+			ui_text += f"Size: {len(result)}, "
 
-		ui_text += f"Track: {Hold.HOLD_DB[_id[0]]['track']}"
+		if not result or len(result) == 0:
+			result = [None]
+
+		ui_text += f"Track: {Hold.HOLD_DB[_id]['track']}"
 
 		return {
 			"ui": {
@@ -1127,7 +1158,10 @@ class Beautify:
 	CATEGORY = "0246"
 
 	def execute(self, data = None, mode = None, **kwargs):
-		data = kwargs.get(next(filter(lambda x: x.startswith("data"), kwargs.keys())), data)
+		for key in kwargs:
+			if key.startswith("data"):
+				data = kwargs[key]
+				break
 
 		raw_mode = 0
 		res_str = None
@@ -1967,7 +2001,11 @@ class Hub:
 		name_data = {}
 
 		curr_nodes = _workflow[0]["workflow"]["nodes"]
-		self_index = next(i for i, _ in enumerate(curr_nodes) if _["id"] == int(_id[0]))
+		self_index = None
+		for i, _ in enumerate(curr_nodes):
+			if _["id"] == int(_id[0]):
+				self_index = i
+				break
 		curr_extra = _workflow[0]["workflow"]["extra"]
 
 		for i, pin in enumerate(curr_nodes[self_index]["outputs"]):
@@ -2036,37 +2074,343 @@ class Hub:
 ######################################################################################
 
 CLOUD_METHOD = {
-	"text": {
-		"func": False, # Can be used as function
+	"text": None, # Cannot be used as function if None
+	"pin": None,
+	"weight": {
 		"bind": False, # Can affect other clouds if itself is affected
 		"many": False, # Can output multiple clouds
-		"sole": False # Can only exist once for same kind within a group
-	},
-	"weight": {
-		"func": True,
-		"bind": False,
-		"many": False,
-		"sole": True,
+		"sole": True, # Can only exist once for same kind within a group
 	},
 	"rand": {
-		"func": True,
 		"bind": True,
 		"many": True,
 		"sole": True,
 	},
 	"cycle": {
-		"func": True,
 		"bind": True,
 		"many": True,
 		"sole": True,
 	},
 	"merge": {
-		"func": True,
 		"bind": True,
 		"many": False,
 		"sole": True,
 	},
 }
+
+def group_query_inst(group_dict, group_id, group_list = None, inst_curr = None):
+	inst_curr = set() if inst_curr is None else inst_curr
+	group_list = list(group_dict.keys()) if group_list is None else group_list
+	stack = [group_id]
+	seen = set()
+	while len(stack) > 0:
+		track_group = stack.pop()
+		if track_group in seen:
+			continue
+		seen.add(track_group)
+		if "group" in group_dict[track_group]:
+			stack.extend(group_dict[track_group]["group"])
+		if "inst" in group_dict[track_group]:
+			for track_inst in group_dict[track_group]["inst"]:
+				inst_curr.add(track_inst)
+	return inst_curr
+
+class CloudFunc:
+	def __init__(self, kind):
+		self.func = getattr(CloudFunc, f"func_{kind}")
+
+	"""
+	{
+		eval # Evaluated data
+		data # Persistent data
+		order # Current isntance order
+		index # Current instance result index
+		change # Whether whole cloud changed
+	}
+	"""
+
+	@classmethod
+	def func_text(cls, obj, inst_id, pass_state, state):
+		return obj.inst[inst_id]["widgets_values"][0]
+	
+	@classmethod
+	def func_weight(cls, obj, inst_id, pass_state, state):
+		# [TODO] Escape special characters for _[0]
+		return list(map(lambda _: f"({_[0]}: {_[1]})", itertools.product(pass_state["data"], obj.inst[inst_id]["widgets_values"][0])))
+	
+	@classmethod
+	def func_rand(cls, obj, inst_id, pass_state, state):
+		res = []
+		if inst_id not in state["data"]:
+			state["data"][inst_id] = {
+				"rand": random.Random(),
+				"seed_mode": [],
+				"seed_data": [],
+				"seed_count": 0
+			}
+
+		curr_state = state["data"][inst_id]
+
+		curr_state["seed_count"] = len(obj.inst[inst_id]["widgets_values"][0])
+		curr_seed_len = len(curr_state["seed_data"])
+		if curr_state["seed_count"] > curr_seed_len:
+			curr_state["seed_data"].extend([None] * (curr_state["seed_count"] - curr_seed_len))
+			curr_state["seed_mode"].extend([None] * (curr_state["seed_count"] - curr_seed_len))
+		elif curr_state["seed_count"] < curr_seed_len:
+			curr_state["seed_data"] = curr_state["seed_data"][:curr_state["seed_count"]]
+			curr_state["seed_mode"] = curr_state["seed_mode"][:curr_state["seed_count"]]
+
+		for i, curr_count, curr_seed, curr_mode in zip(itertools.count(start=0, step=1), *obj.inst[inst_id]["widgets_values"]):
+			if curr_state["seed_data"][i] is None or \
+				curr_state["seed_mode"][i] != curr_mode or \
+				state["change"]:
+				curr_state["seed_data"][i] = curr_seed
+				curr_state["seed_mode"][i] = curr_mode
+				curr_state["rand"].seed(curr_seed)
+			else:
+				match curr_mode:
+					case "fix":
+						curr_state["rand"].seed(curr_seed)
+					case "add":
+						curr_state["seed_data"][i] += 1
+						curr_state["rand"].seed(curr_state["seed_data"][i])
+					case "sub":
+						curr_state["seed_data"][i] -= 1
+						curr_state["rand"].seed(curr_state["seed_data"][i])
+					case _:
+						# Default to "rand" mode
+						pass
+
+			choice_list: list = copy.copy(pass_state["data"])
+			for i in range(curr_count):
+				curr_choice = curr_state["rand_inst"].choice(choice_list)
+				res.append(curr_choice)
+				choice_list.remove(curr_choice)
+
+		for i in pass_state["index"]:
+			pass_state["index"][i] = None
+
+		return res
+	
+	@classmethod
+	def func_cycle(cls, obj, inst_id, pass_state, state):
+		res = []
+		if inst_id not in state["data"]:
+			state["data"][inst_id] = {
+				"track_step": [],
+				"track_data": [],
+				"track_count": 0
+			}
+
+		curr_state = state["data"][inst_id]
+			
+		curr_state["track_count"] = len(obj.inst[inst_id]["widgets_values"][0])
+		curr_track_len = len(curr_state["track_data"])
+		if curr_state["track_count"] > curr_track_len:
+			curr_state["track_data"].extend([None] * (curr_state["track_count"] - curr_track_len))
+			curr_state["track_step"].extend([None] * (curr_state["track_count"] - curr_track_len))
+		elif curr_state["track_count"] < curr_track_len:
+			curr_state["track_data"] = curr_state["track_data"][:curr_state["track_count"]]
+			curr_state["track_step"] = curr_state["track_step"][:curr_state["track_count"]]
+
+		for i, curr_offset, curr_step, curr_space, curr_count in zip(itertools.count(start=0, step=1), *obj.inst[inst_id]["widgets_values"]):
+			if curr_state["track_data"][i] is None or \
+				curr_state["track_step"][i] != curr_step or \
+				state["change"]:
+				curr_state["track_data"][i] = curr_offset
+				curr_state["track_step"][i] = curr_step
+			else:
+				curr_state["track_data"][i] += curr_step
+			
+			for i in range(curr_state["track_data"][i], curr_count * curr_space, curr_space):
+				res.append(pass_state["data"][i % len(pass_state["data"])])
+
+		for i in pass_state["index"]:
+			# result append to res should be already in order so no need special handling
+			pass_state["index"][i] = None
+
+		return res
+	
+	@classmethod
+	def func_merge(cls, obj, inst_id, pass_state, state):
+		res = []
+
+		for i, curr_delim in zip(itertools.count(start=0, step=1), *obj.inst[inst_id]["widgets_values"]):
+			res.append(curr_delim.join(pass_state["data"]))
+		
+		for i in pass_state["index"]:
+			pass_state["index"][i] = None
+
+		return res
+
+class CloudData:
+	def __init__(self):
+		self.inst = []
+		self.group = {}
+		self.db = {}
+
+	def dict_to_data(self, curr_id, inst_list, group_dict, db_dict = None, kwargs = None):
+		if kwargs is not None:
+			self.id = curr_id
+		if db_dict is not None:
+			self.db.update(db_dict)
+		self.db[curr_id] = self.db.get(curr_id, {})
+		for inst in inst_list:
+			old_id = inst["id"]
+			new_id = str(uuid.uuid4())
+			match inst["kind"]:
+				case "pin" if kwargs is not None:
+					curr_value = None
+					for key in kwargs:
+						curr_int = key.split(":")[0]
+						if curr_int.isnumeric() and int(curr_int) == inst["widgets_values"][0]:
+							curr_value = kwargs[key][0]
+							break
+					match curr_value:
+						case CloudData():
+							self.dict_to_data(curr_value.id, curr_value.inst, curr_value.group, curr_value.db, None)
+							for group_id in group_dict:
+								if "inst" in group_dict[group_id]:
+									try:
+										curr_index = group_dict[group_id]["inst"].index(old_id)
+										group_dict[group_id]["inst"][curr_index:curr_index + 1] = map(lambda _: _["id"], curr_value.inst)
+									except ValueError:
+										pass
+							continue
+						case str() | int() | float():
+							self.inst.append({
+								"id": new_id,
+								"kind": "text",
+								"widgets_values": [str(curr_value)],
+								"widgets_names": [f"cloud:_:{new_id}:text:text_input"]
+							})
+				case _:
+					self.inst.append(inst)
+			if old_id.isnumeric():
+				inst["id"] = new_id
+				self.db[curr_id][new_id] = old_id
+
+		for param in kwargs:
+			if param.startswith("cloud:"):
+				for inst in self.inst:
+					for i in range(self.inst["widgets_values"]):
+						if self.inst["widgets_names"][i] == param:
+							self.inst["widgets_values"][i] = kwargs[param]
+							break
+
+		for old_id, group_data in group_dict.items():
+			if "inst" in group_data:
+				new_list = []
+				for i, inst_id in enumerate(group_data["inst"]):
+					if not inst_id.isnumeric():
+						new_list.append(inst_id)
+					else:
+						for curr_inst_id in self.db[curr_id].keys():
+							if self.db[curr_id][curr_inst_id] == inst_id:
+								new_list.append(curr_inst_id)
+								break
+				if len(new_list) > 0:
+					group_data["inst"] = new_list
+				else:
+					del group_data["inst"]
+			if "group" in group_data:
+				for i, inner_old_id in enumerate(group_data["group"]):
+					new_id = str(uuid.uuid4())
+					if not inner_old_id.split(":")[-1].isnumeric():
+						group_data["group"][i] = inner_old_id
+					else:
+						for curr_group_id in self.db[curr_id].keys():
+							if self.db[curr_id][curr_group_id] == inner_old_id:
+								group_data["group"][i] = curr_group_id
+								break
+			new_id = str(uuid.uuid4())
+			if not old_id.split(":")[-1].isnumeric():
+				self.group[old_id] = group_data
+			else:
+				for curr_group_id in self.db[curr_id].keys():
+					if self.db[curr_id][curr_group_id] == old_id:
+						self.group[curr_group_id] = group_data
+						break
+				else:
+					self.group[new_id] = group_data
+					for curr_group_id in self.db[curr_id].keys():
+						if self.db[curr_id][curr_group_id] == old_id:
+							break
+					else:
+						self.db[curr_id][new_id] = old_id
+
+	@classmethod
+	def text_to_dict(cls, text):
+		pass
+
+	def text_to_data(self, text):
+		pass
+
+	def data_eval(self):
+		sort_data = self.sort()
+		state_data = []
+		func_data = {}
+
+		for inst_id in self.inst:
+			func_data[inst_id["id"]] = CloudData(inst_id["kind"]) if \
+				isinstance(inst_id["kind"], str) else \
+				inst_id["kind"]
+	
+	def sort(self):
+		# inst = kwargs["cloud:cloud"][0]["inst"]
+		# group = kwargs["cloud:cloud"][0]["group"]
+		inst = self.inst
+		group = self.group
+		dep = {}
+
+		for group_id in group:
+			inst_list = group_query_inst(group, group_id)
+			inst_dep_list_prim = []
+			inst_dep_list_func = []
+			inst_dep_list_bind = []
+			inst_kind_set = set()
+
+			for inst_id in inst_list:
+				if inst_id not in dep:
+					dep[inst_id] = []
+				inst_curr_kind = next(filter(lambda _: _["id"] == inst_id, inst))["kind"]
+				if CLOUD_METHOD[inst_curr_kind] is None:
+					inst_dep_list_prim.append(inst_id)
+				else:
+					if inst_curr_kind in inst_kind_set and CLOUD_METHOD[inst_curr_kind]["sole"]:
+						raise Exception(f"Cannot have multiple {inst_curr_kind} cloud to same group {group_id}.")
+					(inst_dep_list_bind if CLOUD_METHOD[inst_curr_kind]["bind"] else inst_dep_list_func).append(inst_id)
+					if isinstance(inst_curr_kind, str):
+						inst_kind_set.add(inst_curr_kind)
+
+			for inst_id in inst_dep_list_func:
+				dep[inst_id].extend(inst_dep_list_prim)
+
+			idx_db = {}
+			for inst_id in inst_dep_list_bind:
+				dep[inst_id].extend(inst_dep_list_prim)
+				dep[inst_id].extend(inst_dep_list_func)
+				idx_db[inst_id] = inst.index(next(filter(lambda _: _["id"] == inst_id, inst)))
+
+			for a_inst_id in inst_dep_list_bind:
+				for b_inst_id in inst_dep_list_bind:
+					if idx_db[a_inst_id] > idx_db[b_inst_id] and idx_db[a_inst_id] != idx_db[b_inst_id]:
+						dep[a_inst_id].append(b_inst_id)
+
+		for inst_id in inst:
+			if inst_id["id"] not in dep:
+				dep[inst_id["id"]] = []
+
+		return {
+			"idx": toposort.toposort_flatten(dep),
+			"dep": dep
+		}
+
+	def __str__(self):
+		return f"CloudData({self.inst}, {self.group}, {self.db})"
+	
+	def __repr__(self):
+		return f"CloudData({json.dumps(self.inst, indent=2)}, {json.dumps(self.group, indent=2)}, {json.dumps(self.db, indent=2)})"
 
 class Cloud:
 	@classmethod
@@ -2074,7 +2418,7 @@ class Cloud:
 		return {
 			"required": lib0246.WildDict(),
 			"optional": {
-				"_cloud_in": ("CLOUD_PIPE", ),
+				# "_cloud_in": ("CLOUD_PIPE", ),
 				"cloud": ("CLOUD_DATA", )
 			},
 			"hidden": {
@@ -2091,18 +2435,18 @@ class Cloud:
 	FUNCTION = "execute"
 	CATEGORY = "0246"
 
-	def execute(self, _id = None, _prompt = None, _workflow = None, _cloud_in = None, **kwargs):
-		print(kwargs)
-		return ([None], )
-
-	def text_to_cloud(self):
-		pass
-
-	def cloud_to_text(self):
-		pass
+	def execute(self, _id = None, _prompt = None, _workflow = None, **kwargs):
+		res = CloudData()
+		res.dict_to_data(_id[0], kwargs["cloud:cloud"][0]["inst"], kwargs["cloud:cloud"][0]["group"], None, kwargs)
+		return {
+			"ui": {
+				"text": [[""]]
+			},
+			"result": [[res]]
+		}
 
 ######################################################################################
-	
+
 class Meta:
 	@classmethod
 	def INPUT_TYPES(s):

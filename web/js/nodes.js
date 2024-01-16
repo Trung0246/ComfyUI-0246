@@ -304,9 +304,6 @@ app.registerExtension({
 								serialize: false
 							});
 						}
-					}, function (mode) {
-						if (mode === 0b100000)
-							this.self.setSize(this.self.computeSize());
 					});
 					wg0246.setup_log(nodeType.prototype, true);
 				} break;
@@ -543,9 +540,10 @@ app.registerExtension({
 						}
 					});
 
-					Hub.prototype.hubSize = function () {
+					Hub.prototype.hubSize = function (extra = 0) {
 						const curr_size = this.computeSize();
 						curr_size[0] = this.size[0] < 350 ? 350 : this.size[0];
+						// curr_size[1] += extra - 32;
 						this.setSize(curr_size);
 					};
 
@@ -780,6 +778,7 @@ app.registerExtension({
 							}
 							delete this.hub.node_widget[curr_id];
 						}
+						// [TODO] For some reason there's trailing space_widget
 						const space_widget_index = this.widgets.indexOf(this.hub.space_widget[curr_id]);
 						if (space_widget_index > -1)
 							this.widgets.splice(space_widget_index, 1);
