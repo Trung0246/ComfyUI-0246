@@ -46,6 +46,14 @@ Control Flow:
 
 Added **Cloud** node (still techincally in beta but whatever). Also added `0246.AlternateDOMWidget` option.
 
+Demo workflow are below:
+
+<details>
+    <p align="center">
+        <img src="https://github.com/Trung0246/ComfyUI-0246/assets/11626920/8f0a9d5b-444d-41ac-89a4-cfeca0f0ccc2">
+    </p>
+</details>
+
 #### **2023-12-19**
 
 Tons more nodes. Here's the simple workflow image that showcase everything within this update.
