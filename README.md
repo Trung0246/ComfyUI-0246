@@ -42,6 +42,10 @@ Control Flow:
 
 ### Update
 
+#### **2024-01-18**
+
+Added **Cloud** node. Also added `0246.AlternateDOMWidget` option.
+
 #### **2023-12-19**
 
 Tons more nodes. Here's the simple workflow image that showcase everything within this update.
