@@ -5,7 +5,7 @@ Random nodes for ComfyUI I made to solve my struggle with ComfyUI. Have varying 
 
 [More Docs](https://github.com/Trung0246/ComfyUI-0246/blob/bf3cc8c87e1ecee856849a277a66abb59997d357/web/js/nodes.js#L11) (can be shown directly in the UI if rgthree is installed).
 
-<img width="1001" alt="Screenshot 2023-12-31 123714" src="https://github.com/Trung0246/ComfyUI-0246/assets/11626920/b5041e95-f39d-48f3-989c-ae6b2aca857d">
+![workflow_showcase](https://github.com/Trung0246/ComfyUI-0246/assets/11626920/cf0c5c94-27b3-4bbf-8bd0-b392bd0af63e)
 
 # Nodes list
 
