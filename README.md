@@ -44,7 +44,7 @@ Control Flow:
 
 #### **2024-01-18**
 
-Added **Cloud** node. Also added `0246.AlternateDOMWidget` option.
+Added **Cloud** node (still techincally in beta but whatever). Also added `0246.AlternateDOMWidget` option.
 
 #### **2023-12-19**
 
