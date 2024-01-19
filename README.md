@@ -33,7 +33,7 @@ Control Flow:
 - `Loop`: very hacky recursive repetition by messing with ComfyUI internals.
 - `Hold`: hold data between each loop execution.
 - `Count`: simple counter to use with `Loop`.
-- `Switch`: allows input/out switching. Will not evaluate unused inputs.
+- `Switch`: allows input/output switching. Will not evaluate unused inputs.
 
 "Execute anything" node:
 - `ScriptNode`
