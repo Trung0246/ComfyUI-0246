@@ -27,11 +27,13 @@ Misc:
 - `Hub`: widget management to the max.
     - Image display does not work for now, alongside with other 3rd party custom. But it should generally stable.
 - `CastReroute`: basically like `Reroute` but have ability to specify custom type. Useful when dealing with `Highway`, `Junction` and such.
+- `Cloud`: Prompt/Data/etc management made "easy".
 
 Control Flow:
 - `Loop`: very hacky recursive repetition by messing with ComfyUI internals.
 - `Hold`: hold data between each loop execution.
 - `Count`: simple counter to use with `Loop`.
+- `Switch`: allows input/out switching. Will not evaluate unused inputs.
 
 "Execute anything" node:
 - `ScriptNode`
