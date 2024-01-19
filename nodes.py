@@ -387,12 +387,25 @@ class ScriptData(dict):
 	def __init__(self, data):
 		super().__init__(data)
 
-def script_node_exec(script, pin, **kwargs):
-	func = getattr(script[("script", "node", "inst")], getattr(script[("script", "node", "class")], "FUNCTION"))
-	if hasattr(script[("script", "node", "class")], "INPUT_IS_LIST") and script[("script", "node", "class")].INPUT_IS_LIST:
-		return lib0246.transpose(func(**pin), tuple)
+def script_node_exec(node_inst, node_name, node_class, node_input, node_args, node_args_base, node_args_hide, node_args_hide_full, **kwargs):
+	if "pin" in kwargs:
+		func = getattr(node_inst, getattr(node_class, "FUNCTION"))
+		real_pin = {k: v for k, v in kwargs["pin"].items() if k in node_args_base}
+		flag = hasattr(node_class, "INPUT_IS_LIST") and node_class.INPUT_IS_LIST
+		for key, kind in node_args_hide_full:
+			match kind:
+				case "PROMPT":
+					real_pin[key] = [kwargs["inst"]["prompt"]] if flag else kwargs["inst"]["prompt"]
+				case "UNIQUE_ID":
+					real_pin[key] = [kwargs["inst"]["id"][-1]] if flag else kwargs["inst"]["id"][-1]
+				case "EXTRA_PNGINFO":
+					real_pin[key] = [kwargs["inst"]["workflow"]] if flag else kwargs["inst"]["workflow"]
+		if flag:
+			return lib0246.transpose(func(**real_pin), tuple)
+		else:
+			return func(**real_pin)
 	else:
-		return func(**pin)
+		return (node_class, node_inst, node_name, node_input, node_args, node_args_base, node_args_hide)
 
 def script_rule_slice(func, res, pin, **kwargs):
 	return res.extend(func(pin=curr_pin) for curr_pin in lib0246.dict_slice(pin))
@@ -403,7 +416,7 @@ def script_rule_product(func, res, pin, **kwargs):
 def script_rule_direct(func, res, pin, **kwargs):
 	return res.extend(func(pin=pin))
 
-def highway_unpack(pipe_in, input_type, _prompt, _id, _workflow, flag = False):
+def highway_unpack(pipe_in):
 	def temp_func(pin, res, **kwargs):
 		if res is None:
 			iter_inst = pipe_in.path_iter(("data", ))
@@ -418,20 +431,11 @@ def highway_unpack(pipe_in, input_type, _prompt, _id, _workflow, flag = False):
 						pin[key[1]].append(pipe_in[key])
 					else:
 						pin[key[1]] = [pipe_in[key]]
-			if "hidden" in input_type:
-				for key in input_type["hidden"]:
-					match input_type["hidden"][key]:
-						case "PROMPT":
-							pin[key] = [_prompt]
-						case "UNIQUE_ID":
-							pin[key] = [_id]
-						case "EXTRA_PNGINFO":
-							pin[key] = [_workflow]
 			return True
 		return False
 	return temp_func
 
-def junction_unpack(pipe_in, input_type, regex_inst, flag = False):
+def junction_unpack(pipe_in, input_type, regex_inst):
 	def temp_func(pin, res, **kwargs):
 		if res is None:
 			junction_unpack_raw(
@@ -453,6 +457,7 @@ def junction_unpack(pipe_in, input_type, regex_inst, flag = False):
 ######################################## HIJACK ########################################
 ########################################################################################
 
+PROMPT_DATA = None
 PROMPT_COUNT = 0
 PROMPT_ID = None
 PROMPT_EXTRA = None
@@ -461,8 +466,11 @@ PROMPT_CHANGE = set()
 def execute_param_handle(*args, **kwargs):
 	global PROMPT_ID
 	global PROMPT_COUNT
+	global PROMPT_DATA
+	global PROMPT_EXTRA
 	if PROMPT_ID is None or PROMPT_ID != args[2]:
 		PROMPT_COUNT += 1
+		PROMPT_DATA = args[1]
 		PROMPT_ID = args[2]
 		PROMPT_EXTRA = args[3]
 
@@ -1558,7 +1566,7 @@ class ScriptNode:
 
 		match script_pin_mode:
 			case "pin_highway" if pipe_flag and pipe_in[("kind")] == "highway":
-				pin_func = highway_unpack(pipe_in, input_type, _prompt, _id, _workflow)
+				pin_func = highway_unpack(pipe_in)
 			case "pin_junction" if pipe_flag and pipe_in[("kind")] == "junction":
 				pin_func = junction_unpack(pipe_in, input_type, ScriptNode.FUNC_REGEX(script_ignore_regex))
 			case "pin_direct":
@@ -1606,6 +1614,21 @@ class ScriptNode:
 			case _:
 				pass
 
+		node_args = set()
+		node_args_base = set()
+		node_args_hide = set()
+		node_args_hide_full = set()
+		for tuple_path in lib0246.dict_iter(input_type):
+			node_args.add(tuple_path[1])
+			if tuple_path[0] == "hidden":
+				node_args_hide.add(tuple_path[1])
+				temp_type = lib0246.dict_get(input_type, tuple_path)
+				if isinstance(temp_type, tuple):
+					temp_type = temp_type[0]
+				node_args_hide_full.add((tuple_path[1], temp_type))
+			else:
+				node_args_base.add(tuple_path[1])
+
 		return (
 			pipe_in,
 			None if pin_func is None else ScriptData({
@@ -1615,10 +1638,17 @@ class ScriptNode:
 				"kind": "wrap"
 			}), ScriptData({
 				"id": _id,
-				"node_name": script_node,
-				"node_class": class_type,
-				"node_inst": class_type(),
-				"func": script_node_exec,
+				"func": functools.partial(
+					script_node_exec,
+					node_inst=class_type(),
+					node_name=script_node,
+					node_class=class_type,
+					node_input=input_type,
+					node_args=node_args,
+					node_args_base=node_args_base,
+					node_args_hide=node_args_hide,
+					node_args_hide_full=node_args_hide_full,
+				),
 				"kind": "exec"
 			}),
 			None if res_func is None else ScriptData({
@@ -1749,13 +1779,14 @@ class ScriptPile:
 				raise Exception(f"Script rule loop mode \"{other}\" is not supported yet.")
 			
 		def temp_func(script, func, pin, res, **kwargs):
+			node_data = script[("script", "exec")]()
 			pile_data = ScriptPile.build_pile(
 				tuple(
-					getattr(script[("script", "node", "class")], "RETURN_NAMES") if \
-					hasattr(script[("script", "node", "class")], "RETURN_NAMES") else \
-					getattr(script[("script", "node", "class")], "RETURN_TYPES")
+					getattr(node_data[0], "RETURN_NAMES") if \
+					hasattr(node_data[0], "RETURN_NAMES") else \
+					getattr(node_data[0], "RETURN_TYPES")
 				),
-				tuple(getattr(script[("script", "node", "class")], "RETURN_TYPES")),
+				tuple(getattr(node_data[0], "RETURN_TYPES")),
 				tuple(pin.keys()),
 				script_rule_regex
 			)
@@ -1771,26 +1802,18 @@ class ScriptPile:
 					)
 
 				case "pin_junction":
-					raw_input_type = script[("script", "node", "class")].INPUT_TYPES()
-					
 					pin_key_set = set(pin.keys())
-					node_key_set = set(map(
-						lambda _: _[1],
-						filter(
-							lambda _: _[0] != "hidden",
-							lib0246.dict_iter(raw_input_type)
-						)
-					))
-					diff_key_set = (pin_key_set - node_key_set) | (node_key_set - pin_key_set)
+					diff_key_set = (pin_key_set - node_data[5]) | (node_data[5] - pin_key_set)
 
 					if len(diff_key_set) == 0:
 						raise Exception("No input and output to pile up.")
 
 					input_type = {}
-					for input_key in lib0246.dict_iter(raw_input_type):
+					for input_key in lib0246.dict_iter(node_data[3]):
 						if input_key[1] in diff_key_set:
-							lib0246.dict_set(input_type, input_key, lib0246.dict_get(raw_input_type, input_key))
+							lib0246.dict_set(input_type, input_key, lib0246.dict_get(node_data[3], input_key))
 
+					# [TODO] Same here to take account of "hidden" input
 					data_dict = junction_unpack_raw(
 						pipe_in, input_type,
 						list(filter(lambda x: x != "hidden", input_type.keys())),
@@ -1928,10 +1951,6 @@ class Script:
 					match elem["kind"]:
 						case "exec" if "func" in elem:
 							_script_in[("script", "exec")] = elem["func"]
-							if "node_name" in elem:
-								_script_in[("script", "node", "name")] = elem["node_name"]
-								_script_in[("script", "node", "class")] = elem["node_class"]
-								_script_in[("script", "node", "inst")] = elem["node_inst"]
 						case "rule":
 							_script_in[("script", "rule")] = elem["func"]
 						case "wrap":
@@ -2552,6 +2571,64 @@ class Cloud:
 
 ######################################################################################
 
+class Switch:
+	@classmethod
+	def INPUT_TYPES(s):
+		return {
+			"required": lib0246.WildDict(),
+			"hidden": {
+				"_id": "UNIQUE_ID",
+				"_prompt": "PROMPT",
+				"_workflow": "EXTRA_PNGINFO"
+			}
+		}
+	
+	RETURN_TYPES = lib0246.ByPassTypeTuple(("*", ))
+	RETURN_NAMES = lib0246.ByPassTypeTuple(("...", ))
+	INPUT_IS_LIST = True
+	OUTPUT_IS_LIST = lib0246.TautologyAll()
+	FUNCTION = "execute"
+	CATEGORY = "0246"
+
+	def execute(self, _id = None, _prompt = None, _workflow = None, **kwargs):
+		output = _workflow[0]["workflow"]["nodes"][
+			next(i for i, _ in enumerate(_workflow[0]["workflow"]["nodes"]) if _["id"] == int(_id[0]))
+		]["outputs"]
+		res = []
+		for key in kwargs:
+			if key.startswith("switch:"):
+				temp_index = kwargs[key][0].split(":")[0]
+				if temp_index == "_":
+					res.append([None])
+					continue
+				for pin in output:
+					if pin["name"].split(":")[-1] == temp_index:
+						res.append(kwargs[kwargs[key][0]])
+						break
+		return res
+
+	@classmethod
+	def IS_CHANGED(self, _id = None, _prompt = None, _workflow = None, **kwargs):
+		valid_input = set()
+		invalid_input = set()
+		for key in kwargs:
+			if key.startswith("switch:"):
+				temp_index = kwargs[key][0].split(":")[0]
+				if temp_index != "_":
+					valid_input.add(temp_index)
+		global PROMPT_DATA
+		for key in PROMPT_DATA[_id[0]]["inputs"]:
+			curr_index = key.split(":")[0]
+			if curr_index.isnumeric():
+				if curr_index in valid_input:
+					continue
+				invalid_input.add(key)
+		for key in invalid_input:
+			del PROMPT_DATA[_id[0]]["inputs"][key]
+		return set(kwargs.keys())
+
+######################################################################################
+
 class Meta:
 	@classmethod
 	def INPUT_TYPES(s):
@@ -2606,6 +2683,7 @@ NODE_CLASS_MAPPINGS = {
 	"0246.Script": Script,
 	"0246.Hub": Hub,
 	"0246.Cloud": Cloud,
+	"0246.Switch": Switch,
 	# "0246.Meta": Meta,
 	# "0246.Pick": Pick,
 }
@@ -2630,6 +2708,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
 	"0246.Script": "Script",
 	"0246.Hub": "Hub",
 	"0246.Cloud": "Cloud",
+	"0246.Switch": "Switch",
 	# "0246.Meta": "Meta",
 	# "0246.Pick": "Pick",
 }

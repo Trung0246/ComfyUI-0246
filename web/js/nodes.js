@@ -155,6 +155,10 @@ app.registerExtension({
 				node.color = "#595959";
 				node.bgcolor = "#676767";
 			} break;
+			case "0246.Switch": {
+				node.color = LGraphCanvas.node_colors.yellow.color;
+				node.bgcolor = lib0246.mix_color_hue(LGraphCanvas.node_colors.green.bgcolor, "#660029");
+			} break;
 		}
 		// use_everywhere.js messing with colors :(
 		node._color = node.color;
@@ -243,6 +247,11 @@ app.registerExtension({
 						if (this.mark) {
 							const self = this.self;
 							self.outputs[0].shape = LiteGraph.GRID_SHAPE;
+
+							const val_widget = self.widgets.find(w => w.name === "val");
+							val_widget.options = val_widget.options ?? {};
+							val_widget.options.multiline = true;
+
 							this.self.addWidget("button", "Random Seed", null, () => {
 								const seed_widget = self.widgets.find(w => w.name === "seed");
 								seed_widget.value = Math.floor(Math.random() * (seed_widget.options.max - seed_widget.options.min + 1)) + seed_widget.options.min;
@@ -886,6 +895,59 @@ app.registerExtension({
 
 					wg0246.single_impl_input(Cloud, nodeData, app, LiteGraph.CIRCLE_SHAPE);
 					lib0246.hijack(Cloud.prototype, "onConnectExpand", wg0246.cloud_expand_func);
+				} break;
+				case "0246.Switch": {
+					wg0246.junction_impl(nodeType, nodeData, app, null, LiteGraph.GRID_SHAPE, LiteGraph.GRID_SHAPE);
+					lib0246.hijack(
+						nodeType.prototype, "onConnectionsChange",
+						function (type, index, connected, link_info) {
+							const node = this.self;
+							if (this.mark && !connected) {
+								if (type === LiteGraph.OUTPUT && node.outputs[index].name !== "..." && node.widgets) {
+									node.widgets.splice(node.widgets.length - 1, 1);
+									for (let i = 0; i < node.inputs.length; ++ i)
+										if (node.inputs[i].name.startsWith("switch:") && i >= node.widgets.length) {
+											node.inputs.splice(i --, 1);
+											break;
+										}
+								}
+								// [TODO] Maybe avoid setTimeout
+								window.setTimeout(() => {
+									for (let i = 0; i < node.widgets.length; ++ i)
+										if (node.inputs.findIndex(_ => _.name === node.widgets[i].value) === -1)
+											node.widgets[i].value = "_";
+								}, 0);
+							}
+						},
+					);
+					nodeType.prototype.onNameExpand = function (type, kind, ...args) {
+						const index = type ? args[1] : args[0];
+						if (kind === LiteGraph.OUTPUT)
+							return `${this.inputs?.find?.(_ => _.name === this.widgets?.[index]?.value)?.type ?? "_"}:${index}`;
+					};
+					lib0246.hijack(nodeType.prototype, "onConfigure", function (data) {
+						if (this.mark) {
+							const node = this.self;
+							for (let i = 0; i < node.outputs.length; ++ i)
+								if (node.outputs[i].name !== "...")
+									wg0246.switch_widget(node, i, data.widgets_values[i]);
+						}
+					});
+					lib0246.hijack(nodeType.prototype, "onConnectOutput", function (
+						this_slot_index,
+						other_slot_type,
+						other_slot_obj,
+						other_node,
+						other_slot_index
+					) {
+						const node = this.self;
+						if (!this.mark && node.outputs[this_slot_index].name === "...")
+							wg0246.switch_widget(node, this_slot_index, "_");
+					});
+					lib0246.hijack(nodeType.prototype, "onConnectExpand", function (mode, name) {
+						if (this.mark && this.res !== true)
+							this.res = name.startsWith("switch:");
+					});
 				} break;
 			}
 		}

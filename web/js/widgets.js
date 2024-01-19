@@ -291,7 +291,7 @@ function link_shift_up(node, arr, index, flag, data) {
 			for (let i = 0, c = 0; i < arr.length; ++ i) {
 				if (node?.onConnectExpand?.("shift_output", arr[i].name, i, ...data))
 					continue;
-				arr[i].name = `${arr[i].type}:${c}`;
+				arr[i].name = node?.onNameExpand?.(true, LiteGraph.OUTPUT, arr[i].name, i, ...data) ?? `${arr[i].type}:${c}`;
 				++ c;
 			}
 		}
@@ -301,7 +301,7 @@ function link_shift_up(node, arr, index, flag, data) {
 		for (let i = 0, c = 0; i < arr.length; ++ i) {
 			if (node?.onConnectExpand?.("shift_input", arr[i].name, i, ...data))
 				continue;
-			arr[i].name = `${c}:${arr[i].type}`;
+			arr[i].name = node?.onNameExpand?.(true, LiteGraph.INPUT, arr[i].name, i, ...data) ?? `${c}:${arr[i].type}`;
 			++ c;
 		}
 	}
@@ -1014,7 +1014,7 @@ function single_impl_input_raw(inst, app, real, shape_in) {
 				this.self.inputs[arguments[0]].type = arguments[2].type;
 			} break;
 			case 1: {
-				this.self.inputs[arguments[2]].name = `${arguments[0]}:${arguments[1]}`;
+				this.self.inputs[arguments[2]].name = this.self?.onNameExpand?.(false, LiteGraph.INPUT, ...arguments) ?? `${arguments[0]}:${arguments[1]}`;
 			} break;
 			case 2: {
 				if (arguments[0] === LiteGraph.INPUT) {
@@ -1062,7 +1062,7 @@ function single_impl_output_raw(inst, app, real, shape_out) {
 					this.self.outputs[arguments[0]].type = arguments[2].type;
 			} break;
 			case 1: {
-				this.self.outputs[arguments[2]].name = `${arguments[1]}:${arguments[0]}`;
+				this.self.outputs[arguments[2]].name = this.self?.onNameExpand?.(false, LiteGraph.OUTPUT, ...arguments) ?? `${arguments[1]}:${arguments[0]}`;
 			} break;
 			case 2: {
 				if (arguments[0] === LiteGraph.OUTPUT) {
@@ -1084,11 +1084,13 @@ export function junction_impl(nodeType, nodeData, app, name, shape_in, shape_out
 	nodeType.prototype.onNodeCreated = function () {
 		if (typeof name === "string")
 			init_update(this, name);
-
-		const offset = this.widgets.find(w => w.name === "_offset");
-		if (offset) {
-			offset.options = offset.options ?? {};
-			offset.options.multiline = true;
+		
+		if (this.widgets) {
+			const offset = this.widgets.find(w => w.name === "_offset");
+			if (offset) {
+				offset.options = offset.options ?? {};
+				offset.options.multiline = true;
+			}
 		}
 
 		const real = {
@@ -2270,181 +2272,182 @@ export function BOX_RANGE_WIDGET(data_type, data_name, options = {}) {
 			ctx.fill();
 			ctx.closePath();
 
-			// Draw evenly spaced grid of both row and column of specified count
-			ctx.beginPath();
-			ctx.strokeStyle = "#000000";
-			ctx.lineWidth = 1;
-			ctx.lineWidth = 0.5;
-			ctx.setLineDash([10, 5]);
-			for (let i = 0; i < this.row_count; ++ i) {
-				ctx.moveTo(this.flex.hold_draw[0], i * this.flex.hold_draw[3] / this.row_count + this.flex.hold_draw[1]);
-				ctx.lineTo(this.flex.hold_draw[2] + this.flex.hold_draw[0], i * this.flex.hold_draw[3] / this.row_count + this.flex.hold_draw[1]);
-				ctx.stroke();
-			}
-			for (let i = 0; i < this.col_count; ++ i) {
-				ctx.moveTo(i * this.flex.hold_draw[2] / this.col_count + this.flex.hold_draw[0], this.flex.hold_draw[1]);
-				ctx.lineTo(i * this.flex.hold_draw[2] / this.col_count + this.flex.hold_draw[0], this.flex.hold_draw[3] + this.flex.hold_draw[1]);
-				ctx.stroke();
-			}
-			ctx.closePath();
-
-			// Map each point to fit the grid by percentage based on previous size to current size
-			if (this?.box_range?.boxes)
-				for (let i = 0; i < this.box_range.boxes.length; ++ i) {
-					let curr = this.box_range.boxes[i];
-					const res = lib0246.calc_flex_norm(
-						curr[0], curr[1], curr[2], curr[3],
-						curr[4], curr[5], curr[6], curr[7],
-						this.flex.hold_draw[0], this.flex.hold_draw[1], this.flex.hold_draw[2], this.flex.hold_draw[3]
-					);
-					curr[8] = res[0];
-					curr[9] = res[1];
-					curr[10] = res[2];
-					curr[11] = res[3];
-				}
-
-			// Draw each box
-			if (this?.box_range?.boxes) {
-				for (let i = 0; i < this.box_range.boxes.length; ++ i) {
-					let curr = this.box_range.boxes[i];
-
-					if (this.box_range.boxes[i] === this.box_range.select[this.box_range.select.length - 1]) {
-						// Draw text metadata bottom left of the entire grid
-						ctx.beginPath();
-						ctx.fillStyle = "#ffffff";
-						ctx.font = "12px Consolas";
-						ctx.fillText(
-							// `%XY2: (${lib0246.floor(lib0246.norm(curr[8] + curr[10], this.flex.hold_draw[0], this.flex.hold_draw[2]), 2)}, ${lib0246.floor(lib0246.norm(curr[9] + curr[11], this.flex.hold_draw[1], this.flex.hold_draw[3]), 2)})`,
-							`%WH: (${lib0246.floor(curr[10] / this.flex.hold_draw[2], 2)}, ${lib0246.floor(curr[11] / this.flex.hold_draw[3], 2)})`,
-							this.flex.hold_draw[0] + 5, this.flex.hold_draw[3] + this.flex.hold_draw[1] - 5
-						);
-						ctx.fillText(
-							`%XY: (${lib0246.floor(lib0246.norm(curr[0], this.flex.hold_draw[0], this.flex.hold_draw[2]), 2)}, ${lib0246.floor(lib0246.norm(curr[1], this.flex.hold_draw[1], this.flex.hold_draw[3]), 2)})`,
-							this.flex.hold_draw[0] + 5, this.flex.hold_draw[3] + this.flex.hold_draw[1] - 20
-						);
-						ctx.fillText(
-							`Z: ${i}`,
-							this.flex.hold_draw[0] + 5, this.flex.hold_draw[3] + this.flex.hold_draw[1] - 35
-						);
-						ctx.fillText(
-							`WH: (${lib0246.floor(curr[10], 2)}, ${lib0246.floor(curr[11], 2)})`,
-							this.flex.hold_draw[0] + 5, this.flex.hold_draw[3] + this.flex.hold_draw[1] - 50
-						);
-						ctx.fillText(
-							`XY: (${lib0246.floor(curr[8], 2)}, ${lib0246.floor(curr[9], 2)})`,
-							this.flex.hold_draw[0] + 5, this.flex.hold_draw[3] + this.flex.hold_draw[1] - 65
-						);
-						ctx.closePath();
-
-						// Draw 4 circles for each corner
-						ctx.beginPath();
-						ctx.lineWidth = 1;
-						ctx.strokeStyle = "#ff7ac1";
-						ctx.setLineDash([]);
-						ctx.arc(curr[8], curr[9], this.box_range.radius, 0, Math.PI * 2);
-						ctx.stroke();
-						ctx.closePath();
-						ctx.beginPath();
-						ctx.strokeStyle = "#800044";
-						ctx.arc(curr[8], curr[9] + curr[11], this.box_range.radius, 0, Math.PI * 2);
-						ctx.stroke();
-						ctx.closePath();
-
-						// Delete
-						ctx.beginPath();
-						ctx.lineWidth = 1;
-						ctx.strokeStyle = "#ff0000";
-						ctx.arc(curr[8] + curr[10], curr[9], this.box_range.radius, 0, Math.PI * 2);
-						ctx.stroke();
-						ctx.closePath();
-
-						// Resize
-						ctx.beginPath();
-						ctx.strokeStyle = "#ffff00";
-						ctx.arc(curr[8] + curr[10], curr[9] + curr[11], this.box_range.radius, 0, Math.PI * 2);
-						ctx.stroke();
-						ctx.closePath();
-					}
-
-					ctx.beginPath();
-					ctx.fillStyle = "rgba(127, 127, 127, 0.1)";
-					if (this.box_range.select.length > 0 && this.box_range.select.indexOf(this.box_range.boxes[i]) === this.box_range.select.length - 1) {
-						ctx.lineWidth = 1.5;
-						ctx.strokeStyle = "#ff0000";
-						ctx.setLineDash([5, 5]);
-					} else {
-						ctx.lineWidth = 1;
-						ctx.strokeStyle = "#ffffff";
-						ctx.setLineDash([]);
-					}
-					ctx.rect(curr[8], curr[9], curr[10], curr[11]);
+			if (!this?.options?.hideOnZoom || app.canvas.ds.scale >= 0.5) {
+				// Draw evenly spaced grid of both row and column of specified count
+				ctx.beginPath();
+				ctx.strokeStyle = "#000000";
+				ctx.lineWidth = 1;
+				ctx.lineWidth = 0.5;
+				ctx.setLineDash([10, 5]);
+				for (let i = 0; i < this.row_count; ++ i) {
+					ctx.moveTo(this.flex.hold_draw[0], i * this.flex.hold_draw[3] / this.row_count + this.flex.hold_draw[1]);
+					ctx.lineTo(this.flex.hold_draw[2] + this.flex.hold_draw[0], i * this.flex.hold_draw[3] / this.row_count + this.flex.hold_draw[1]);
 					ctx.stroke();
-					ctx.fill();
-					ctx.closePath();
+				}
+				for (let i = 0; i < this.col_count; ++ i) {
+					ctx.moveTo(i * this.flex.hold_draw[2] / this.col_count + this.flex.hold_draw[0], this.flex.hold_draw[1]);
+					ctx.lineTo(i * this.flex.hold_draw[2] / this.col_count + this.flex.hold_draw[0], this.flex.hold_draw[3] + this.flex.hold_draw[1]);
+					ctx.stroke();
+				}
+				ctx.closePath();
+
+				// Map each point to fit the grid by percentage based on previous size to current size
+				if (this?.box_range?.boxes)
+					for (let i = 0; i < this.box_range.boxes.length; ++ i) {
+						let curr = this.box_range.boxes[i];
+						const res = lib0246.calc_flex_norm(
+							curr[0], curr[1], curr[2], curr[3],
+							curr[4], curr[5], curr[6], curr[7],
+							this.flex.hold_draw[0], this.flex.hold_draw[1], this.flex.hold_draw[2], this.flex.hold_draw[3]
+						);
+						curr[8] = res[0];
+						curr[9] = res[1];
+						curr[10] = res[2];
+						curr[11] = res[3];
+					}
+
+				// Draw each box
+				if (this?.box_range?.boxes) {
+					for (let i = 0; i < this.box_range.boxes.length; ++ i) {
+						let curr = this.box_range.boxes[i];
+
+						if (this.box_range.boxes[i] === this.box_range.select[this.box_range.select.length - 1]) {
+							// Draw text metadata bottom left of the entire grid
+							ctx.beginPath();
+							ctx.fillStyle = "#ffffff";
+							ctx.font = "12px Consolas";
+							ctx.fillText(
+								// `%XY2: (${lib0246.floor(lib0246.norm(curr[8] + curr[10], this.flex.hold_draw[0], this.flex.hold_draw[2]), 2)}, ${lib0246.floor(lib0246.norm(curr[9] + curr[11], this.flex.hold_draw[1], this.flex.hold_draw[3]), 2)})`,
+								`%WH: (${lib0246.floor(curr[10] / this.flex.hold_draw[2], 2)}, ${lib0246.floor(curr[11] / this.flex.hold_draw[3], 2)})`,
+								this.flex.hold_draw[0] + 5, this.flex.hold_draw[3] + this.flex.hold_draw[1] - 5
+							);
+							ctx.fillText(
+								`%XY: (${lib0246.floor(lib0246.norm(curr[0], this.flex.hold_draw[0], this.flex.hold_draw[2]), 2)}, ${lib0246.floor(lib0246.norm(curr[1], this.flex.hold_draw[1], this.flex.hold_draw[3]), 2)})`,
+								this.flex.hold_draw[0] + 5, this.flex.hold_draw[3] + this.flex.hold_draw[1] - 20
+							);
+							ctx.fillText(
+								`Z: ${i}`,
+								this.flex.hold_draw[0] + 5, this.flex.hold_draw[3] + this.flex.hold_draw[1] - 35
+							);
+							ctx.fillText(
+								`WH: (${lib0246.floor(curr[10], 2)}, ${lib0246.floor(curr[11], 2)})`,
+								this.flex.hold_draw[0] + 5, this.flex.hold_draw[3] + this.flex.hold_draw[1] - 50
+							);
+							ctx.fillText(
+								`XY: (${lib0246.floor(curr[8], 2)}, ${lib0246.floor(curr[9], 2)})`,
+								this.flex.hold_draw[0] + 5, this.flex.hold_draw[3] + this.flex.hold_draw[1] - 65
+							);
+							ctx.closePath();
+
+							// Draw 4 circles for each corner
+							ctx.beginPath();
+							ctx.lineWidth = 1;
+							ctx.strokeStyle = "#ff7ac1";
+							ctx.setLineDash([]);
+							ctx.arc(curr[8], curr[9], this.box_range.radius, 0, Math.PI * 2);
+							ctx.stroke();
+							ctx.closePath();
+							ctx.beginPath();
+							ctx.strokeStyle = "#800044";
+							ctx.arc(curr[8], curr[9] + curr[11], this.box_range.radius, 0, Math.PI * 2);
+							ctx.stroke();
+							ctx.closePath();
+
+							// Delete
+							ctx.beginPath();
+							ctx.lineWidth = 1;
+							ctx.strokeStyle = "#ff0000";
+							ctx.arc(curr[8] + curr[10], curr[9], this.box_range.radius, 0, Math.PI * 2);
+							ctx.stroke();
+							ctx.closePath();
+
+							// Resize
+							ctx.beginPath();
+							ctx.strokeStyle = "#ffff00";
+							ctx.arc(curr[8] + curr[10], curr[9] + curr[11], this.box_range.radius, 0, Math.PI * 2);
+							ctx.stroke();
+							ctx.closePath();
+						}
+
+						ctx.beginPath();
+						ctx.fillStyle = "rgba(127, 127, 127, 0.1)";
+						if (this.box_range.select.length > 0 && this.box_range.select.indexOf(this.box_range.boxes[i]) === this.box_range.select.length - 1) {
+							ctx.lineWidth = 1.5;
+							ctx.strokeStyle = "#ff0000";
+							ctx.setLineDash([5, 5]);
+						} else {
+							ctx.lineWidth = 1;
+							ctx.strokeStyle = "#ffffff";
+							ctx.setLineDash([]);
+						}
+						ctx.rect(curr[8], curr[9], curr[10], curr[11]);
+						ctx.stroke();
+						ctx.fill();
+						ctx.closePath();
+					}
+
+					for (let i = 0; i < this.box_range.boxes.length; ++ i) {
+						let curr = this.box_range.boxes[i];
+
+						// Draw index text starting from the box top left
+						ctx.beginPath();
+						ctx.fillStyle = LGraphCanvas.node_colors[NODE_COLOR_LIST[i % NODE_COLOR_LIST.length]].groupcolor;
+						ctx.font = "15px Consolas";
+						ctx.fillText(
+							`${i}`,
+							curr[8] + 5, curr[9] + 15
+						);
+						ctx.closePath();
+					}
 				}
 
-				for (let i = 0; i < this.box_range.boxes.length; ++ i) {
-					let curr = this.box_range.boxes[i];
-
-					// Draw index text starting from the box top left
+				// Draw ghost movement
+				if (this?.box_range?.begin_state && this?.box_range?.during_state) {
 					ctx.beginPath();
-					ctx.fillStyle = LGraphCanvas.node_colors[NODE_COLOR_LIST[i % NODE_COLOR_LIST.length]].groupcolor;
-					ctx.font = "15px Consolas";
+					ctx.lineWidth = 3;
+					ctx.setLineDash([5, 5]);
+					ctx.moveTo(this.box_range.begin_state[0], this.box_range.begin_state[1]);
+					let last_select = this.box_range.select[this.box_range.select.length - 1] ?? [];
+
+					switch (this.box_range.state.action) {
+						case "create": {
+							ctx.strokeStyle = "rgba(0, 255, 0, 0.75)";
+							ctx.rect(
+								this.box_range.begin_state[0], this.box_range.begin_state[1],
+								this.box_range.during_state[0] - this.box_range.begin_state[0], this.box_range.during_state[1] - this.box_range.begin_state[1],
+							);
+						} break;
+						case "resize": {
+							ctx.strokeStyle = "rgba(255, 255, 0, 0.75)";
+							const res = lib0246.calc_resize(
+								last_select[8], last_select[9], last_select[10], last_select[11],
+								this.box_range.during_state[0], this.box_range.during_state[1]
+							);
+							ctx.rect(res[0], res[1], res[2], res[3]);
+						} break;
+						case "move": {
+							ctx.strokeStyle = "rgba(0, 0, 255, 0.75)";
+							ctx.rect(
+								last_select[8] + this.box_range.during_state[0] - this.box_range.begin_state[0],
+								last_select[9] + this.box_range.during_state[1] - this.box_range.begin_state[1],
+								last_select[10], last_select[11]
+							);
+						}
+					}
+
+					ctx.stroke();
+					ctx.closePath();
+
+					ctx.beginPath();
+					ctx.fillStyle = "#ffffff";
+					ctx.font = "12px Consolas";
 					ctx.fillText(
-						`${i}`,
-						curr[8] + 5, curr[9] + 15
+						`!XY: (${lib0246.floor(this.box_range.during_state[0], 2)}, ${lib0246.floor(this.box_range.during_state[1], 2)})`,
+						this.flex.hold_draw[0] + 5, this.flex.hold_draw[1] + 15
 					);
 					ctx.closePath();
 				}
 			}
-
-			// Draw ghost movement
-			if (this?.box_range?.begin_state && this?.box_range?.during_state) {
-				ctx.beginPath();
-				ctx.lineWidth = 3;
-				ctx.setLineDash([5, 5]);
-				ctx.moveTo(this.box_range.begin_state[0], this.box_range.begin_state[1]);
-				let last_select = this.box_range.select[this.box_range.select.length - 1] ?? [];
-
-				switch (this.box_range.state.action) {
-					case "create": {
-						ctx.strokeStyle = "rgba(0, 255, 0, 0.75)";
-						ctx.rect(
-							this.box_range.begin_state[0], this.box_range.begin_state[1],
-							this.box_range.during_state[0] - this.box_range.begin_state[0], this.box_range.during_state[1] - this.box_range.begin_state[1],
-						);
-					} break;
-					case "resize": {
-						ctx.strokeStyle = "rgba(255, 255, 0, 0.75)";
-						const res = lib0246.calc_resize(
-							last_select[8], last_select[9], last_select[10], last_select[11],
-							this.box_range.during_state[0], this.box_range.during_state[1]
-						);
-						ctx.rect(res[0], res[1], res[2], res[3]);
-					} break;
-					case "move": {
-						ctx.strokeStyle = "rgba(0, 0, 255, 0.75)";
-						ctx.rect(
-							last_select[8] + this.box_range.during_state[0] - this.box_range.begin_state[0],
-							last_select[9] + this.box_range.during_state[1] - this.box_range.begin_state[1],
-							last_select[10], last_select[11]
-						);
-					}
-				}
-
-				ctx.stroke();
-				ctx.closePath();
-
-				ctx.beginPath();
-				ctx.fillStyle = "#ffffff";
-				ctx.font = "12px Consolas";
-				ctx.fillText(
-					`!XY: (${lib0246.floor(this.box_range.during_state[0], 2)}, ${lib0246.floor(this.box_range.during_state[1], 2)})`,
-					this.flex.hold_draw[0] + 5, this.flex.hold_draw[1] + 15
-				);
-				ctx.closePath();
-			}
-
 			ctx.restore();
 		},
 		mouse: function (event, pos, node) {
@@ -4082,158 +4085,160 @@ export function CLOUD_WIDGET(data_type, data_name, options = {}) {
 			if (!Number.isFinite(this.flex.hold_draw[2]) || !Number.isFinite(this.flex.hold_draw[3]))
 				return;
 
-			ctx.beginPath();
-			ctx.font = "9px Consolas";
-			ctx.textAlign = "center";
-			ctx.textBaseline = "middle";
-
-			for (let i = 0; i < widget.cloud.data.inst.length; ++ i)
-				widget.cloud.data.view[widget.cloud.data.inst[i].id] = widget.view(node, widget.cloud.data.inst[i]);
-
-			widget.cloud.data.h = shelf_layout(
-				widget.cloud.data.inst, widget.cloud.data.group, widget.cloud.mouse_shift,
-				widget.cloud.data.pos, widget.cloud.data.view, widget.cloud.data.hit, widget.cloud.data.row, widget.cloud.data.curr,
-				ctx, this.flex.hold_draw[0], this.flex.hold_draw[1], this.flex.hold_draw[2], this.flex.hold_draw[3],
-				2, 2, 5, 5,
-				4, 4, 4, 4,
-				0, 6, 2, 2,
-				2, 2
-				// 0, 0, 0, 0,
-				// 0, 0, 0, 0,
-				// 0, 0, 0, 0,
-				// 0, 0
-			);
-			ctx.closePath();
-
-			for (let i = 0, sum_y = 0; i < widget.cloud.data.row.length; ++ i) {
-				ctx.beginPath();
-				ctx.fillStyle = CLOUD_FILL[i % 2];
-				ctx.rect(
-					this.flex.hold_draw[0], this.flex.hold_draw[1] + sum_y,
-					this.flex.hold_draw[2], widget.cloud.data.row[i]
-				);
-				ctx.fill();
-				ctx.closePath();
-				sum_y += widget.cloud.data.row[i] + 2;
-			}
-
-			for (let inst_id in widget.cloud.data.pos) {
-				ctx.beginPath();
-				ctx.fillStyle = "#333";
-				if (widget.cloud.select.has(inst_id)) {
-					ctx.strokeStyle = "#f00";
-					ctx.setLineDash([3, 3]);
-				} else {
-					ctx.strokeStyle = "#666";
-					ctx.setLineDash([]);
-				}
-				ctx.lineWidth = 1;
-				ctx.roundRect(
-					this.flex.hold_draw[0] + widget.cloud.data.pos[inst_id][2], this.flex.hold_draw[1] + widget.cloud.data.pos[inst_id][3] + 2,
-					widget.cloud.data.pos[inst_id][4], widget.cloud.data.pos[inst_id][5],
-					5
-				);
-				ctx.fill();
-				ctx.stroke();
-				ctx.closePath();
-
+			if (!this?.options?.hideOnZoom || app.canvas.ds.scale >= 0.5) {
 				ctx.beginPath();
 				ctx.font = "9px Consolas";
 				ctx.textAlign = "center";
 				ctx.textBaseline = "middle";
-				switch (widget.cloud.data.inst.find(_ => _.id === inst_id).kind) {
-					case "weight": {
-						ctx.fillStyle = "#db7756";
-					} break;
-					case "rand": {
-						ctx.fillStyle = "#866cf0";
-					} break;
-					case "cycle": {
-						ctx.fillStyle = "#b05ed6";
-					} break;
-					case "pin": {
-						ctx.fillStyle = "#fcff63";
-					} break;
-					case "merge": {
-						ctx.fillStyle = "#58db5c";
-					} break;
-					default: {
-						ctx.fillStyle = "#ccc";
-					}
-				}
-				ctx.fillText(
-					widget.cloud.data.view[inst_id],
-					this.flex.hold_draw[0] + widget.cloud.data.pos[inst_id][0],
-					this.flex.hold_draw[1] + widget.cloud.data.pos[inst_id][1] + 2
+
+				for (let i = 0; i < widget.cloud.data.inst.length; ++ i)
+					widget.cloud.data.view[widget.cloud.data.inst[i].id] = widget.view(node, widget.cloud.data.inst[i]);
+
+				widget.cloud.data.h = shelf_layout(
+					widget.cloud.data.inst, widget.cloud.data.group, widget.cloud.mouse_shift,
+					widget.cloud.data.pos, widget.cloud.data.view, widget.cloud.data.hit, widget.cloud.data.row, widget.cloud.data.curr,
+					ctx, this.flex.hold_draw[0], this.flex.hold_draw[1], this.flex.hold_draw[2], this.flex.hold_draw[3],
+					2, 2, 5, 5,
+					4, 4, 4, 4,
+					0, 6, 2, 2,
+					2, 2
+					// 0, 0, 0, 0,
+					// 0, 0, 0, 0,
+					// 0, 0, 0, 0,
+					// 0, 0
 				);
 				ctx.closePath();
 
-				let msg_flag = widget.cloud.mouse_move && lib0246.is_inside_rect(
-					widget.cloud.mouse_move[0], widget.cloud.mouse_move[1],
-					widget.cloud.data.hit[inst_id][0], widget.cloud.data.hit[inst_id][1],
-					widget.cloud.data.hit[inst_id][2], widget.cloud.data.hit[inst_id][3]
-				), curr_p = 0;
-				
-				if (msg_flag) {
+				for (let i = 0, sum_y = 0; i < widget.cloud.data.row.length; ++ i) {
 					ctx.beginPath();
-					ctx.fillStyle = "#fff";
-					ctx.font = "7px Consolas";
-					ctx.textAlign = "left";
-					ctx.textBaseline = "middle";
-					const curr_inst = widget.cloud.data.inst.find(_ => _.id === inst_id);
-					curr_p = cloud_draw_msg(ctx, widget, inst_id, `[${curr_inst.id},${curr_inst.kind}]`, curr_p);
+					ctx.fillStyle = CLOUD_FILL[i % 2];
+					ctx.rect(
+						this.flex.hold_draw[0], this.flex.hold_draw[1] + sum_y,
+						this.flex.hold_draw[2], widget.cloud.data.row[i]
+					);
+					ctx.fill();
 					ctx.closePath();
+					sum_y += widget.cloud.data.row[i] + 2;
 				}
 
-				const draw_group = new Set();
-
-				for (let ii = 6, jj = 0; ii < widget.cloud.data.pos[inst_id].length; ii += 5, ++ jj) {
+				for (let inst_id in widget.cloud.data.pos) {
 					ctx.beginPath();
-					ctx.strokeStyle = widget.cloud.data.group[widget.cloud.data.pos[inst_id][ii]].color;
-					ctx.setLineDash([4, 6]);
-					ctx.lineWidth = 0.75;
+					ctx.fillStyle = "#333";
+					if (widget.cloud.select.has(inst_id)) {
+						ctx.strokeStyle = "#f00";
+						ctx.setLineDash([3, 3]);
+					} else {
+						ctx.strokeStyle = "#666";
+						ctx.setLineDash([]);
+					}
+					ctx.lineWidth = 1;
 					ctx.roundRect(
-						this.flex.hold_draw[0] + widget.cloud.data.pos[inst_id][ii + 1], this.flex.hold_draw[1] + widget.cloud.data.pos[inst_id][ii + 2] + 2,
-						widget.cloud.data.pos[inst_id][ii + 3], widget.cloud.data.pos[inst_id][ii + 4],
-						2
+						this.flex.hold_draw[0] + widget.cloud.data.pos[inst_id][2], this.flex.hold_draw[1] + widget.cloud.data.pos[inst_id][3] + 2,
+						widget.cloud.data.pos[inst_id][4], widget.cloud.data.pos[inst_id][5],
+						5
 					);
+					ctx.fill();
 					ctx.stroke();
 					ctx.closePath();
 
-					if (msg_flag && !draw_group.has(widget.cloud.data.pos[inst_id][ii])) {
-						draw_group.add(widget.cloud.data.pos[inst_id][ii]);
+					ctx.beginPath();
+					ctx.font = "9px Consolas";
+					ctx.textAlign = "center";
+					ctx.textBaseline = "middle";
+					switch (widget.cloud.data.inst.find(_ => _.id === inst_id).kind) {
+						case "weight": {
+							ctx.fillStyle = "#db7756";
+						} break;
+						case "rand": {
+							ctx.fillStyle = "#866cf0";
+						} break;
+						case "cycle": {
+							ctx.fillStyle = "#b05ed6";
+						} break;
+						case "pin": {
+							ctx.fillStyle = "#fcff63";
+						} break;
+						case "merge": {
+							ctx.fillStyle = "#58db5c";
+						} break;
+						default: {
+							ctx.fillStyle = "#ccc";
+						}
+					}
+					ctx.fillText(
+						widget.cloud.data.view[inst_id],
+						this.flex.hold_draw[0] + widget.cloud.data.pos[inst_id][0],
+						this.flex.hold_draw[1] + widget.cloud.data.pos[inst_id][1] + 2
+					);
+					ctx.closePath();
+
+					let msg_flag = widget.cloud.mouse_move && lib0246.is_inside_rect(
+						widget.cloud.mouse_move[0], widget.cloud.mouse_move[1],
+						widget.cloud.data.hit[inst_id][0], widget.cloud.data.hit[inst_id][1],
+						widget.cloud.data.hit[inst_id][2], widget.cloud.data.hit[inst_id][3]
+					), curr_p = 0;
+					
+					if (msg_flag) {
 						ctx.beginPath();
-						ctx.fillStyle = widget.cloud.data.group[widget.cloud.data.pos[inst_id][ii]].color;
+						ctx.fillStyle = "#fff";
 						ctx.font = "7px Consolas";
 						ctx.textAlign = "left";
 						ctx.textBaseline = "middle";
-						let text_msg = "", group_res = [];
-						cloud_group_query_group(group_res, widget.cloud.data.group, Object.keys(widget.cloud.data.group), widget.cloud.data.pos[inst_id][ii]);
-						if (group_res.length > 0)
-							text_msg += `(${group_res[0]}|${group_res.slice(1).join(",")}>${widget.cloud.data.pos[inst_id][ii]})`;
-						else
-							text_msg += `(${widget.cloud.data.pos[inst_id][ii]})`;
-						curr_p = cloud_draw_msg(ctx, widget, inst_id, text_msg, curr_p);
+						const curr_inst = widget.cloud.data.inst.find(_ => _.id === inst_id);
+						curr_p = cloud_draw_msg(ctx, widget, inst_id, `[${curr_inst.id},${curr_inst.kind}]`, curr_p);
 						ctx.closePath();
 					}
-				}
-			}
 
-			if (widget.cloud.data.curr.i !== null && widget.cloud.state.action === "shift") {
-				ctx.beginPath();
-				ctx.strokeStyle = "#f00";
-				ctx.setLineDash([4, 2]);
-				ctx.lineWidth = 1;
-				ctx.moveTo(
-					widget.cloud.data.curr.x,
-					widget.cloud.data.curr.y
-				);
-				ctx.lineTo(
-					widget.cloud.data.curr.x,
-					widget.cloud.data.curr.y + widget.cloud.data.curr.h
-				);
-				ctx.stroke();
-				ctx.closePath();
+					const draw_group = new Set();
+
+					for (let ii = 6, jj = 0; ii < widget.cloud.data.pos[inst_id].length; ii += 5, ++ jj) {
+						ctx.beginPath();
+						ctx.strokeStyle = widget.cloud.data.group[widget.cloud.data.pos[inst_id][ii]].color;
+						ctx.setLineDash([4, 6]);
+						ctx.lineWidth = 0.75;
+						ctx.roundRect(
+							this.flex.hold_draw[0] + widget.cloud.data.pos[inst_id][ii + 1], this.flex.hold_draw[1] + widget.cloud.data.pos[inst_id][ii + 2] + 2,
+							widget.cloud.data.pos[inst_id][ii + 3], widget.cloud.data.pos[inst_id][ii + 4],
+							2
+						);
+						ctx.stroke();
+						ctx.closePath();
+
+						if (msg_flag && !draw_group.has(widget.cloud.data.pos[inst_id][ii])) {
+							draw_group.add(widget.cloud.data.pos[inst_id][ii]);
+							ctx.beginPath();
+							ctx.fillStyle = widget.cloud.data.group[widget.cloud.data.pos[inst_id][ii]].color;
+							ctx.font = "7px Consolas";
+							ctx.textAlign = "left";
+							ctx.textBaseline = "middle";
+							let text_msg = "", group_res = [];
+							cloud_group_query_group(group_res, widget.cloud.data.group, Object.keys(widget.cloud.data.group), widget.cloud.data.pos[inst_id][ii]);
+							if (group_res.length > 0)
+								text_msg += `(${group_res[0]}|${group_res.slice(1).join(",")}>${widget.cloud.data.pos[inst_id][ii]})`;
+							else
+								text_msg += `(${widget.cloud.data.pos[inst_id][ii]})`;
+							curr_p = cloud_draw_msg(ctx, widget, inst_id, text_msg, curr_p);
+							ctx.closePath();
+						}
+					}
+				}
+
+				if (widget.cloud.data.curr.i !== null && widget.cloud.state.action === "shift") {
+					ctx.beginPath();
+					ctx.strokeStyle = "#f00";
+					ctx.setLineDash([4, 2]);
+					ctx.lineWidth = 1;
+					ctx.moveTo(
+						widget.cloud.data.curr.x,
+						widget.cloud.data.curr.y
+					);
+					ctx.lineTo(
+						widget.cloud.data.curr.x,
+						widget.cloud.data.curr.y + widget.cloud.data.curr.h
+					);
+					ctx.stroke();
+					ctx.closePath();
+				}
 			}
 
 			ctx.restore();
@@ -4498,6 +4503,26 @@ function hijack_widget_name(node, widget) {
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+export function switch_widget(node, index, value) {
+	node.addWidget("combo", `switch:${index}`, value, function (value, canvas, node, pos, evt) {
+		const index = node.widgets.findIndex(_ => _ === this);
+		node.outputs[index].name = `${node.inputs.find(_ => _.name === value)?.type ?? "_"}:${index}`;
+	}, {
+		serialize: true,
+		values: function (widget) {
+			let res = ["_"];
+			for (let i = 0; i < node.inputs.length; ++ i)
+				if (node.inputs[i].link)
+					res.push(node.inputs[i]?.label ?? node.inputs[i].name);
+			return res;
+		}
+	});
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 let ERROR_TRACK = 0;
 
 app.registerExtension({
@@ -4587,27 +4612,28 @@ app.registerExtension({
 		return {
 			BOX_RANGE: function(node, inputName, inputData, app) {
 				const ratio_widget = node.addCustomWidget(RATIO_WIDGET("RATIO_RANGE", inputName + "_ratio"));
-				inputData[1].ratio = inputData[1].ratio ?? {};
-				inputData[1].ratio.lock = inputData[1].ratio.lock ?? {};
-				inputData[1].ratio.lock.ratio = inputData[1].ratio.lock.ratio ?? false;
-				inputData[1].ratio.lock.width = inputData[1].ratio.lock.width ?? false;
-				inputData[1].ratio.lock.height = inputData[1].ratio.lock.height ?? false;
-				inputData[1].ratio.data = inputData[1].ratio.data ?? {};
-				inputData[1].ratio.data.width = inputData[1].ratio.data.width ?? 512;
-				inputData[1].ratio.data.height = inputData[1].ratio.data.height ?? 512;
-				inputData[1].ratio.data.ratio = inputData[1].ratio.data.width === 0 || inputData[1].ratio.data.height === 0 ? 0 :
-					(inputData[1].ratio.data.ratio ?? (inputData[1].ratio.data.width / inputData[1].ratio.data.height));
+				inputData[1].ratio = inputData?.[1]?.ratio ?? {};
+				inputData[1].ratio.lock = inputData?.[1]?.ratio.lock ?? {};
+				inputData[1].ratio.lock.ratio = inputData?.[1]?.ratio.lock.ratio ?? false;
+				inputData[1].ratio.lock.width = inputData?.[1]?.ratio.lock.width ?? false;
+				inputData[1].ratio.lock.height = inputData?.[1]?.ratio.lock.height ?? false;
+				inputData[1].ratio.data = inputData?.[1]?.ratio.data ?? {};
+				inputData[1].ratio.data.width = inputData?.[1]?.ratio.data.width ?? 512;
+				inputData[1].ratio.data.height = inputData?.[1]?.ratio.data.height ?? 512;
+				inputData[1].ratio.data.ratio = inputData?.[1]?.ratio.data.width === 0 || inputData?.[1]?.ratio.data.height === 0 ? 0 :
+					(inputData?.[1]?.ratio?.data?.ratio ?? (inputData[1].ratio.data.width / inputData[1].ratio.data.height));
 
-				inputData[1].row_count = inputData[1].row_count ?? 10;
-				inputData[1].col_count = inputData[1].col_count ?? 10;
+				inputData[1].row_count = inputData?.[1]?.row_count ?? 10;
+				inputData[1].col_count = inputData?.[1]?.col_count ?? 10;
 				const box_widget = node.addCustomWidget(BOX_RANGE_WIDGET("BOX_RANGE", inputName, inputData[1]));
-				inputData[1].flex = inputData[1].flex ?? {};
-				inputData[1].flex.ratio = inputData[1].ratio.data.ratio;
-				inputData[1].flex.share = inputData[1].flex.share ?? 1;
-				inputData[1].flex.min_h = inputData[1].flex.min_h ?? 50;
-				inputData[1].flex.center = inputData[1].flex.center ?? true;
+				inputData[1].flex = inputData?.[1]?.flex ?? {};
+				inputData[1].flex.ratio = inputData?.[1]?.ratio.data.ratio;
+				inputData[1].flex.share = inputData?.[1]?.flex.share ?? 1;
+				inputData[1].flex.min_h = inputData?.[1]?.flex.min_h ?? 50;
+				inputData[1].flex.center = inputData?.[1]?.flex.center ?? true;
 				widget_flex(node, box_widget, inputData[1].flex);
 				box_widget.linkedWidgets = [ratio_widget];
+				box_widget.options.hideOnZoom = inputData?.[1]?.hideOnZoom ?? true;
 				return {
 					widget: box_widget,
 				}
@@ -4675,8 +4701,9 @@ app.registerExtension({
 					center: true,
 					margin_x: 10,
 				});
-				if (inputData.cloud)
-					cloud_widget.value = inputData.cloud;
+				if (inputData?.[1]?.cloud)
+					cloud_widget.value = inputData[1].cloud;
+				cloud_widget.options.hideOnZoom = inputData?.[1]?.hideOnZoom ?? true;
 				
 				if (!node.constructor.nodeData[CLOUD_MARK]) {
 					node.constructor.nodeData[CLOUD_MARK] = {};
