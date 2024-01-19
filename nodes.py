@@ -2606,7 +2606,7 @@ NODE_CLASS_MAPPINGS = {
 	"0246.Script": Script,
 	"0246.Hub": Hub,
 	"0246.Cloud": Cloud,
-	"0246.Meta": Meta,
+	# "0246.Meta": Meta,
 	# "0246.Pick": Pick,
 }
 
@@ -2630,7 +2630,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
 	"0246.Script": "Script",
 	"0246.Hub": "Hub",
 	"0246.Cloud": "Cloud",
-	"0246.Meta": "Meta",
+	# "0246.Meta": "Meta",
 	# "0246.Pick": "Pick",
 }
 
