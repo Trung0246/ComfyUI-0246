@@ -449,9 +449,10 @@ function expand_y_save(node, off, func) {
 	}
 }
 
-function setup_expand(node, name, real, pin, shape, callback) {
-	const upper_name = name.charAt(0).toUpperCase() + name.slice(1),
-		more_name = name + "s";
+function setup_expand(node, kind, real, pin, shape, callback) {
+	const raw_name = kind === LiteGraph.INPUT ? "input" : "output",
+		upper_name = raw_name.charAt(0).toUpperCase() + raw_name.slice(1),
+		more_name = raw_name + "s";
 
 	node["add" + upper_name](pin, "*");
 
@@ -465,8 +466,8 @@ function setup_expand(node, name, real, pin, shape, callback) {
 	lib0246.hijack(node, "configure", function (data) {
 		if (this.mark && this.self[more_name])
 			for (let i = 0; i < this.self[more_name].length; ++ i) {
-				if (!node?.onConnectExpand?.("configure_expand", this.self[more_name][i].name, data, name, i))
-					++ real[name];
+				if (!node?.onConnectExpand?.("configure_expand", this.self[more_name][i].name, data, raw_name, i))
+					++ real[raw_name];
 			}
 	});
 
@@ -481,14 +482,14 @@ function setup_expand(node, name, real, pin, shape, callback) {
 			this.self.__update = true;
 
 			if (
-				node?.onConnectExpand?.(`connect_expand_${name}`, this.self[more_name][this_slot_index].name, ...arguments) &&
+				node?.onConnectExpand?.(`connect_expand_${raw_name}`, this.self[more_name][this_slot_index].name, ...arguments) &&
 				this.self[more_name][this_slot_index].name !== pin
 			) {
 				this.res = true;
 				return;
 			}
 
-			const res = callback.apply({ self: this.self, name: name, mode: 0 }, arguments);
+			const res = callback.apply({ self: this.self, name: raw_name, mode: 0 }, arguments);
 			if (res === true) {
 				this.res = true;
 				return;
@@ -499,7 +500,7 @@ function setup_expand(node, name, real, pin, shape, callback) {
 			}
 
 			expand_y_save(this.self, 1, () => {
-				callback.call({ self: this.self, name: name, mode: 1 }, real[name] ++, this.self[more_name][this_slot_index].type, this_slot_index);
+				callback.call({ self: this.self, name: raw_name, mode: 1 }, real[raw_name] ++, this.self[more_name][this_slot_index].type, this_slot_index);
 				this.self["add" + upper_name](pin, "*");
 			});
 			this.self[more_name][this.self[more_name].length - 1].shape = shape;
@@ -517,15 +518,15 @@ function setup_expand(node, name, real, pin, shape, callback) {
 				if (this.self[more_name])
 					lib0246.remove_elem_arr(
 						this.self[more_name],
-						(e) => !node?.onConnectExpand?.(`connection_change_remove_expand_${name}`, e.name, e, ...args)
+						(e) => !node?.onConnectExpand?.(`connection_change_remove_expand_${raw_name}`, e.name, e, ...args)
 					);
 				this.self.computeSize();
 				app.canvas.setDirty(true, false);
 				return;
 			}
 			
-			if (!connected)
-				expand_y_save(this.self, -1, callback.bind({ self: this.self, name: name, mode: 2 }, ...args));
+			if (!connected && type === kind)
+				expand_y_save(this.self, -1, callback.bind({ self: this.self, name: raw_name, mode: 2 }, ...args));
 		}
 	});
 }
@@ -589,7 +590,7 @@ export function highway_impl(nodeType, nodeData, app, shape_in, shape_out) {
 
 			(async function () {
 				let data = await (await fetch(
-					window.location.origin + "/0246-parse",
+					window.location.origin + "/0246-parse-highway",
 					{
 						method: "POST",
 						headers: {
@@ -1003,7 +1004,7 @@ function querify_output_pin(widget, from, ops) {
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 function single_impl_input_raw(inst, app, real, shape_in) {
-	setup_expand(inst, "input", real, "...", shape_in, function () {
+	setup_expand(inst, LiteGraph.INPUT, real, "...", shape_in, function () {
 		switch (this.mode) {
 			case 0: {
 				if (this.self.inputs[arguments[0]].link !== null) {
@@ -1029,7 +1030,7 @@ function single_impl_input_raw(inst, app, real, shape_in) {
 }
 
 function single_impl_output_raw(inst, app, real, shape_out) {
-	setup_expand(inst, "output", real, "...", shape_out, function () {
+	setup_expand(inst, LiteGraph.OUTPUT, real, "...", shape_out, function () {
 		switch (this.mode) {
 			case 0: {
 				// Prevent the case of connecting "..." to "..." to form "0:* 0:*" then connect "..." to "0:*"
@@ -1080,10 +1081,6 @@ function single_impl_output_raw(inst, app, real, shape_out) {
 
 export function junction_impl(nodeType, nodeData, app, name, shape_in, shape_out) {
 	lib0246.hijack(nodeType.prototype, "onConnectExpand", expand_blacklist_func);
-	const real = {
-		input: 0,
-		output: 0,
-	};
 	nodeType.prototype.onNodeCreated = function () {
 		if (typeof name === "string")
 			init_update(this, name);
@@ -1094,15 +1091,14 @@ export function junction_impl(nodeType, nodeData, app, name, shape_in, shape_out
 			offset.options.multiline = true;
 		}
 
-		// const node_real = structuredClone(real);
-		
-		single_impl_input_raw(this, app, {
+		const real = {
 			input: 0,
-		}, shape_in);
-
-		single_impl_output_raw(this, app, {
 			output: 0,
-		}, shape_out);
+		};
+		
+		single_impl_input_raw(this, app, real, shape_in);
+
+		single_impl_output_raw(this, app, real, shape_out);
 
 		lib0246.hijack(this, "getExtraMenuOptions", function (canvas, options) {
 			if (!this.mark)
@@ -1280,8 +1276,9 @@ function calc_flex(node, width) {
 		} else
 			node.flex_data.off_h += (node.widgets[i]?.computedHeight ?? node.widgets[i]?.computeSize?.(width ?? LiteGraph.NODE_WIDGET_WIDTH)?.[1] ?? LiteGraph.NODE_WIDGET_HEIGHT) + 4;
 	node.flex_data.slot_c = Math.max(node.inputs?.length ?? 0, node.outputs?.length ?? 0);
-	node.flex_data.slot_h = (node.flex_data.slot_c + 0.2) * LiteGraph.NODE_SLOT_HEIGHT + (node.flex_data.slot_c === 0 ? 32 : 10);
-	node.flex_data.take_h = node.flex_data.off_h + node.flex_data.left_h + node.flex_data.slot_h;
+	node.widgets_start_y = node.flex_data.slot_c === 0 ? 14 : null;
+	node.flex_data.slot_h = Math.max(1, node.flex_data.slot_c) * LiteGraph.NODE_SLOT_HEIGHT;
+	node.flex_data.take_h = node.flex_data.off_h + node.flex_data.left_h + node.flex_data.slot_h + 8 + 6;
 	node.size[1] = Math.max(
 		node.flex_data.share_min_h.reduce((a, b) => a + b, node.flex_data.take_h + node.flex_data.img_h),
 		(app.canvas.resizing_node === node) ? app.canvas.graph_mouse[1] - node.pos[1] : node.size[1]
@@ -1452,7 +1449,7 @@ export function DOM_WIDGET(data_type, data_name, element, options = {}) {
 				widget.flex.hold_draw[3] <= 0 ||
 				widget.type === "converted-widget";
 			this.element.hidden = hidden;
-			this.element.style.display = hidden ? "none" : "inherit";
+			this.element.style.display = hidden ? "none" : "";
 			if (hidden) {
 				widget.options.onHide?.(widget);
 				return;
@@ -1480,6 +1477,8 @@ export function DOM_WIDGET(data_type, data_name, element, options = {}) {
 			// 	this.element.style.clipPath = lib0246.clip_path(node, element, elRect);
 			// 	this.element.style.willChange = "clip-path";
 			// }
+
+			this.options.onDraw?.(widget);
 		},
 		onAdd(node, flag = false) {
 			const widget = this;
@@ -1542,13 +1541,8 @@ export function DOM_WIDGET(data_type, data_name, element, options = {}) {
 	return widget;
 }
 
-/*
-Object.defineProperty(LGraphNode.prototype, "addDOMWidget", {
-	// Secret A/B testing ;)
-	// If no one complaining then it works I guess
-	writable: false,
-	configurable: false,
-	value: function (name, type, element, options = {}) {
+lib0246.hijack(LGraphNode.prototype, "addDOMWidget", function (name, type, element, options = {}) {
+	if (!this.mark && app.ui.settings.getSettingValue("0246.AlternateDOMWidget", false)) {
 		options.flex = options.flex ?? {};
 		options.flex.ratio = options?.flex?.ratio ?? 0;
 		options.flex.share = options?.flex?.share ?? 1;
@@ -1557,14 +1551,29 @@ Object.defineProperty(LGraphNode.prototype, "addDOMWidget", {
 		options.flex.margin_x = options?.flex?.margin_x ?? 10;
 
 		const widget = DOM_WIDGET(type, name, element, options);
-		this.addCustomWidget(widget);
-		widget_flex(this, widget, options.flex);
-		widget.onAdd(this, false);
+		this.self.addCustomWidget(widget);
+		widget_flex(this.self, widget, options.flex);
+		widget.onAdd(this.self, false);
 		widget.options.flex = options.flex;
-		return widget;
+		this.stop = true;
+		this.res = widget;
 	}
 });
-//*/
+
+lib0246.hijack(LGraphCanvas.prototype, "computeVisibleNodes", function () {
+	if (this.mark)
+		for (const node of app.graph._nodes)
+			if (node.flex_data || DOM_NODE_DB.has(node)) {
+				const hidden = this.res.indexOf(node) === -1;
+				for (const w of node.widgets)
+					if (w.element) {
+						w.element.hidden = hidden;
+						w.element.style.display = hidden ? "none" : "";
+						if (hidden)
+							w.options.onHide?.(w);
+					}
+			}
+});
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -3577,11 +3586,13 @@ function cloud_build(node, kind, data = null, input = null, full = null) {
 			this.cloud.widgets[inst_id] = [
 				{
 					name: `cloud:${name}:${inst_id}:weight:weight_input`,
-					type: "number",
-					value: 0,
+					type: "slider",
+					value: 1,
 					options: {
-						min: Number.MIN_VALUE,
-						max: Number.MAX_VALUE,
+						// min: Number.MIN_VALUE,
+						// max: Number.MAX_VALUE,
+						min: -2,
+						max: 4,
 						step: 0.1,
 						precision: 2
 					},
@@ -3594,7 +3605,7 @@ function cloud_build(node, kind, data = null, input = null, full = null) {
 				{
 					name: `cloud:${name}:${inst_id}:rand:seed`,
 					type: "number",
-					value: 1,
+					value: 0,
 					options: {
 						min: -1125899906842624,
 						max: 1125899906842624,
@@ -3611,6 +3622,14 @@ function cloud_build(node, kind, data = null, input = null, full = null) {
 						step: 10,
 						precision: 0
 					},
+				}, {
+					name: `cloud:${name}:${inst_id}:rand:order`,
+					type: "toggle",
+					value: false,
+					options: {
+						on: true,
+						off: false,
+					}
 				}, {
 					name: `cloud:${name}:${inst_id}:rand:mode`,
 					type: "combo",
@@ -3630,7 +3649,7 @@ function cloud_build(node, kind, data = null, input = null, full = null) {
 				{
 					name: `cloud:${name}:${inst_id}:cycle:offset`,
 					type: "number",
-					value: 1,
+					value: 0,
 					options: {
 						min: Number.MIN_SAFE_INTEGER,
 						max: Number.MAX_SAFE_INTEGER,
@@ -3640,7 +3659,7 @@ function cloud_build(node, kind, data = null, input = null, full = null) {
 				}, {
 					name: `cloud:${name}:${inst_id}:cycle:step`,
 					type: "number",
-					value: 1,
+					value: 0,
 					options: {
 						min: Number.MIN_SAFE_INTEGER,
 						max: Number.MAX_SAFE_INTEGER,
@@ -3658,7 +3677,7 @@ function cloud_build(node, kind, data = null, input = null, full = null) {
 						precision: 0
 					},
 				}, {
-					name: `cloud:${name}:${inst_id}:rand:count`,
+					name: `cloud:${name}:${inst_id}:cycle:count`,
 					type: "number",
 					value: 1,
 					options: {
@@ -3666,14 +3685,6 @@ function cloud_build(node, kind, data = null, input = null, full = null) {
 						max: Number.MAX_SAFE_INTEGER,
 						step: 10,
 						precision: 0
-					},
-				}, {
-					name: `cloud:${name}:${inst_id}:cycle:mode`,
-					type: "combo",
-					value: "add",
-					options: {
-						// Allow serialize for server-side generation
-						values: ["fix", "add", "sub"],
 					},
 				}
 			];
@@ -3706,6 +3717,8 @@ function cloud_build(node, kind, data = null, input = null, full = null) {
 	}
 	if (data === null)
 		this.cloud.data.inst.push(hold_inst);
+
+	return hold_inst;
 }
 
 function cloud_select(node, inst_id, flag) {
@@ -3739,8 +3752,6 @@ function cloud_select(node, inst_id, flag) {
 	}
 	node.computeSize();
 }
-
-const CLOUD_KIND = ["text", "text_list", "text_file_list", "text_file_json", "weight", "rand", "cycle", "merge"];
 
 function cloud_view(node, inst) {
 	let text = "", old_text = text; // [${inst.kind},${inst.id}]
@@ -3777,9 +3788,21 @@ function cloud_view(node, inst) {
 	return text;
 }
 
-function cloud_remove(node, inst_id) {
+function cloud_remove_handler(widget, node, inst_id, index) {
+	for (let i = 0; i < node.inputs.length; ++ i)
+		if (widget.cloud.data.inst[index])
+			for (let j = 0; j < widget.cloud.data.inst[index].widgets_names.length; ++ j)
+				if (node.inputs[i].name === widget.cloud.data.inst[index].widgets_names[j]) {
+					node.removeInput(i);
+					return;
+				}
+}
+
+function cloud_remove(node, inst_id, func = cloud_remove_handler) {
 	this.select(node, inst_id, false);
-	this.cloud.data.inst.splice(this.cloud.data.inst.findIndex(_ => _.id === inst_id), 1);
+	const index = this.cloud.data.inst.findIndex(_ => _.id === inst_id);
+	func?.(this, node, inst_id, index);
+	this.cloud.data.inst.splice(index, 1);
 	delete this.cloud.widgets[inst_id];
 	delete this.cloud.data.view[inst_id];
 	delete this.cloud.data.pos[inst_id];
@@ -4025,9 +4048,9 @@ export function CLOUD_WIDGET(data_type, data_name, options = {}) {
 		},
 		set value(v) {
 			// [TODO] Hopefully no one touch these, otherwise we have to manage inputs. Good enough for now
-			this.cloud.data.inst = v.inst;
-			this.cloud.data.group = v.group;
-			this.cloud.data.id = v.id;
+			this.cloud.data.inst = v.inst ?? [];
+			this.cloud.data.group = v.group ?? {};
+			this.cloud.data.id = v.id ?? 0;
 			if (this.cloud.node) {
 				const node = app.graph.getNodeById(this.cloud.node);
 				for (let inst_id of this.cloud.select)
@@ -4115,10 +4138,29 @@ export function CLOUD_WIDGET(data_type, data_name, options = {}) {
 				ctx.closePath();
 
 				ctx.beginPath();
-				ctx.fillStyle = "#ccc";
 				ctx.font = "9px Consolas";
 				ctx.textAlign = "center";
 				ctx.textBaseline = "middle";
+				switch (widget.cloud.data.inst.find(_ => _.id === inst_id).kind) {
+					case "weight": {
+						ctx.fillStyle = "#db7756";
+					} break;
+					case "rand": {
+						ctx.fillStyle = "#866cf0";
+					} break;
+					case "cycle": {
+						ctx.fillStyle = "#b05ed6";
+					} break;
+					case "pin": {
+						ctx.fillStyle = "#fcff63";
+					} break;
+					case "merge": {
+						ctx.fillStyle = "#58db5c";
+					} break;
+					default: {
+						ctx.fillStyle = "#ccc";
+					}
+				}
 				ctx.fillText(
 					widget.cloud.data.view[inst_id],
 					this.flex.hold_draw[0] + widget.cloud.data.pos[inst_id][0],
@@ -4148,7 +4190,7 @@ export function CLOUD_WIDGET(data_type, data_name, options = {}) {
 				for (let ii = 6, jj = 0; ii < widget.cloud.data.pos[inst_id].length; ii += 5, ++ jj) {
 					ctx.beginPath();
 					ctx.strokeStyle = widget.cloud.data.group[widget.cloud.data.pos[inst_id][ii]].color;
-					ctx.setLineDash([2, 2]);
+					ctx.setLineDash([4, 6]);
 					ctx.lineWidth = 0.75;
 					ctx.roundRect(
 						this.flex.hold_draw[0] + widget.cloud.data.pos[inst_id][ii + 1], this.flex.hold_draw[1] + widget.cloud.data.pos[inst_id][ii + 2] + 2,
@@ -4262,7 +4304,7 @@ export function CLOUD_WIDGET(data_type, data_name, options = {}) {
 export function cloud_menu(name, options) {
 	options.push(
 		{
-			content: "[0246.Cloud] 🗑️ Picked Clouds",
+			content: `[0246.Cloud "${name}"] 🗑️ Picked Clouds`,
 			callback: (value, options, evt, menu, node) => {
 				const cloud_widget = node.widgets.find(w => w.name === `cloud:${name}`);
 				for (let inst_id of cloud_widget.cloud.select)
@@ -4273,7 +4315,7 @@ export function cloud_menu(name, options) {
 				app.canvas.setDirty(true);
 			}
 		}, {
-			content: "[0246.Cloud] ✔️ Pick All Clouds",
+			content: `[0246.Cloud "${name}"] ✔️ All Clouds`,
 			callback: (value, options, evt, menu, node) => {
 				const cloud_widget = node.widgets.find(w => w.name === `cloud:${name}`);
 				for (let i = 0; i < cloud_widget.cloud.data.inst.length; ++ i)
@@ -4285,7 +4327,7 @@ export function cloud_menu(name, options) {
 				app.canvas.setDirty(true);
 			}
 		}, {
-			content: "[0246.Cloud] 🗑️ Unpick All Clouds",
+			content: `[0246.Cloud "${name}"] 🗑️ Unpick All Clouds`,
 			callback: (value, options, evt, menu, node) => {
 				const cloud_widget = node.widgets.find(w => w.name === `cloud:${name}`);
 				for (let i = 0; i < cloud_widget.cloud.data.inst.length; ++ i)
@@ -4298,55 +4340,105 @@ export function cloud_menu(name, options) {
 			}
 		},
 		null, {
-			content: "[0246.Cloud] ✔️ first_group_id ➡️ picked clouds",
+			content: `[0246.Cloud "${name}"] ✔️ first_group_id ➡️ Picked Clouds`,
 			callback: (value, options, evt, menu, node) => {
 				node.widgets.find(w => w.name === `cloud:${name}`).build_group(
 					node,
 					node.widgets.find(w => w.name === `cloud:${name}:first_group_id`).value,
 					null
 				);
+				app.canvas.setDirty(true);
 			}
 		}, {
-			content: "[0246.Cloud] 🗑️ second_group_id ➡️ picked clouds",
+			content: `[0246.Cloud "${name}"] 🗑️ second_group_id ➡️ Picked Clouds`,
 			callback: (value, options, evt, menu, node) => {
 				node.widgets.find(w => w.name === `cloud:${name}`).remove_group(
 					node,
 					node.widgets.find(w => w.name === `cloud:${name}:second_group_id`).value,
 					null
 				);
+				app.canvas.setDirty(true);
 			}
 		}, {
-			content: "[0246.Cloud] ✔️ first_group_id ➡️ second_group_id",
+			content: `[0246.Cloud "${name}"] ✔️ first_group_id ➡️ second_group_id`,
 			callback: (value, options, evt, menu, node) => {
 				node.widgets.find(w => w.name === `cloud:${name}`).build_group(
 					node,
 					node.widgets.find(w => w.name === `cloud:${name}:first_group_id`).value,
 					node.widgets.find(w => w.name === `cloud:${name}:second_group_id`).value
 				);
+				app.canvas.setDirty(true);
 			}
 		}, {
-			content: "[0246.Cloud] 🗑️ second_group_id ➡️ first_group_id",
+			content: `[0246.Cloud "${name}"] 🗑️ first_group_id ➡️ second_group_id`,
 			callback: (value, options, evt, menu, node) => {
 				node.widgets.find(w => w.name === `cloud:${name}`).remove_group(
 					node,
 					node.widgets.find(w => w.name === `cloud:${name}:second_group_id`).value,
 					node.widgets.find(w => w.name === `cloud:${name}:first_group_id`).value
 				);
+				app.canvas.setDirty(true);
 			}
 		},
 		null, {
-			content: "[0246.Cloud] ✔️ Cloud ➡️ 🗑️ Preview",
+			content: `[0246.Cloud "${name}"] ✔️ Cloud ➡️ 🗑️ Preview`,
 			callback: (value, options, evt, menu, node) => {
 				
 			}
 		}, {
-			content: "[0246.Cloud] ✔️ Preview ➡️ Cloud",
+			content: `[0246.Cloud "${name}"] ✔️ Preview ➡️ 🗑️ All Clouds`,
 			callback: (value, options, evt, menu, node) => {
 				// This should allow to specify how to split the preview from a popup using regex
 				// By default it will not splite and convert entire thing directly to string
+				(async function () {
+					const regex = prompt("Please specify delimiter regex", ",\\s"),
+						cloud_widget = node.widgets.find(w => w.name === `cloud:${name}`);
+
+					let parse_data = await (await fetch(
+						window.location.origin + "/0246-parse-prompt",
+						{
+							method: "POST",
+							headers: {
+								"Content-Type": "application/json",
+							},
+							body: JSON.stringify({
+								"regex": regex,
+								"prompt": node.widgets.find(w => w.name === `cloud:${name}:preview`).value,
+							}),
+						}
+					)).json();
+
+					cloud_widget.value = {};
+					let prev_text_cloud = null, prev_weight_cloud = null;
+
+					for (let i = 0; i < parse_data.res.length; ++ i) {
+						const text_cloud = cloud_widget.build(node, "text"),
+							weight_cloud = cloud_widget.build(node, "weight");
+						cloud_widget.cloud.widgets[text_cloud.id][0].options.setValue(parse_data.res[i][0]);
+						cloud_widget.cloud.widgets[weight_cloud.id][0].value = parse_data.res[i][1];
+						text_cloud.widgets_values[0] = [parse_data.res[i][0]];
+						weight_cloud.widgets_values[0] = [parse_data.res[i][1]];
+						if (prev_text_cloud)
+							cloud_widget.select(node, prev_text_cloud.id, false);
+						if (prev_weight_cloud)
+							cloud_widget.select(node, prev_weight_cloud.id, false);
+						cloud_widget.cloud.select.clear();
+						cloud_widget.select(node, text_cloud.id, true);
+						cloud_widget.cloud.select.add(text_cloud.id);
+						cloud_widget.select(node, weight_cloud.id, true);
+						cloud_widget.cloud.select.add(weight_cloud.id);
+						cloud_widget.build_group(node, "_", null);
+						prev_text_cloud = text_cloud;
+						prev_weight_cloud = weight_cloud;
+					}
+					cloud_widget.select(node, prev_text_cloud.id, false);
+					cloud_widget.select(node, prev_weight_cloud.id, false);
+					cloud_widget.cloud.select.clear();
+					app.canvas.setDirty(true);
+				})();
 			}
 		}, {
-			content: "[0246.Cloud] ✔️ Preview ➡️ 🗑️ All Clouds",
+			content: `[0246.Cloud "${name}"] ✔️ Preview ➡️ Cloud`,
 			callback: (value, options, evt, menu, node) => {
 				
 			}
@@ -4359,7 +4451,7 @@ export function cloud_menu(name, options) {
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-const WIDGETS_MAP = new WeakMap();
+const WIDGETS_MAP = new WeakMap(), WIDGETS_SELF = Symbol("widgets_self");
 
 function setup_hijack_widget(node, name_fn) {
 	const original_widgets = node.widgets;
@@ -4376,6 +4468,8 @@ function setup_hijack_widget(node, name_fn) {
 					get(widget_target, widget_prop) {
 						if (widget_prop === 'name')
 							return name_fn(node, widget_target);
+						else if (widget_prop === WIDGETS_SELF)
+							return original_widget;
 						return Reflect.get(widget_target, widget_prop);
 					}
 				});
@@ -4403,7 +4497,9 @@ function hijack_widget_name(node, widget) {
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-window.test = 0;
+
+let ERROR_TRACK = 0;
+
 app.registerExtension({
 	name: "0246.Widget",
 	async init() {
@@ -4427,17 +4523,18 @@ app.registerExtension({
 				const node = arguments[0];
 				if (node.comfyClass === "0246.Hub") {
 					// [TODO] Temporary. Probably we wants to rebuild widget list dynamically
-					// for (let i = 7; i < node.widgets.length; ++ i) {
-					// 	let found = false;
+					// for (let i = 8; i < node.widgets.length; ++ i) {
+					// 	let found = false, widget_self = node.widgets[i][WIDGETS_SELF];
+					// 	if (!widget_self) continue;
 					// 	for (let id in node.hub.node_widget)
 					// 		if (
-					// 			node.hub.node_widget[id].indexOf(node.widgets[i]) > -1 ||
-					// 			this.hub.sole_widget.includes(node.widgets[i])
+					// 			node.hub.node_widget[id].indexOf(widget_self) > -1 ||
+					// 			node.hub.sole_widget.includes(widget_self)
 					// 		) {
 					// 			found = true;
 					// 			break;
 					// 		}
-					// 	if (!found && node.widgets[i].type !== "space_title")
+					// 	if (!found && widget_self.type !== "space_title")
 					// 		node.widgets.splice(i --, 1);
 					// }
 					// calc_flex(node, node.size[0]);
@@ -4471,6 +4568,20 @@ app.registerExtension({
 					node.removeOutput(i);
 			}
 		});
+
+		app.ui.settings.addSetting({
+			id: "0246.AlternateDOMWidget",
+			name: "[ComfyUI-0246] Alternative DOM widget implementation",
+			tooltip: lib0246.indent_str `
+				Enable alternative DOM widget implementation by replacing the default DOM widget implementation.
+
+				Disable if you're experiencing issues relating to text boxes floating/lingering and other rendering stuff.
+
+				This setting are required to use "[0246.Cloud]" node.
+			`,
+			type: "boolean",
+			defaultValue: true,
+		});
 	},
 	async getCustomWidgets(app) {
 		return {
@@ -4502,6 +4613,12 @@ app.registerExtension({
 				}
 			},
 			CLOUD_DATA: function(node, inputName, inputData, app) {
+				if (!app.ui.settings.getSettingValue("0246.AlternateDOMWidget", false)) {
+					if (ERROR_TRACK ++ < 1)
+						lib0246.error_popup("0246.AlternateDOMWidget is disabled, please enable it to use Cloud node");
+					throw new Error("0246.AlternateDOMWidget is disabled, please enable it to use Cloud node");
+				}
+
 				let cloud_widget;
 
 				const insert_widget = node.addWidget(
@@ -4548,7 +4665,7 @@ app.registerExtension({
 				const preview_widget = ComfyWidgets["STRING"](node, `cloud:${inputName}:preview`, ["STRING", {
 					multiline: true,
 				}], app).widget;
-				preview_widget.flex.share = 0.75;
+				preview_widget.flex.share = 0.4;
 
 				cloud_widget = node.addCustomWidget(CLOUD_WIDGET("CLOUD_DATA", `cloud:${inputName}`));
 				widget_flex(node, cloud_widget, {

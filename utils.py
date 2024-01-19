@@ -10,6 +10,7 @@ import itertools
 import collections.abc
 import math
 import collections
+import random
 
 # Check for libs
 wrapt = None
@@ -20,7 +21,6 @@ try:
 except:
 	subprocess.Popen([sys.executable, "-m", "pip", "install", "wrapt"]).wait()
 	subprocess.Popen([sys.executable, "-m", "pip", "install", "natsort"]).wait()
-	subprocess.Popen([sys.executable, "-m", "pip", "install", "toposort"]).wait()
 	wrapt = __import__("wrapt")
 	natsort = __import__("natsort")
 
@@ -57,7 +57,7 @@ class WildDict(dict):
 
 	def __contains__(self, item):
 		return True
-	
+
 class TautologyDictStr(dict):
 	def __init__(self, *args, **kwargs):
 		self.update(*args, **kwargs)
@@ -96,7 +96,7 @@ class TautologyAll(dict):
 
 	def __getitem__(self, index):
 		return True
-	
+
 class ContradictAll(dict):
 	def __iter__(self):
 		while True:
@@ -503,10 +503,109 @@ def swap_index(index_func, swap_func):
 				next_index = index_func(current)
 		i += 1
 
+def sort_dict_of_list(dict_of_lists, sort_key, key_func=lambda x: x):
+	sorted_indices = sorted(range(len(dict_of_lists[sort_key])), key=lambda k: key_func(dict_of_lists[sort_key][k]))
+
+	def index_func(i):
+		if i < len(sorted_indices):
+			return sorted_indices[i]
+		return None
+
+	# Swap function that swaps elements in all lists of the dictionary
+	def swap_func(i, j):
+		for key in dict_of_lists:
+			dict_of_lists[key][i], dict_of_lists[key][j] = dict_of_lists[key][j], dict_of_lists[key][i]
+
+	swap_index(index_func, swap_func)
+
+	return dict_of_lists
+
 def snap(num, step):
 	if num > 0:
 		return math.floor(num / step) * step
 	return math.ceil(num / step) * step
+
+def snap_place(num, func=round, place=0):
+	return func(num * 10 ** place) / 10 ** place
+
+def random_order(data, k, rand_inst = random):
+	pick = 0
+	for i, curr in enumerate(data):
+		prob = (k - pick) / (len(data) - i)
+		if rand_inst.random() < prob:
+			yield curr
+			pick += 1
+
+def toposort(data, key_func=lambda x: x):
+	if len(data) == 0:
+		return
+
+	# Convert dependencies to lists, removing self-dependencies
+	data = {item: [e for e in dep if e != item] for item, dep in data.items()}
+
+	# Identify extra items in dependencies that aren't keys in the data dictionary
+	extra_items_in_deps = []
+	for values in data.values():
+		for value in values:
+			if value not in data:
+				extra_items_in_deps.append(value)
+	
+	# Add these extra items to the data dictionary with empty dependency lists
+	for item in extra_items_in_deps:
+		if item not in data:
+			data[item] = []
+
+	while True:
+		# Find items without dependencies
+		ordered = [item for item, dep in data.items() if len(dep) == 0]
+		ordered.sort(key=key_func)  # Sort to maintain a consistent order
+
+		if not ordered:
+			break
+
+		yield ordered
+
+		# Remove the ordered items from the dependencies of remaining items
+		data = {item: [dep for dep in deps if dep not in ordered] 
+			for item, deps in data.items() if item not in ordered}
+
+def parse_parentheses(string):
+	# Custom version
+	result = []
+	current_item = ""
+	nesting_level = 0
+	for char in string:
+		if char == "(":
+			if nesting_level == 0:
+				if current_item:
+					if current_item.strip():
+						result.append(current_item.strip())
+					current_item = "("
+				else:
+					current_item = "("
+			else:
+				current_item += char
+			nesting_level += 1
+		elif char == ")":
+			nesting_level -= 1
+			if nesting_level == 0:
+				if current_item.strip():
+					result.append(current_item.strip() + ")")
+				current_item = ""
+			else:
+				current_item += char
+		elif char == ",":
+			if nesting_level == 0:
+				if current_item.strip():
+					result.append(current_item.strip())
+				current_item = ""
+			else:
+				current_item += char
+		else:
+			current_item += char
+	if current_item and current_item.strip():
+		result.append(current_item.strip())
+	return result
 
 ######################################################################################
 ######################################## LANG ########################################
@@ -1027,6 +1126,7 @@ def parse_lang(input: str):
 # https://pastebin.com/raw/17pwbLpr: Misc junk
 # https://pastebin.com/raw/vnreX3uJ
 # https://pastebin.com/raw/S9jyqpaY
+# https://pastebin.com/raw/dgibNFQ5
 
 # JS:
 # https://pastebin.com/raw/ibGnvzed

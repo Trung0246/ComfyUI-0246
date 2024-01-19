@@ -17,6 +17,7 @@ import itertools
 import copy
 import re
 import uuid
+import math
 
 # Self Code
 from . import utils as lib0246
@@ -24,12 +25,12 @@ from . import utils as lib0246
 # 3rd Party
 import aiohttp.web
 import natsort
-import toposort
 
 # ComfyUI
 from server import PromptServer
 import execution
 import nodes
+import comfy.sd1_clip
 
 ######################################################################################
 ######################################## IMPL ########################################
@@ -455,6 +456,7 @@ def junction_unpack(pipe_in, input_type, regex_inst, flag = False):
 PROMPT_COUNT = 0
 PROMPT_ID = None
 PROMPT_EXTRA = None
+PROMPT_CHANGE = set()
 
 def execute_param_handle(*args, **kwargs):
 	global PROMPT_ID
@@ -470,7 +472,17 @@ def execute_param_handle(*args, **kwargs):
 
 	return tuple(), {}
 
-lib0246.hijack(execution.PromptExecutor, "execute", execute_param_handle)
+def executor_res_handle(result, *args, **kwargs):
+	# for node_id in PROMPT_CHANGE:
+	# 	if node_id in BASE_EXECUTOR.outputs:
+	# 		del BASE_EXECUTOR.outputs[node_id]
+	for node_id in PROMPT_CHANGE:
+		if node_id in BASE_EXECUTOR.outputs:
+			del BASE_EXECUTOR.outputs[node_id]
+	PROMPT_CHANGE.clear()
+	return result
+
+lib0246.hijack(execution.PromptExecutor, "execute", execute_param_handle, executor_res_handle)
 
 def init_executor_param_handle(*args, **kwargs):
 	return tuple(), {}
@@ -524,8 +536,8 @@ lib0246.hijack(nodes, "init_custom_nodes", init_extension_param_handle, init_ext
 ######################################## API ########################################
 #####################################################################################
 
-@PromptServer.instance.routes.post('/0246-parse')
-async def parse_handler(request):
+@PromptServer.instance.routes.post('/0246-parse-highway')
+async def parse_highway_handler(request):
 	data = await request.json()
 
 	# Validate json
@@ -544,6 +556,20 @@ async def parse_handler(request):
 		"expr": expr_res,
 		"order": order,
 		"error": errors
+	})
+
+@PromptServer.instance.routes.post('/0246-parse-prompt')
+async def parse_prompt_handler(request):
+	data = await request.json()
+
+	# Validate json
+	if data.get("prompt") is None:
+		return aiohttp.web.json_response({
+			"error": ["No prompt provided"]
+		})
+	
+	return aiohttp.web.json_response({
+		"res": CloudData.text_to_dict(data["prompt"])
 	})
 
 ######################################################################################
@@ -1201,6 +1227,11 @@ class Stringify:
 					"multiline": False
 				}),
 			},
+			"hidden": {
+				"_id": "UNIQUE_ID",
+				"_prompt": "PROMPT",
+				"_workflow": "EXTRA_PNGINFO"
+			}
 		}
 	
 	RETURN_TYPES = ("STRING", )
@@ -1209,13 +1240,15 @@ class Stringify:
 	FUNCTION = "execute"
 	CATEGORY = "0246"
 
-	def execute(self, _delimiter = None, _mode = None, **kwargs):
+	def execute(self, _delimiter = None, _mode = None, _id = None, _prompt = None, _workflow = None, **kwargs):
 		res = []
 
 		for value in kwargs.values():
 			if isinstance(value, list):
 				for item in value:
-					if _mode[0] == "basic" and type(item).__str__ is object.__str__:
+					if isinstance(item, CloudData) and (_mode[0] == "basic" or _mode[0] == "value"):
+						item = _delimiter[0].join(map(str, item.data_eval(_id[0], _prompt[0], _workflow[0])))
+					elif _mode[0] == "basic" and type(item).__str__ is object.__str__:
 						continue
 					elif _mode[0] == "value":
 						if isinstance(item, object) and type(item).__module__ != 'builtins' and type(item).__str__ is object.__str__:
@@ -2098,6 +2131,9 @@ CLOUD_METHOD = {
 	},
 }
 
+STR_BRACKET = r"([()])"
+STR_REPLACE = r"\\\1"
+
 def group_query_inst(group_dict, group_id, group_list = None, inst_curr = None):
 	inst_curr = set() if inst_curr is None else inst_curr
 	group_list = list(group_dict.keys()) if group_list is None else group_list
@@ -2119,28 +2155,20 @@ class CloudFunc:
 	def __init__(self, kind):
 		self.func = getattr(CloudFunc, f"func_{kind}")
 
-	"""
-	{
-		eval # Evaluated data
-		data # Persistent data
-		order # Current isntance order
-		index # Current instance result index
-		change # Whether whole cloud changed
-	}
-	"""
-
 	@classmethod
-	def func_text(cls, obj, inst_id, pass_state, state):
-		return obj.inst[inst_id]["widgets_values"][0]
+	def func_text(cls, obj, hold, state):
+		return obj.inst[state["index"]]["widgets_values"][0]
 	
 	@classmethod
-	def func_weight(cls, obj, inst_id, pass_state, state):
-		# [TODO] Escape special characters for _[0]
-		return list(map(lambda _: f"({_[0]}: {_[1]})", itertools.product(pass_state["data"], obj.inst[inst_id]["widgets_values"][0])))
+	def func_weight(cls, obj, hold, state):
+		hold["data"] = list(map(lambda _: f"({re.sub(STR_BRACKET, STR_REPLACE, _[0])}: {lib0246.snap_place(_[1], round, 2)})", itertools.product(hold["data"], obj.inst[state["index"]]["widgets_values"][0])))
+		state["index"] = None
+		return []
 	
 	@classmethod
-	def func_rand(cls, obj, inst_id, pass_state, state):
+	def func_rand(cls, obj, hold, state):
 		res = []
+		inst_id = obj.inst[state["index"]]["id"]
 		if inst_id not in state["data"]:
 			state["data"][inst_id] = {
 				"rand": random.Random(),
@@ -2151,7 +2179,7 @@ class CloudFunc:
 
 		curr_state = state["data"][inst_id]
 
-		curr_state["seed_count"] = len(obj.inst[inst_id]["widgets_values"][0])
+		curr_state["seed_count"] = len(obj.inst[state["index"]]["widgets_values"][0])
 		curr_seed_len = len(curr_state["seed_data"])
 		if curr_state["seed_count"] > curr_seed_len:
 			curr_state["seed_data"].extend([None] * (curr_state["seed_count"] - curr_seed_len))
@@ -2160,13 +2188,15 @@ class CloudFunc:
 			curr_state["seed_data"] = curr_state["seed_data"][:curr_state["seed_count"]]
 			curr_state["seed_mode"] = curr_state["seed_mode"][:curr_state["seed_count"]]
 
-		for i, curr_count, curr_seed, curr_mode in zip(itertools.count(start=0, step=1), *obj.inst[inst_id]["widgets_values"]):
+		for i, curr_seed, curr_count, curr_order, curr_mode in zip(itertools.count(start=0, step=1), *obj.inst[state["index"]]["widgets_values"]):
 			if curr_state["seed_data"][i] is None or \
 				curr_state["seed_mode"][i] != curr_mode or \
 				state["change"]:
 				curr_state["seed_data"][i] = curr_seed
 				curr_state["seed_mode"][i] = curr_mode
 				curr_state["rand"].seed(curr_seed)
+				if curr_mode != "fix":
+					PROMPT_CHANGE.add(state["id"])
 			else:
 				match curr_mode:
 					case "fix":
@@ -2180,21 +2210,29 @@ class CloudFunc:
 					case _:
 						# Default to "rand" mode
 						pass
+			
+			if curr_mode != "fix":
+				PROMPT_CHANGE.add(state["id"])
 
-			choice_list: list = copy.copy(pass_state["data"])
-			for i in range(curr_count):
-				curr_choice = curr_state["rand_inst"].choice(choice_list)
-				res.append(curr_choice)
-				choice_list.remove(curr_choice)
+			if curr_order:
+				lib0246.sort_dict_of_list(hold, "index")
+				res.extend(lib0246.random_order(hold["data"], min(len(hold["data"]), curr_count), curr_state["rand"]))
+			else:
+				choice_list: list = copy.copy(hold["data"])
+				for i in range(curr_count):
+					curr_choice_idx = curr_state["rand"].randint(0, len(choice_list) - 1)
+					res.append(choice_list[curr_choice_idx])
+					choice_list.pop(curr_choice_idx)
 
-		for i in pass_state["index"]:
-			pass_state["index"][i] = None
+		for i in range(len(hold["index"])):
+			hold["index"][i] = None
 
 		return res
 	
 	@classmethod
-	def func_cycle(cls, obj, inst_id, pass_state, state):
+	def func_cycle(cls, obj, hold, state):
 		res = []
+		inst_id = obj.inst[state["index"]]["id"]
 		if inst_id not in state["data"]:
 			state["data"][inst_id] = {
 				"track_step": [],
@@ -2204,7 +2242,7 @@ class CloudFunc:
 
 		curr_state = state["data"][inst_id]
 			
-		curr_state["track_count"] = len(obj.inst[inst_id]["widgets_values"][0])
+		curr_state["track_count"] = len(obj.inst[state["index"]]["widgets_values"][0])
 		curr_track_len = len(curr_state["track_data"])
 		if curr_state["track_count"] > curr_track_len:
 			curr_state["track_data"].extend([None] * (curr_state["track_count"] - curr_track_len))
@@ -2213,33 +2251,39 @@ class CloudFunc:
 			curr_state["track_data"] = curr_state["track_data"][:curr_state["track_count"]]
 			curr_state["track_step"] = curr_state["track_step"][:curr_state["track_count"]]
 
-		for i, curr_offset, curr_step, curr_space, curr_count in zip(itertools.count(start=0, step=1), *obj.inst[inst_id]["widgets_values"]):
+		for i, curr_offset, curr_step, curr_space, curr_count in zip(itertools.count(start=0, step=1), *obj.inst[state["index"]]["widgets_values"]):
 			if curr_state["track_data"][i] is None or \
 				curr_state["track_step"][i] != curr_step or \
 				state["change"]:
 				curr_state["track_data"][i] = curr_offset
 				curr_state["track_step"][i] = curr_step
+				if curr_step != 0:
+					PROMPT_CHANGE.add(state["id"])
 			else:
 				curr_state["track_data"][i] += curr_step
-			
-			for i in range(curr_state["track_data"][i], curr_count * curr_space, curr_space):
-				res.append(pass_state["data"][i % len(pass_state["data"])])
 
-		for i in pass_state["index"]:
-			# result append to res should be already in order so no need special handling
-			pass_state["index"][i] = None
+			if curr_step != 0:
+				PROMPT_CHANGE.add(state["id"])
+			
+			lib0246.sort_dict_of_list(hold, "index")
+			for i, track in zip(itertools.count(start=curr_state["track_data"][i], step=curr_space), range(curr_count)):
+				res.append(hold["data"][i % len(hold["data"])])
+
+		for i in range(len(hold["index"])):
+			hold["index"][i] = None
 
 		return res
 	
 	@classmethod
-	def func_merge(cls, obj, inst_id, pass_state, state):
+	def func_merge(cls, obj, hold, state):
 		res = []
 
-		for i, curr_delim in zip(itertools.count(start=0, step=1), *obj.inst[inst_id]["widgets_values"]):
-			res.append(curr_delim.join(pass_state["data"]))
+		lib0246.sort_dict_of_list(hold, "index")
+		for i, curr_delim in zip(itertools.count(start=0, step=1), *obj.inst[state["index"]]["widgets_values"]):
+			res.append(curr_delim.join(hold["data"]))
 		
-		for i in pass_state["index"]:
-			pass_state["index"][i] = None
+		for i in range(len(hold["index"])):
+			hold["index"][i] = None
 
 		return res
 
@@ -2249,8 +2293,15 @@ class CloudData:
 		self.group = {}
 		self.db = {}
 
+		self.state = {}
+		self.func = {}
+		self.track = 0
+		self.order = None
+		self.id = None
+
 	def dict_to_data(self, curr_id, inst_list, group_dict, db_dict = None, kwargs = None):
 		if kwargs is not None:
+			self.track = PROMPT_COUNT
 			self.id = curr_id
 		if db_dict is not None:
 			self.db.update(db_dict)
@@ -2281,7 +2332,7 @@ class CloudData:
 							self.inst.append({
 								"id": new_id,
 								"kind": "text",
-								"widgets_values": [str(curr_value)],
+								"widgets_values": [[*map(str, kwargs[key])]],
 								"widgets_names": [f"cloud:_:{new_id}:text:text_input"]
 							})
 				case _:
@@ -2290,13 +2341,14 @@ class CloudData:
 				inst["id"] = new_id
 				self.db[curr_id][new_id] = old_id
 
-		for param in kwargs:
-			if param.startswith("cloud:"):
-				for inst in self.inst:
-					for i in range(self.inst["widgets_values"]):
-						if self.inst["widgets_names"][i] == param:
-							self.inst["widgets_values"][i] = kwargs[param]
-							break
+		if kwargs is not None:
+			for param in kwargs:
+				if param.startswith("cloud:"):
+					for inst in self.inst:
+						for i in range(len(inst["widgets_values"])):
+							if inst["widgets_names"][i] == param:
+								inst["widgets_values"][i] = kwargs[param]
+								break
 
 		for old_id, group_data in group_dict.items():
 			if "inst" in group_data:
@@ -2341,30 +2393,82 @@ class CloudData:
 
 	@classmethod
 	def text_to_dict(cls, text):
-		pass
+		old_func = comfy.sd1_clip.parse_parentheses
+		comfy.sd1_clip.parse_parentheses = lib0246.parse_parentheses
+		res = list(map(lambda _: (comfy.sd1_clip.unescape_important(_[0]), _[1]), comfy.sd1_clip.token_weights(comfy.sd1_clip.escape_important(text), 1.0)))
+		comfy.sd1_clip.parse_parentheses = old_func
+		return res
 
 	def text_to_data(self, text):
 		pass
 
-	def data_eval(self):
-		sort_data = self.sort()
-		state_data = []
-		func_data = {}
+	def data_eval(self, node_id, prompt, workflow):
+		"""
+		{
+			eval # Evaluated data
+			data # Persistent data
+			order # Current instance order
+			index # Current instance result index
+			change # Whether whole cloud changed
+		}
+		"""
 
-		for inst_id in self.inst:
-			func_data[inst_id["id"]] = CloudData(inst_id["kind"]) if \
-				isinstance(inst_id["kind"], str) else \
-				inst_id["kind"]
-	
+		self.state["eval"] = {}
+		self.state["change"] = self.track == PROMPT_COUNT
+		self.state["id"] = node_id
+		self.state["prompt"] = prompt
+		self.state["workflow"] = workflow
+
+		if self.state["change"]:
+			self.order = self.sort()
+			self.func = {}
+			self.state["data"] = {}
+			for inst in self.inst:
+				self.func[inst["id"]] = CloudFunc(inst["kind"]) if \
+					isinstance(inst["kind"], str) else \
+					inst["kind"]
+
+		for i, curr_id in enumerate(self.order["idx"]):
+			self.state["order"] = i
+			self.state["index"] = next(i for i, _ in enumerate(self.inst) if _["id"] == curr_id)
+			hold_curr = {
+				"data": [],
+				"index": []
+			}
+			for inst_id_dep in self.order["dep"][curr_id]:
+				hold_curr["data"].extend(self.state["eval"][inst_id_dep]["data"])
+				hold_curr["index"].extend([self.state["eval"][inst_id_dep]["index"]] * len(self.state["eval"][inst_id_dep]["data"]))
+			res = self.func[curr_id].func(
+				obj=self,
+				hold=hold_curr,
+				state=self.state
+			)
+			self.state["eval"][curr_id] = {
+				"data": res,
+				"index": self.state["index"]
+			}
+			i = 0
+			for inst_id_dep in self.order["dep"][curr_id]:
+				self.state["eval"][inst_id_dep]["index"] = hold_curr["index"][i]
+				curr_len = len(self.state["eval"][inst_id_dep]["data"])
+				self.state["eval"][inst_id_dep]["data"] = hold_curr["data"][i:i + curr_len]
+				i += curr_len
+
+		temp_res = []
+		for curr_id in self.state["eval"]:
+			curr_eval = self.state["eval"][curr_id]
+			if curr_eval["index"] is not None:
+				curr_eval["id"] = curr_id
+				temp_res.append(curr_eval)
+		temp_res.sort(key=lambda _: _["index"])
+
+		return sum((curr_eval["data"] for curr_eval in temp_res), [])
+
 	def sort(self):
-		# inst = kwargs["cloud:cloud"][0]["inst"]
-		# group = kwargs["cloud:cloud"][0]["group"]
-		inst = self.inst
-		group = self.group
 		dep = {}
 
-		for group_id in group:
-			inst_list = group_query_inst(group, group_id)
+		for group_id in self.group:
+			inst_list = group_query_inst(self.group, group_id)
 			inst_dep_list_prim = []
 			inst_dep_list_func = []
 			inst_dep_list_bind = []
@@ -2373,7 +2477,7 @@ class CloudData:
 			for inst_id in inst_list:
 				if inst_id not in dep:
 					dep[inst_id] = []
-				inst_curr_kind = next(filter(lambda _: _["id"] == inst_id, inst))["kind"]
+				inst_curr_kind = next(filter(lambda _: _["id"] == inst_id, self.inst))["kind"]
 				if CLOUD_METHOD[inst_curr_kind] is None:
 					inst_dep_list_prim.append(inst_id)
 				else:
@@ -2385,24 +2489,25 @@ class CloudData:
 
 			for inst_id in inst_dep_list_func:
 				dep[inst_id].extend(inst_dep_list_prim)
+				dep[inst_id].extend(inst_dep_list_bind)
 
 			idx_db = {}
 			for inst_id in inst_dep_list_bind:
 				dep[inst_id].extend(inst_dep_list_prim)
-				dep[inst_id].extend(inst_dep_list_func)
-				idx_db[inst_id] = inst.index(next(filter(lambda _: _["id"] == inst_id, inst)))
+				# dep[inst_id].extend(inst_dep_list_func)
+				idx_db[inst_id] = self.inst.index(next(filter(lambda _: _["id"] == inst_id, self.inst)))
 
 			for a_inst_id in inst_dep_list_bind:
 				for b_inst_id in inst_dep_list_bind:
 					if idx_db[a_inst_id] > idx_db[b_inst_id] and idx_db[a_inst_id] != idx_db[b_inst_id]:
 						dep[a_inst_id].append(b_inst_id)
 
-		for inst_id in inst:
+		for inst_id in self.inst:
 			if inst_id["id"] not in dep:
 				dep[inst_id["id"]] = []
 
 		return {
-			"idx": toposort.toposort_flatten(dep),
+			"idx": list(map(lambda _: _[0], lib0246.flat_iter(lib0246.toposort(dep, key_func=lambda _: next(i for i, c in enumerate(self.inst) if c["id"] == _)), layer=1))),
 			"dep": dep
 		}
 
@@ -2418,7 +2523,6 @@ class Cloud:
 		return {
 			"required": lib0246.WildDict(),
 			"optional": {
-				# "_cloud_in": ("CLOUD_PIPE", ),
 				"cloud": ("CLOUD_DATA", )
 			},
 			"hidden": {
@@ -2437,7 +2541,8 @@ class Cloud:
 
 	def execute(self, _id = None, _prompt = None, _workflow = None, **kwargs):
 		res = CloudData()
-		res.dict_to_data(_id[0], kwargs["cloud:cloud"][0]["inst"], kwargs["cloud:cloud"][0]["group"], None, kwargs)
+		curr_cloud = copy.deepcopy(kwargs["cloud:cloud"][0])
+		res.dict_to_data(_id[0], curr_cloud["inst"], curr_cloud["group"], None, kwargs)
 		return {
 			"ui": {
 				"text": [[""]]
@@ -2500,11 +2605,9 @@ NODE_CLASS_MAPPINGS = {
 	"0246.ScriptPile": ScriptPile,
 	"0246.Script": Script,
 	"0246.Hub": Hub,
-	# "0246.Cloud": Cloud,
-	# "0246.Meta": Meta,
+	"0246.Cloud": Cloud,
+	"0246.Meta": Meta,
 	# "0246.Pick": Pick,
-	# "0246.StrAdd": StrAdd,
-	# "0246.StrAddBatch": StrAddBatch,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -2526,11 +2629,9 @@ NODE_DISPLAY_NAME_MAPPINGS = {
 	"0246.ScriptPile": "Script Pile",
 	"0246.Script": "Script",
 	"0246.Hub": "Hub",
-	# "0246.Cloud": "Cloud",
-	# "0246.Meta": "Meta",
+	"0246.Cloud": "Cloud",
+	"0246.Meta": "Meta",
 	# "0246.Pick": "Pick",
-	# "0246.StrAdd": "Str Add",
-	# "0246.StrAddBatch": "Str Add Batch",
 }
 
-print("\033[95m" + lib0246.HEAD_LOG + "Loaded all nodes and apis (/0246-parse)." + "\033[0m")
+print("\033[95m" + lib0246.HEAD_LOG + "Loaded all nodes and apis." + "\033[0m")

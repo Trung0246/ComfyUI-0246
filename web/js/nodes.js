@@ -542,7 +542,7 @@ app.registerExtension({
 
 					Hub.prototype.hubSize = function (extra = 0) {
 						const curr_size = this.computeSize();
-						curr_size[0] = this.size[0] < 350 ? 350 : this.size[0];
+						curr_size[0] = Math.max(curr_size[0], LiteGraph.NODE_WIDTH, this.size[0]);
 						// curr_size[1] += extra - 32;
 						this.setSize(curr_size);
 					};
@@ -663,8 +663,10 @@ app.registerExtension({
 								typeof b !== "string" ? (a ?? "") :
 								a + ":" + b
 							);
-
+							
+							const old_w = this.size[0];
 							widget[wg0246.HUB_WIDGET_PIN] = this.addOutput(widget.name = full_name, pin_type === "__BATCH_COMBO__" ? "COMBO" : pin_type);
+							this.size[0] = old_w;
 							this.hub.data.sole_type[full_name] = list_name;
 						}
 
