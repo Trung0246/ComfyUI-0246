@@ -961,7 +961,7 @@ class Hold:
 				Hold.HOLD_DB[_id]["data"] = []
 				Hold.HOLD_DB[_id]["mode"] = _mode
 
-			if Hold.HOLD_DB[_key_id]["mode"] == "save":
+			if Hold.HOLD_DB[_key_id]["mode"] != "clear":
 				for curr in Hold.HOLD_DB[Hold.HOLD_DB[_key_id]["id"]]["data"]:
 					Hold.HOLD_DB[_id]["data"].extend(curr)
 			else:
@@ -973,15 +973,23 @@ class Hold:
 		elif param_flag:
 			if _key_id not in Hold.HOLD_DB:
 				Hold.HOLD_DB[_key_id] = {}
-			if ((
-					_key_id in Hold.HOLD_DB and \
-					"mode" in Hold.HOLD_DB[_key_id] and \
-					Hold.HOLD_DB[_key_id]["mode"] == "save" and \
-					_key_id in _prompt and _prompt[_key_id]["inputs"]["_mode"] == "save"
-				) or (
-					"track" in Hold.HOLD_DB[_id] and \
-					Hold.HOLD_DB[_id]["track"] == PROMPT_ID
-				)) and _mode != "pin":
+
+			mode_flag = _key_id in Hold.HOLD_DB and "mode" in Hold.HOLD_DB[_key_id]
+
+			if (
+				mode_flag and \
+				Hold.HOLD_DB[_key_id]["mode"] == "pin" and \
+				_key_id in _prompt and _prompt[_key_id]["inputs"]["_mode"] == "pin"
+			):
+				result = [[None]] if _data_in is None or len(_data_in) == 0 else _data_in
+			elif (
+				mode_flag and \
+				Hold.HOLD_DB[_key_id]["mode"] == "save" and \
+				_key_id in _prompt and _prompt[_key_id]["inputs"]["_mode"] == "save"
+			) or (
+				"track" in Hold.HOLD_DB[_id] and \
+				Hold.HOLD_DB[_id]["track"] == PROMPT_ID
+			):
 				result = [Hold.HOLD_DB[_key_id]["data"][-1]]
 			elif _data_in is not None and len(_data_in) > 0:
 				result = [_data_in]
