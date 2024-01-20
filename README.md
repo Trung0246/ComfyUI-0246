@@ -64,7 +64,7 @@ For any nodes related to `Script`, `*_order` widget will determine script execut
 
 Warning: The recent changes I have changed how Highway and Junction tracking types. Therefore the best way to mitigrate this is to just copy the `_query` or `_offset`, create a new Highway or Junction, paste the string then reconnect everything over. I've probably find a way to automate this.
 
-I recommended you to play around with this sample workflow:
+I recommended you to play around with this sample workflow (edit 2024-01-20: kind of obsolete but should still works with some manual fixes):
 
 <details>
     <p align="center">
