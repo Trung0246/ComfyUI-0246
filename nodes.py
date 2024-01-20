@@ -457,8 +457,21 @@ def junction_unpack(pipe_in, input_type, regex_inst):
 ######################################## HIJACK ########################################
 ########################################################################################
 
-PROMPT_DATA = None
+BASE_EXECUTOR = None
+
+def init_executor_param_handle(*args, **kwargs):
+	return tuple(), {}
+
+def init_executor_res_handle(result, *args, **kwargs):
+	global BASE_EXECUTOR
+	if BASE_EXECUTOR is None:
+		BASE_EXECUTOR = args[0]
+	return result
+
+lib0246.hijack(execution.PromptExecutor, "__init__", init_executor_param_handle, init_executor_res_handle)
+
 PROMPT_COUNT = 0
+PROMPT_DATA = None
 PROMPT_ID = None
 PROMPT_EXTRA = None
 PROMPT_CHANGE = set()
@@ -474,71 +487,24 @@ def execute_param_handle(*args, **kwargs):
 		PROMPT_ID = args[2]
 		PROMPT_EXTRA = args[3]
 
-	# for node_id in args[1]:
-	# 	if node_id in RandomInt.RANDOM_DB:
-	# 		del RandomInt.RANDOM_DB[node_id]
-
 	return tuple(), {}
 
 def executor_res_handle(result, *args, **kwargs):
-	# for node_id in PROMPT_CHANGE:
-	# 	if node_id in BASE_EXECUTOR.outputs:
-	# 		del BASE_EXECUTOR.outputs[node_id]
+	global PROMPT_CHANGE
 	for node_id in PROMPT_CHANGE:
 		if node_id in BASE_EXECUTOR.outputs:
 			del BASE_EXECUTOR.outputs[node_id]
 	PROMPT_CHANGE.clear()
+	
+	# Hold.HOLD_DB.clear()
+	# for node_key in BASE_EXECUTOR.object_storage:
+	# 	if isinstance(BASE_EXECUTOR.object_storage[node_key], Hold):
+	# 		# BASE_EXECUTOR.object_storage[node_key] = None
+	# 		del BASE_EXECUTOR.outputs[node_key[0]]
+	# 		del BASE_EXECUTOR.outputs_ui[node_key[0]]
 	return result
 
 lib0246.hijack(execution.PromptExecutor, "execute", execute_param_handle, executor_res_handle)
-
-def init_executor_param_handle(*args, **kwargs):
-	return tuple(), {}
-
-BASE_EXECUTOR = None
-
-def init_executor_res_handle(result, *args, **kwargs):
-	if not hasattr(args[0], lib0246.WRAP_DATA):
-		global BASE_EXECUTOR
-		if BASE_EXECUTOR is None:
-			BASE_EXECUTOR = args[0]
-	return result
-
-lib0246.hijack(execution.PromptExecutor, "__init__", init_executor_param_handle, init_executor_res_handle)
-
-COND_EXEC = [] # List of functions
-
-# Just in case if we needs this ever again
-def execute_node_param_handle(*args, **kwargs):
-	return tuple(), {}
-
-def execute_node_res_handle(result, *args, **kwargs):
-	global COND_EXEC
-
-	for curr_id in COND_EXEC:
-		result.insert(0, (0, curr_id))
-
-	return result
-
-lib0246.hijack(builtins, "sorted", execute_node_param_handle, None, None, execution)
-
-# NODE_INPUT_KEYS = ["required", "optional"]
-# NODE_TYPES = ["_"]
-
-def init_extension_param_handle(*args, **kwargs):
-	return tuple(), {}
-
-def init_extension_res_handle(result, *args, **kwargs):
-	global NODE_INPUT_KEYS
-	global NODE_TYPES
-	# [TODO] Debug NODE_TYPES on why it have empty data
-	# NODE_TYPES.extend(set([x for key in NODE_INPUT_KEYS
-	# 	for y in [list(nodes.NODE_CLASS_MAPPINGS[node_class].INPUT_TYPES().get(key, {}).keys())
-	# 		for node_class in nodes.NODE_CLASS_MAPPINGS]
-	# 	for x in y]))
-	return result
-
-lib0246.hijack(nodes, "init_custom_nodes", init_extension_param_handle, init_extension_res_handle)
 
 #####################################################################################
 ######################################## API ########################################
@@ -580,13 +546,26 @@ async def parse_prompt_handler(request):
 		"res": CloudData.text_to_dict(data["prompt"])
 	})
 
+@PromptServer.instance.routes.post('/0246-clear')
+async def clear_handler(request):
+	global BASE_EXECUTOR
+	BASE_EXECUTOR.outputs.clear()
+	BASE_EXECUTOR.outputs_ui.clear()
+	BASE_EXECUTOR.object_storage.clear()
+	BASE_EXECUTOR.server.last_prompt_id = None
+	RandomInt.RANDOM_DB.clear()
+	Hold.HOLD_DB.clear()
+	Loop.LOOP_DB.clear()
+	
+	return aiohttp.web.json_response({})
+
 ######################################################################################
 ######################################## NODE ########################################
 ######################################################################################
 
 class Highway:
 	@classmethod
-	def INPUT_TYPES(s):
+	def INPUT_TYPES(cls):
 		return {
 			"required": {
 				"_query": ("STRING", {
@@ -620,14 +599,14 @@ class Highway:
 		return highway_impl(_prompt, _id, _workflow, _way_in, False, kwargs)
 	
 	@classmethod
-	def IS_CHANGED(self, _query, _id = None, _prompt = None, _workflow = None, _way_in = None, *args, **kwargs):
-		return lib0246.check_update(_query)
+	def IS_CHANGED(cls, *args, **kwargs):
+		return lib0246.check_update(kwargs["_query"])
 
 ######################################################################################
 
 class HighwayBatch:
 	@classmethod
-	def INPUT_TYPES(s):
+	def INPUT_TYPES(cls):
 		return {
 			"required": {
 				"_query": ("STRING", {
@@ -656,14 +635,14 @@ class HighwayBatch:
 		return highway_impl(_prompt, _id, _workflow, gather_highway_impl(_way_in, _id), True, kwargs)
 	
 	@classmethod
-	def IS_CHANGED(self, _query, _id = None, _prompt = None, _workflow = None, _way_in = None, *args, **kwargs):
-		return lib0246.check_update(_query)
+	def IS_CHANGED(cls, *args, **kwargs):
+		return lib0246.check_update(kwargs["_query"])
 
 ######################################################################################
 
 class Junction:
 	@classmethod
-	def INPUT_TYPES(s):
+	def INPUT_TYPES(cls):
 		return {
 			"required": {
 				"_offset": ("STRING", {
@@ -695,14 +674,14 @@ class Junction:
 		return junction_impl(self, _id, _prompt, _workflow, _junc_in, _offset, **kwargs)
 	
 	@classmethod
-	def IS_CHANGED(self, _offset, _id = None, _prompt = None, _workflow = None, _junc_in = None, *args, **kwargs):
-		return lib0246.check_update(_offset)
+	def IS_CHANGED(cls, *args, **kwargs):
+		return lib0246.check_update(kwargs["_offset"])
 
 ######################################################################################
 
 class JunctionBatch:
 	@classmethod
-	def INPUT_TYPES(s):
+	def INPUT_TYPES(cls):
 		return {
 			"required": {
 				"_offset": ("STRING", {
@@ -749,14 +728,14 @@ class JunctionBatch:
 			return junction_impl(self, _id, _prompt, _workflow, gather_junction_impl(_junc_in, _id), _offset, _in_mode = True, _out_mode = False, **kwargs)
 
 	@classmethod
-	def IS_CHANGED(self, _id = None, _prompt = None, _workflow = None, _offset = None, _junc_in = None, _mode = None, *args, **kwargs):
-		return lib0246.check_update(_offset)
+	def IS_CHANGED(cls, *args, **kwargs):
+		return lib0246.check_update(kwargs["_offset"])
 
 ######################################################################################
 
 class Count:
 	@classmethod
-	def INPUT_TYPES(s):
+	def INPUT_TYPES(cls):
 		return {
 			"required": {
 				"_node": lib0246.ByPassTypeTuple(("*", )),
@@ -805,7 +784,7 @@ class Count:
 
 class RandomInt:
 	@classmethod
-	def INPUT_TYPES(s):
+	def INPUT_TYPES(cls):
 		# Random uint64 int
 		return {
 			"required": {
@@ -915,17 +894,17 @@ class RandomInt:
 		}
 	
 	@classmethod
-	def IS_CHANGED(self, val = None, min = None, max = None, batch_size = None, *args, **kwargs):
+	def IS_CHANGED(cls, *args, **kwargs):
 		return float("NaN")
 
 ######################################################################################
 
 class Hold:
 	@classmethod
-	def INPUT_TYPES(s):
+	def INPUT_TYPES(cls):
 		return {
 			"required": {
-				"_mode": (["keep", "save", "clear", "ignore"], ),
+				"_mode": (["save", "clear"], ),
 				"_key_id": ("STRING", {
 					"default": "",
 					"multiline": False
@@ -936,7 +915,9 @@ class Hold:
 				"_hold": ("HOLD_TYPE", )
 			},
 			"hidden": {
-				"_id": "UNIQUE_ID"
+				"_id": "UNIQUE_ID",
+				"_prompt": "PROMPT",
+				"_workflow": "EXTRA_PNGINFO"
 			}
 		}
 	
@@ -945,18 +926,21 @@ class Hold:
 	RETURN_TYPES = lib0246.ByPassTypeTuple(("*", ))
 	RETURN_NAMES = ("_data_out", )
 	INPUT_IS_LIST = True
-	OUTPUT_IS_LIST = lib0246.TautologyAll()
+	OUTPUT_IS_LIST = (True, )
 	FUNCTION = "execute"
 	CATEGORY = "0246"
 
-	def execute(self, _data_in = None, _id = None, _hold = None, _mode = None, _key_id = None, **kwargs):
+	def execute(self, _data_in = None, _id = None, _prompt = None, _workflow = None, _hold = None, _mode = None, _key_id = None, **kwargs):
 		for key in kwargs:
 			if key.startswith("_data_in"):
 				_data_in = kwargs[key]
 				break
-
 		if isinstance(_id, list):
 			_id = str(_id[0]) if len(_id) > 0 else None
+		if isinstance(_prompt, list):
+			_prompt = _prompt[0] if len(_prompt) > 0 else None
+		if isinstance(_workflow, list):
+			_workflow = _workflow[0] if len(_workflow) > 0 else None
 		if isinstance(_hold, list):
 			_hold = _hold[0] if len(_hold) > 0 else None
 		if isinstance(_mode, list):
@@ -964,56 +948,66 @@ class Hold:
 		if isinstance(_key_id, list):
 			_key_id = str(_key_id[0]) if len(_key_id) > 0 else None
 
+		param_flag = _key_id is not None and len(_key_id) > 0
+
 		if _id not in Hold.HOLD_DB:
-			Hold.HOLD_DB[_id] = {
-				"track": PROMPT_ID,
-				"data": []
-			}
+			Hold.HOLD_DB[_id] = {}
 
 		ui_text = f"Id: {_id}, "
-
-		ext_db = _key_id in Hold.HOLD_DB
-
 		result = None
-		if _hold:
-			result = Hold.HOLD_DB[_id]["data"]
-			if ext_db:
-				if _mode == "clear":
-					Hold.HOLD_DB[_key_id]["data"].clear()
-				elif _mode == "ignore":
-					result = Hold.HOLD_DB[_key_id]["data"]
-				elif _mode == "save":
-					Hold.HOLD_DB[_id]["data"].extend(Hold.HOLD_DB[_key_id]["data"])
-			if _mode != "save":
-				Hold.HOLD_DB[_id]["data"].clear()
-			Hold.HOLD_DB[_id]["data"].extend(_data_in)
-			ui_text += f"Passed, Size: {len(result)}, "
-		elif ext_db:
-			result = _data_in
-			if _data_in is None or (
-				Hold.HOLD_DB[_key_id]["track"] == PROMPT_ID and
-				len(Hold.HOLD_DB[_key_id]["data"]) > 0
-			):
-				if _mode == "ignore":
-					result = Hold.HOLD_DB[_key_id]["data"]
-				else:
-					result = update_hold_db(_key_id, _data_in)
-			ui_text += f"Key: {_key_id}, Size: {len(result)}, "
-		elif _data_in and len(_data_in) > 0:
-			if Hold.HOLD_DB[_id]["track"] != PROMPT_ID:
-				Hold.HOLD_DB[_id]["track"] = PROMPT_ID
-				if _mode != "save":
-					Hold.HOLD_DB[_id]["data"].clear()
-				result = []
-			elif _mode == "clear":
-				result = _data_in
-				Hold.HOLD_DB[_id]["data"] = _data_in
-			else:
-				result = update_hold_db(_id, _data_in)
-			ui_text += f"Size: {len(result)}, "
 
-		if not result or len(result) == 0:
-			result = [None]
+		param_flag = _key_id is not None and len(_key_id) > 0
+
+		if _hold:
+			if "data" not in Hold.HOLD_DB[_id]:
+				Hold.HOLD_DB[_id]["data"] = []
+			if "track" not in Hold.HOLD_DB or Hold.HOLD_DB[_id]["track"] != PROMPT_ID:
+				Hold.HOLD_DB[_id]["track"] = PROMPT_ID
+
+			if _mode == "clear" or Hold.HOLD_DB[_id].get("mode", "") != _mode:
+				Hold.HOLD_DB[_id]["data"] = []
+				Hold.HOLD_DB[_id]["mode"] = _mode
+
+			if Hold.HOLD_DB[_key_id]["mode"] == "save":
+				for curr in Hold.HOLD_DB[Hold.HOLD_DB[_key_id]["id"]]["data"]:
+					Hold.HOLD_DB[_id]["data"].extend(curr)
+			else:
+				Hold.HOLD_DB[_id]["data"].extend(_data_in)
+
+			result = [Hold.HOLD_DB[_id]["data"]]
+
+			ui_text += f"Passed, Size: {len(result)}, "
+		elif param_flag:
+			if _key_id not in Hold.HOLD_DB:
+				Hold.HOLD_DB[_key_id] = {}
+			if (
+					_key_id in Hold.HOLD_DB and \
+					"mode" in Hold.HOLD_DB[_key_id] and \
+					Hold.HOLD_DB[_key_id]["mode"] == "save" and \
+					_key_id in _prompt and _prompt[_key_id]["inputs"]["_mode"] == "save"
+				) or (
+					"track" in Hold.HOLD_DB[_id] and \
+					Hold.HOLD_DB[_id]["track"] == PROMPT_ID
+				):
+				result = [Hold.HOLD_DB[_key_id]["data"][-1]]
+			elif _data_in is not None and len(_data_in) > 0:
+				result = [_data_in]
+			else:
+				result = [[None]]
+			Hold.HOLD_DB[_id]["mode"] = _mode
+			Hold.HOLD_DB[_id]["track"] = PROMPT_ID
+			Hold.HOLD_DB[_id]["id"] = _key_id
+
+			ui_text += f"Key: {_key_id}, Size: {len(result)}, "
+		else:
+			if "track" not in Hold.HOLD_DB[_id] or Hold.HOLD_DB[_id]["track"] != PROMPT_ID:
+				Hold.HOLD_DB[_id]["track"] = PROMPT_ID
+				Hold.HOLD_DB[_id]["data"] = []
+				Hold.HOLD_DB[_id]["mode"] = _mode
+			Hold.HOLD_DB[_id]["data"].append(_data_in)
+			result = [_data_in]
+
+			ui_text += f"Size: {len(result)}, "
 
 		ui_text += f"Track: {Hold.HOLD_DB[_id]['track']}"
 
@@ -1021,14 +1015,18 @@ class Hold:
 			"ui": {
 				"text": [ui_text]
 			},
-			"result": [result]
+			"result": result
 		}
+	
+	@classmethod
+	def IS_CHANGED(cls, *args, **kwargs):
+		return float("NaN")
 
 ######################################################################################
 
 class Loop:
 	@classmethod
-	def INPUT_TYPES(s):
+	def INPUT_TYPES(cls):
 		return {
 			"required": {
 				"_event": ("EVENT_TYPE", ),
@@ -1089,14 +1087,14 @@ class Loop:
 		return (True, )
 
 	@classmethod
-	def IS_CHANGED(self, _update = None, _event = None, _mode = None, _id = None, _prompt = None, _workflow = None, *args, **kwargs):
-		return lib0246.check_update(_update)
+	def IS_CHANGED(cls, *args, **kwargs):
+		return lib0246.check_update(kwargs["_update"])
 
 ######################################################################################
 
 class Merge:
 	@classmethod
-	def INPUT_TYPES(s):
+	def INPUT_TYPES(cls):
 		return {
 			"required": {
 				"_mode": (["flat", "deep"], ),
@@ -1175,7 +1173,7 @@ class Merge:
 
 class Beautify:
 	@classmethod
-	def INPUT_TYPES(s):
+	def INPUT_TYPES(cls):
 		return {
 			"optional": {
 				"data": lib0246.ByPassTypeTuple(("*", )),
@@ -1226,7 +1224,7 @@ class Beautify:
 
 class Stringify:
 	@classmethod
-	def INPUT_TYPES(s):
+	def INPUT_TYPES(cls):
 		return {
 			"required": {
 				"_mode": (["basic", "value", "force"],),
@@ -1280,7 +1278,7 @@ class Stringify:
 
 class BoxRange:
 	@classmethod
-	def INPUT_TYPES(s):
+	def INPUT_TYPES(cls):
 		return {
 			"required": lib0246.WildDict({
 				"script_box_regex": ("STRING", {
@@ -1492,16 +1490,14 @@ class BoxRange:
 		return full_res
 	
 	@classmethod
-	def IS_CHANGED(self, script_box_regex = None, script_order = None, box_range = {}, box_range_ratio = {}, *args, **kwargs):
-		if isinstance(box_range, list):
-			box_range = box_range[0]
-		return box_range
+	def IS_CHANGED(cls, *args, **kwargs):
+		return kwargs["box_range"][0] if isinstance(kwargs["box_range"], list) else kwargs["box_range"]
 
 ######################################################################################
 
 class ScriptNode:
 	@classmethod
-	def INPUT_TYPES(s):
+	def INPUT_TYPES(cls):
 		return {
 			"required": {
 				"script_node": (list(nodes.NODE_CLASS_MAPPINGS.keys()), ),
@@ -1663,7 +1659,7 @@ class ScriptNode:
 
 class ScriptPile:
 	@classmethod
-	def INPUT_TYPES(s):
+	def INPUT_TYPES(cls):
 		return {
 			"required": {
 				"pipe_in": (lib0246.TautologyStr("*"), ),
@@ -1848,7 +1844,7 @@ class ScriptPile:
 
 class ScriptRule:
 	@classmethod
-	def INPUT_TYPES(s):
+	def INPUT_TYPES(cls):
 		return {
 			"required": {
 				"script_rule_mode": (["_", "slice", "cycle"], ),
@@ -1899,7 +1895,7 @@ class ScriptRule:
 
 class Script:
 	@classmethod
-	def INPUT_TYPES(s):
+	def INPUT_TYPES(cls):
 		return {
 			"required": {
 				"_exec_mode": (["pass", "act"], ),
@@ -2025,7 +2021,7 @@ class Script:
 
 class Hub:
 	@classmethod
-	def INPUT_TYPES(s):
+	def INPUT_TYPES(cls):
 		return {
 			"required": lib0246.WildDict(),
 			"hidden": {
@@ -2538,7 +2534,7 @@ class CloudData:
 
 class Cloud:
 	@classmethod
-	def INPUT_TYPES(s):
+	def INPUT_TYPES(cls):
 		return {
 			"required": lib0246.WildDict(),
 			"optional": {
@@ -2573,7 +2569,7 @@ class Cloud:
 
 class Switch:
 	@classmethod
-	def INPUT_TYPES(s):
+	def INPUT_TYPES(cls):
 		return {
 			"required": lib0246.WildDict(),
 			"hidden": {
@@ -2608,7 +2604,7 @@ class Switch:
 		return res
 
 	@classmethod
-	def IS_CHANGED(self, _id = None, _prompt = None, _workflow = None, **kwargs):
+	def IS_CHANGED(cls, _id = None, *args, **kwargs):
 		valid_input = set()
 		invalid_input = set()
 		for key in kwargs:
@@ -2631,7 +2627,7 @@ class Switch:
 
 class Meta:
 	@classmethod
-	def INPUT_TYPES(s):
+	def INPUT_TYPES(cls):
 		return {
 			"required": {
 				"data": (lib0246.TautologyStr("*"), ),
