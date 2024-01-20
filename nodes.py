@@ -495,13 +495,6 @@ def executor_res_handle(result, *args, **kwargs):
 		if node_id in BASE_EXECUTOR.outputs:
 			del BASE_EXECUTOR.outputs[node_id]
 	PROMPT_CHANGE.clear()
-	
-	# Hold.HOLD_DB.clear()
-	# for node_key in BASE_EXECUTOR.object_storage:
-	# 	if isinstance(BASE_EXECUTOR.object_storage[node_key], Hold):
-	# 		# BASE_EXECUTOR.object_storage[node_key] = None
-	# 		del BASE_EXECUTOR.outputs[node_key[0]]
-	# 		del BASE_EXECUTOR.outputs_ui[node_key[0]]
 	return result
 
 lib0246.hijack(execution.PromptExecutor, "execute", execute_param_handle, executor_res_handle)
@@ -904,7 +897,7 @@ class Hold:
 	def INPUT_TYPES(cls):
 		return {
 			"required": {
-				"_mode": (["save", "clear"], ),
+				"_mode": (["save", "clear", "pin"], ),
 				"_key_id": ("STRING", {
 					"default": "",
 					"multiline": False
@@ -980,7 +973,7 @@ class Hold:
 		elif param_flag:
 			if _key_id not in Hold.HOLD_DB:
 				Hold.HOLD_DB[_key_id] = {}
-			if (
+			if ((
 					_key_id in Hold.HOLD_DB and \
 					"mode" in Hold.HOLD_DB[_key_id] and \
 					Hold.HOLD_DB[_key_id]["mode"] == "save" and \
@@ -988,7 +981,7 @@ class Hold:
 				) or (
 					"track" in Hold.HOLD_DB[_id] and \
 					Hold.HOLD_DB[_id]["track"] == PROMPT_ID
-				):
+				)) and _mode != "pin":
 				result = [Hold.HOLD_DB[_key_id]["data"][-1]]
 			elif _data_in is not None and len(_data_in) > 0:
 				result = [_data_in]
