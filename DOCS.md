@@ -92,16 +92,18 @@ Demo workflow is in [assets/workflow_junction_batch.json](https://github.com/Tru
 
 ### Looping and Related
 
+![workflow_loop_demo](https://github.com/Trung0246/ComfyUI-0246/assets/11626920/24e62c9e-99fa-4ade-9abf-5b6d30aa424e)
+
+<details>
+
 Basic looping to create 20 images with all 20 different seeds:
 <img width="1745" alt="Screenshot 2023-11-25 161238" src="https://github.com/Trung0246/ComfyUI-0246/assets/11626920/c30f5200-4e90-4fd9-b1eb-6e0965027259">
 
 A complex looping involves FABRIC nodes from [ComfyUI_fabric](https://github.com/ssitu/ComfyUI_fabric), allowing to pick images multiple times:
 <img width="1864" alt="Screenshot 2023-11-25 224302" src="https://github.com/Trung0246/ComfyUI-0246/assets/11626920/989cf4b0-08a0-4b19-9f15-3b3a50c4d0b2">
 
-Outpaint workflow (embedded in the image), borrowed from [this sample](https://github.com/comfyanonymous/ComfyUI/pull/931):
+Outpaint workflow (embedded in the image, node kinda obsolete and requires more work but the general should work), borrowed from [this sample](https://github.com/comfyanonymous/ComfyUI/pull/931):
 ![workflow_outpaint](https://github.com/Trung0246/ComfyUI-0246/assets/11626920/cb00449a-2807-4f1f-8fc1-90119953d7e6)
-
-<details>
 
 The example above showcase that this node can turn node such as [Plasma Noise](https://github.com/Jordach/comfy-plasma) into batch.
 It also allows executing multiple nodes together.
