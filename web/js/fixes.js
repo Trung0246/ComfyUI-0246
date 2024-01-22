@@ -467,10 +467,10 @@ app.registerExtension({
 	async setup(app) {
 		if (LiteGraph.Nodes.RerouteNode) {
 			// Hijack Reroute (rgthree) to do onConnectOutput and onConnectInput
-			lib0246.hijack(LiteGraph.Nodes.RerouteNode.prototype, "onConnectionsChange", function (type, index, connected, link_info) {
-				if (!this.mark)
-					reroute_process(this.self);
-			});
+			// lib0246.hijack(LiteGraph.Nodes.RerouteNode.prototype, "onConnectionsChange", function (type, index, connected, link_info) {
+			// 	if (!this.mark)
+			// 		reroute_process(this.self);
+			// });
 
 			// Since native "Reroute" already did graph traversal, we don't need to hijack it
 		}

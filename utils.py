@@ -351,10 +351,10 @@ def cycle_iter(func, iterable, sentinel=object()):
 			continue
 		yield item
 
-def hijack(scope, name, param_func, res_func = None, call_func = None, out_scope = None):
+def hijack(scope, name, param_func, res_func = None, out_scope = None):
 	old_func = getattr(scope, name)
 	def new_func(*args, **kwargs):
-		new_args, new_kwargs = param_func(*args, **kwargs)
+		call_func, new_args, new_kwargs = param_func(*args, **kwargs)
 		final_args = tuple(new_args[i] if i < len(new_args) else args[i] for i in range(len(args)))
 		for key in new_kwargs:
 			kwargs[key] = new_kwargs[key]

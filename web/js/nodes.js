@@ -159,6 +159,10 @@ app.registerExtension({
 				node.color = LGraphCanvas.node_colors.yellow.color;
 				node.bgcolor = lib0246.mix_color_hue(LGraphCanvas.node_colors.green.bgcolor, "#660029");
 			} break;
+			case "0246.Meta": {
+				node.color = "#652069";
+				node.bgcolor = LGraphCanvas.node_colors.green.bgcolor;
+			} break;
 		}
 		// use_everywhere.js messing with colors :(
 		node._color = node.color;
@@ -903,7 +907,7 @@ app.registerExtension({
 						function (type, index, connected, link_info) {
 							const node = this.self;
 							if (this.mark && !connected) {
-								if (type === LiteGraph.OUTPUT && node.outputs[index].name !== "..." && node.widgets) {
+								if (type === LiteGraph.OUTPUT && node.outputs[link_info.origin_slot].name !== "..." && node.widgets && node.outputs[link_info.origin_slot].links.length === 0) {
 									node.widgets.splice(node.widgets.length - 1, 1);
 									for (let i = 0; i < node.inputs.length; ++ i)
 										if (node.inputs[i].name.startsWith("switch:") && i >= node.widgets.length) {
@@ -941,13 +945,18 @@ app.registerExtension({
 						other_slot_index
 					) {
 						const node = this.self;
-						if (!this.mark && node.outputs[this_slot_index].name === "...")
+						if (!this.mark && node.outputs[this_slot_index].name === "..." && !other_node.inputs[other_slot_index].link)
 							wg0246.switch_widget(node, this_slot_index, "_");
 					});
 					lib0246.hijack(nodeType.prototype, "onConnectExpand", function (mode, name) {
 						if (this.mark && this.res !== true)
 							this.res = name.startsWith("switch:");
 					});
+				} break;
+				case "0246.Meta": {
+					wg0246.single_impl_pin(nodeType, [
+						"data", LiteGraph.INPUT, LiteGraph.GRID_SHAPE,
+					]);
 				} break;
 			}
 		}
