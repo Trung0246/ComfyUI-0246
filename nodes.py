@@ -402,10 +402,10 @@ def script_node_exec(node_inst, node_name, node_class, node_input, node_args, no
 		return (node_class, node_inst, node_name, node_input, node_args, node_args_base, node_args_hide)
 
 def script_rule_slice(func, res, pin, **kwargs):
-	return res.extend(func(pin=curr_pin) for curr_pin in lib0246.dict_slice(pin))
+	return res.extend(func(pin=curr_pin[0]) for curr_pin in lib0246.dict_slice(pin))
 
 def script_rule_product(func, res, pin, **kwargs):
-	return res.extend(func(pin=curr_pin) for curr_pin in lib0246.dict_product(pin))
+	return res.extend(func(pin=curr_pin[0]) for curr_pin in lib0246.dict_product(pin))
 
 def script_rule_direct(func, res, pin, **kwargs):
 	return res.extend(func(pin=pin))
@@ -2171,21 +2171,21 @@ class ScriptPile:
 	@classmethod
 	def process(cls, pile_data, pipe_iter, curr_func, count, script, func, pin, res, **kwargs):
 		curr_count = 0
-		pin.update(next(pipe_iter))
+		pin.update(next(pipe_iter)[0])
 
 		while True:
 			flag = 0
 
 			temp_res = func(pin=pin) if \
 				curr_func is None else (
-					list(func(pin=curr_raw_pin) \
+					list(func(pin=curr_raw_pin[0]) \
 						for curr_raw_pin in curr_func(pin))
 				)
 
 			curr_count += 1
 
 			try:
-				pin.update(next(pipe_iter))
+				pin.update(next(pipe_iter)[0])
 			except StopIteration:
 				flag += 1
 
@@ -2251,7 +2251,6 @@ class ScriptPile:
 						if input_key[1] in diff_key_set:
 							lib0246.dict_set(input_type, input_key, lib0246.dict_get(node_data[3], input_key))
 
-					# [TODO] Same here to take account of "hidden" input
 					data_dict = junction_unpack_raw(
 						pipe_in, input_type,
 						list(filter(lambda x: x != "hidden", input_type.keys())),
@@ -2591,7 +2590,7 @@ class Cloud:
 		res.dict_to_data(_id[0], curr_cloud["inst"], curr_cloud["group"], None, kwargs)
 		return {
 			"ui": {
-				"text": [[""]]
+				"text": [""]
 			},
 			"result": [[res]]
 		}
@@ -2616,6 +2615,9 @@ class Switch:
 	FUNCTION = "execute"
 	CATEGORY = "0246"
 
+	SWITCH_TRACK = None
+	SWITCH_PROMPT = None
+
 	def execute(self, _id = None, _prompt = None, _workflow = None, **kwargs):
 		if isinstance(_id, list):
 			_id = _id[0]
@@ -2623,6 +2625,8 @@ class Switch:
 			_prompt = _prompt[0]
 		if isinstance(_workflow, list):
 			_workflow = _workflow[0]
+
+		# [TODO] Remember to recheck "switch:..." (optionally calling recursive_output_delete_if_changed)
 
 		output = _workflow["workflow"]["nodes"][
 			next(i for i, _ in enumerate(_workflow["workflow"]["nodes"]) if _["id"] == int(_id))
@@ -2655,22 +2659,26 @@ class Switch:
 
 	@classmethod
 	def IS_CHANGED(cls, _id = None, *args, **kwargs):
+		global PROMPT_DATA
+		global PROMPT_ID
+		if Switch.SWITCH_TRACK is None or Switch.SWITCH_TRACK != PROMPT_ID:
+			Switch.SWITCH_TRACK = PROMPT_ID
+			Switch.SWITCH_PROMPT = copy.deepcopy(PROMPT_DATA)
+
 		valid_input = set()
-		invalid_input = set()
 		for key in kwargs:
 			if key.startswith("switch:"):
 				temp_index = kwargs[key][0].split(":")[0]
 				if temp_index != "_":
 					valid_input.add(temp_index)
-		global PROMPT_DATA
-		for key in PROMPT_DATA[_id[0]]["inputs"]:
+
+		for key in Switch.SWITCH_PROMPT[_id[0]]["inputs"]:
 			curr_index = key.split(":")[0]
 			if curr_index.isnumeric():
 				if curr_index in valid_input:
-					continue
-				invalid_input.add(key)
-		for key in invalid_input:
-			del PROMPT_DATA[_id[0]]["inputs"][key]
+					PROMPT_DATA[_id[0]]["inputs"][key] = Switch.SWITCH_PROMPT[_id[0]]["inputs"][key]
+				else:
+					del PROMPT_DATA[_id[0]]["inputs"][key]
 		return " ".join(kwargs.keys())
 
 ######################################################################################

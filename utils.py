@@ -3,14 +3,17 @@ import sys
 import ast
 import importlib.util
 import pathlib
-import contextlib
 import os
 import torch
 import itertools
-import collections.abc
 import math
 import collections
 import random
+
+contextlib = __import__("contextlib")
+collection = type('CollectionModule', (), {})
+setattr(collection, "abc", __import__("collections.abc"))
+
 
 # Check for libs
 wrapt = None
@@ -291,14 +294,21 @@ def take(iterable, chunk, build, fill=False):
 
 def dict_product(dict_list):
 	keys, values = zip(*dict_list.items())
-	return ({k: v for k, v in zip(keys, combination)} for combination in itertools.product(*values))
+	for combination in itertools.product(*(enumerate(value) for value in values)):
+		yield (
+			{k: v for k, (index, v) in zip(keys, combination)},
+			{k: index for k, (index, v) in zip(keys, combination)}
+		)
 
 def dict_slice(dict_list, build=lambda _: _):
 	for i in range(max((len(v) for v in dict_list.values()), default=0)):
 		curr = dict()
+		index_info = dict()
 		for k, v in dict_list.items():
-			curr[k] = build(v[i] if i < len(v) else v[-1])
-		yield curr
+			actual_index = i if i < len(v) else len(v) - 1 # Handles the case where i exceeds the list length
+			curr[k] = build(v[actual_index])
+			index_info[k] = actual_index
+		yield (curr, index_info)
 
 def dict_iter(dict_inst):
 	dq = collections.deque(((key,), value) for key, value in dict_inst.items())
