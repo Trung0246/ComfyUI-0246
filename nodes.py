@@ -1386,6 +1386,8 @@ class Hold:
 
 		if _id not in Hold.HOLD_DB:
 			Hold.HOLD_DB[_id] = {}
+		if param_flag and _key_id not in Hold.HOLD_DB:
+			Hold.HOLD_DB[_key_id] = {}
 
 		ui_text = f"Id: {_id}, "
 		result = None
@@ -1412,9 +1414,6 @@ class Hold:
 
 			ui_text += f"Passed, Size: {len(result)}, "
 		elif param_flag:
-			if _key_id not in Hold.HOLD_DB:
-				Hold.HOLD_DB[_key_id] = {}
-
 			mode_flag = _key_id in Hold.HOLD_DB and "mode" in Hold.HOLD_DB[_key_id]
 
 			if (
