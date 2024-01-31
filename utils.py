@@ -14,7 +14,6 @@ contextlib = __import__("contextlib")
 collection = type('CollectionModule', (), {})
 setattr(collection, "abc", __import__("collections.abc"))
 
-
 # Check for libs
 wrapt = None
 natsort = None

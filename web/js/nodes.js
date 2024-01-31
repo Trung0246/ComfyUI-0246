@@ -156,8 +156,10 @@ app.registerExtension({
 				node.bgcolor = "#676767";
 			} break;
 			case "0246.Switch": {
-				node.color = LGraphCanvas.node_colors.yellow.color;
-				node.bgcolor = lib0246.mix_color_hue(LGraphCanvas.node_colors.green.bgcolor, "#660029");
+				// node.color = LGraphCanvas.node_colors.yellow.color;
+				// node.bgcolor = lib0246.mix_color_hue(LGraphCanvas.node_colors.green.bgcolor, "#660029");
+				node.color = lib0246.mix_color_hue(LGraphCanvas.node_colors.green.color, "#660029");
+				node.bgcolor = LGraphCanvas.node_colors.yellow.bgcolor;
 			} break;
 			case "0246.Meta": {
 				node.color = "#652069";

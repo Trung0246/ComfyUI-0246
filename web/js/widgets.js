@@ -1019,7 +1019,7 @@ function single_impl_input_raw(inst, app, real, shape_in) {
 			case 2: {
 				if (arguments[0] === LiteGraph.INPUT) {
 					let link_info = arguments[3];
-					if (this.self?.onConnectExpand?.("single_impl_input_remove", this.self.inputs[link_info.target_slot].name, ...arguments)) // || link_info.replaced)
+					if (this.self?.onConnectExpand?.("single_impl_input_remove", this.self.inputs[link_info.target_slot]?.name, ...arguments)) // || link_info.replaced)
 						return true;
 					link_shift_up(this.self, this.self.inputs, link_info.target_slot, false, arguments);
 					-- real.input;
@@ -1067,7 +1067,7 @@ function single_impl_output_raw(inst, app, real, shape_out) {
 			case 2: {
 				if (arguments[0] === LiteGraph.OUTPUT) {
 					let link_info = arguments[3];
-					if (this.self?.onConnectExpand?.("single_impl_output_remove", this.self.outputs[link_info.origin_slot].name, ...arguments))
+					if (this.self?.onConnectExpand?.("single_impl_output_remove", this.self.outputs[link_info.origin_slot]?.name, ...arguments))
 						return true;
 					if (!this.self.outputs[link_info.origin_slot].links || this.self.outputs[link_info.origin_slot].links.length === 0) {
 						link_shift_up(this.self, this.self.outputs, link_info.origin_slot, true, arguments);
@@ -3082,7 +3082,7 @@ async function hub_serialize_batch_combo(node, index_str) {
 	return node.widgets[Number(index_str)].value.join(":");
 }
 
-export const PIPE_COMBO = ["HIGHWAY_PIPE", "JUNCTION_PIPE"]
+export const PIPE_COMBO = ["HIGHWAY_PIPE", "JUNCTION_PIPE"];
 
 export function hub_setup_widget(node, data, id) {
 	for (let node_id of app.graph.extra["0246.HUB_DATA"][id].node_list)

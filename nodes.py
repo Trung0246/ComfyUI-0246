@@ -9,16 +9,17 @@
 import sys
 import ast
 import random
-import builtins
 import json
 import copy
 import functools
 import itertools
 import copy
-import re
 import uuid
 import unicodedata
 import struct
+
+builtins = __import__("builtins")
+re = __import__("re")
 
 # Self Code
 from . import utils as lib0246
@@ -33,6 +34,18 @@ from server import PromptServer
 import execution
 import nodes
 import comfy.sd1_clip
+
+comfy_graph = None
+comfy_graph_utils = None
+
+try:
+	comfy_graph = __import__("comfy.graph")
+	comfy_graph_utils = __import__("comfy.graph_utils")
+except ModuleNotFoundError:
+	pass
+
+NODE_CLASS_MAPPINGS = {}
+NODE_DISPLAY_NAME_MAPPINGS = {}
 
 ######################################################################################
 ######################################## IMPL ########################################
@@ -902,7 +915,7 @@ def executor_res_handle(result, *args, **kwargs):
 	global PROMPT_IGNORE
 	global PROMPT_IGNORE_FLAG
 	for node_id in PROMPT_CHANGE:
-		if node_id in BASE_EXECUTOR.outputs:
+		if hasattr(BASE_EXECUTOR, "outputs") and node_id in BASE_EXECUTOR.outputs:
 			del BASE_EXECUTOR.outputs[node_id]
 	PROMPT_CHANGE.clear()
 	PROMPT_IGNORE.clear()
@@ -931,6 +944,15 @@ def map_node_over_list_param_handle(*args, **kwargs):
 	return None, tuple(), {}
 
 lib0246.hijack(execution, "map_node_over_list", map_node_over_list_param_handle)
+
+if comfy_graph is not None:
+	def get_input_info_param_handle(*args, **kwargs):
+		return None, tuple(), {}
+	
+	def get_input_info_res_handle(result, *args, **kwargs):
+		return result
+	
+	lib0246.hijack(comfy_graph.TopologicalSort, "get_input_info", get_input_info_param_handle, get_input_info_res_handle)
 
 #####################################################################################
 ######################################## API ########################################
@@ -975,9 +997,10 @@ async def parse_prompt_handler(request):
 @PromptServer.instance.routes.post('/0246-clear')
 async def clear_handler(request):
 	global BASE_EXECUTOR
-	BASE_EXECUTOR.outputs.clear()
-	BASE_EXECUTOR.outputs_ui.clear()
-	BASE_EXECUTOR.object_storage.clear()
+	if hasattr(BASE_EXECUTOR, "outputs"):
+		BASE_EXECUTOR.outputs.clear()
+		BASE_EXECUTOR.outputs_ui.clear()
+		BASE_EXECUTOR.object_storage.clear()
 	BASE_EXECUTOR.server.last_prompt_id = None
 	RandomInt.RANDOM_DB.clear()
 	Hold.HOLD_DB.clear()
@@ -1172,7 +1195,7 @@ class Count:
 	def INPUT_TYPES(cls):
 		return {
 			"required": {
-				"_node": lib0246.ByPassTypeTuple(("*", )),
+				"_node": (lib0246.TautologyStr("*"), ),
 				"_event": ("STRING", {
 					"default": "10",
 					"multiline": False
@@ -1345,7 +1368,7 @@ class Hold:
 				}),
 			},
 			"optional": {
-				"_data_in": lib0246.ByPassTypeTuple(("*", )),
+				"_data_in": (lib0246.TautologyStr("*"), ),
 				"_hold": ("HOLD_TYPE", )
 			},
 			"hidden": {
@@ -1465,12 +1488,16 @@ class Hold:
 
 ######################################################################################
 
+class EventBoolStr(str):
+	def __ne__(self, other):
+		return other != "EVENT_TYPE" and other != "BOOL" and other != "BOOLEAN" and other != "toggle"
+
 class Loop:
 	@classmethod
 	def INPUT_TYPES(cls):
 		return {
 			"required": {
-				"_event": ("EVENT_TYPE", ),
+				"_event": (EventBoolStr("*"), ),
 				"_mode": (["sweep"], ), # Reserved
 				"_update": ("STRING", {
 					"default": "{'update': ''}",
@@ -1480,7 +1507,8 @@ class Loop:
 			"hidden": {
 				"_prompt": "PROMPT",
 				"_id": "UNIQUE_ID",
-				"_workflow": "EXTRA_PNGINFO"
+				"_workflow": "EXTRA_PNGINFO",
+				"_dynprompt": "DYNPROMPT",
 			}
 		}
 	
@@ -1492,40 +1520,89 @@ class Loop:
 
 	LOOP_DB = {}
 
+	def explore_dependencies(self, node_id, dynprompt, upstream):
+		stack = [node_id]
+		while len(stack) > 0:
+			node_id = stack.pop()
+			node_info = dynprompt.get_node(node_id)
+			if "inputs" not in node_info:
+				continue
+			for k, v in node_info["inputs"].items():
+				if comfy_graph_utils.is_link(v):
+					parent_id = v[0]
+					if parent_id not in upstream:
+						upstream[parent_id] = []
+						stack.append(parent_id)
+					upstream[parent_id].append(node_id)
+
+	def collect_contained(self, node_id, upstream, contained):
+		stack = [node_id]
+		while len(stack) > 0:
+			node_id = stack.pop()
+			if node_id not in upstream:
+				continue
+			for child_id in upstream[node_id]:
+				if child_id not in contained:
+					contained[child_id] = True
+					stack.append(child_id)
+
 	def execute(self, _id = None, _prompt = None, _workflow = None, _event = None, _mode = None, _update = None, **kwargs):
 		global BASE_EXECUTOR
 		global PROMPT_ID
-		if not _event[0]["bool"]:
+		expand_graph = None
+		if (isinstance(_event[0], dict) and not _event[0]["bool"]) or (isinstance(_event[0], bool) and not _event[0]):
 
-			# [TODO] Less shitty way to remove _event from inputs
-			try:
-				del BASE_EXECUTOR.outputs[_prompt[0][_id[0]]["inputs"]["_event"][0]]
-			except KeyError:
-				pass
+			if hasattr(execution, "recursive_execute"):
+				# [TODO] Less shitty way to remove _event from inputs
+				try:
+					del BASE_EXECUTOR.outputs[_prompt[0][_id[0]]["inputs"]["_event"][0]]
+				except KeyError:
+					pass
 
-			if _mode[0] == "sweep":
-				if (PROMPT_ID, _id[0]) in Loop.LOOP_DB:
-					Loop.LOOP_DB[(PROMPT_ID, _id[0])]["count"] += 1
-					for curr_id in Loop.LOOP_DB[(PROMPT_ID, _id[0])]["exec"]:
-						if curr_id in BASE_EXECUTOR.outputs:
-							del BASE_EXECUTOR.outputs[curr_id]
-				else:
-					# Not the most efficient. The better way is to find all nodes that are connected to inputs and this loop node
-					Loop.LOOP_DB[(PROMPT_ID, _id[0])] = {
-						"count": 1,
-						"exec": trace_node(_prompt[0], _id[0], _workflow[0], _input = True) # , lambda curr_id: exec.append(curr_id) if curr_id not in exec else None)
-					}
-					while Loop.LOOP_DB[(PROMPT_ID, _id[0])]["count"] > 0:
-						Loop.LOOP_DB[(PROMPT_ID, _id[0])]["count"] -= 1
+				if _mode[0] == "sweep":
+					if (PROMPT_ID, _id[0]) in Loop.LOOP_DB:
+						Loop.LOOP_DB[(PROMPT_ID, _id[0])]["count"] += 1
 						for curr_id in Loop.LOOP_DB[(PROMPT_ID, _id[0])]["exec"]:
 							if curr_id in BASE_EXECUTOR.outputs:
 								del BASE_EXECUTOR.outputs[curr_id]
-						success, error, ex = execution.recursive_execute(PromptServer.instance, _prompt[0], BASE_EXECUTOR.outputs, _id[0], {"extra_pnginfo": _workflow[0]}, set(), PROMPT_ID, BASE_EXECUTOR.outputs_ui, BASE_EXECUTOR.object_storage)
-						if success is not True:
-							raise ex
-					del Loop.LOOP_DB[(PROMPT_ID, _id[0])]
+					else:
+						# Not the most efficient. The better way is to find all nodes that are connected to inputs and this loop node
+						Loop.LOOP_DB[(PROMPT_ID, _id[0])] = {
+							"count": 1,
+							"exec": trace_node(_prompt[0], _id[0], _workflow[0], _input = True) # , lambda curr_id: exec.append(curr_id) if curr_id not in exec else None)
+						}
+						while Loop.LOOP_DB[(PROMPT_ID, _id[0])]["count"] > 0:
+							Loop.LOOP_DB[(PROMPT_ID, _id[0])]["count"] -= 1
+							for curr_id in Loop.LOOP_DB[(PROMPT_ID, _id[0])]["exec"]:
+								if curr_id in BASE_EXECUTOR.outputs:
+									del BASE_EXECUTOR.outputs[curr_id]
+							success, error, ex = execution.recursive_execute(PromptServer.instance, _prompt[0], BASE_EXECUTOR.outputs, _id[0], {"extra_pnginfo": _workflow[0]}, set(), PROMPT_ID, BASE_EXECUTOR.outputs_ui, BASE_EXECUTOR.object_storage)
+							if success is not True:
+								raise ex
+						del Loop.LOOP_DB[(PROMPT_ID, _id[0])]
+			else:
+				pass
+				# Implementation plan:
+					# Use `rawLink` to force everything in kwargs and get he raw link list value
+						# Set `rawLink` by hijacking `execution.get_input_data`
+					# Then replace flow_control with proper loop
 
-		return (True, )
+				# this_node = _dynprompt[0].get_node(_id[0])
+				# upstream = {}
+				# self.explore_dependencies(_id[0], _dynprompt[0], upstream)
+				# contained = {}
+				# open_node = flow_control[0]
+				# self.collect_contained(open_node, upstream, contained)
+				# contained[unique_id] = True
+				# contained[open_node] = True
+			
+			# Reference:
+			# https://github.com/BadCafeCode/execution-inversion-demo-comfyui/blob/main/flow_control.py
+
+		return {
+			"expand": expand_graph,
+			"result": (True, )
+		}
 
 	@classmethod
 	def IS_CHANGED(cls, *args, **kwargs):
@@ -1617,7 +1694,7 @@ class Beautify:
 	def INPUT_TYPES(cls):
 		return {
 			"optional": {
-				"data": lib0246.ByPassTypeTuple(("*", )),
+				"data": (lib0246.TautologyStr("*"), ),
 			},
 			"required": {
 				"mode": (["basic", "more", "full", "json"], ),
@@ -1958,7 +2035,7 @@ class ScriptNode:
 				}),
 			},
 			"optional": {
-				"pipe_in": lib0246.ByPassTypeTuple(("*", )),
+				"pipe_in": (lib0246.TautologyStr("*"), ),
 			},
 			"hidden": {
 				"_prompt": "PROMPT",
@@ -2617,6 +2694,11 @@ class Switch:
 	SWITCH_TRACK = None
 	SWITCH_PROMPT = None
 
+	def check_lazy_status(self, _id = None, _prompt = None, _workflow = None, **kwargs):
+		# [TODO] This function generally return array of string of input names that will NOT execute
+			# Which means we return input name that will NOT be executed
+		return []
+
 	def execute(self, _id = None, _prompt = None, _workflow = None, **kwargs):
 		if isinstance(_id, list):
 			_id = _id[0]
@@ -2791,10 +2873,10 @@ class Meta:
 ######################################## EXPORT ########################################
 ########################################################################################
 
-# [TODO] "Meta" node to show information about highway or junction
 # [TODO] "RandomInt" node can have linger seed if batch len is different
+# [TODO] NestedNodeBuilder prematurely replace prompt (./ComfyUI_NestedNodeBuilder/nodeMenu.js:45)
 
-NODE_CLASS_MAPPINGS = {
+NODE_CLASS_MAPPINGS.update({
 	"0246.Highway": Highway,
 	"0246.HighwayBatch": HighwayBatch,
 	"0246.Junction": Junction,
@@ -2817,9 +2899,9 @@ NODE_CLASS_MAPPINGS = {
 	"0246.Switch": Switch,
 	"0246.Meta": Meta,
 	# "0246.Pick": Pick,
-}
+})
 
-NODE_DISPLAY_NAME_MAPPINGS = {
+NODE_DISPLAY_NAME_MAPPINGS.update({
 	"0246.Highway": "Highway",
 	"0246.HighwayBatch": "Highway Batch",
 	"0246.Junction": "Junction",
@@ -2842,6 +2924,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
 	"0246.Switch": "Switch",
 	"0246.Meta": "Meta",
 	# "0246.Pick": "Pick",
-}
+})
 
 print("\033[95m" + lib0246.HEAD_LOG + "Loaded all nodes and apis." + "\033[0m")
