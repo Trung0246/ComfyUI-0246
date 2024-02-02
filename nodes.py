@@ -17,6 +17,7 @@ import copy
 import uuid
 import unicodedata
 import struct
+import inspect
 
 builtins = __import__("builtins")
 re = __import__("re")
@@ -30,7 +31,7 @@ import natsort
 import regex
 
 # ComfyUI
-from server import PromptServer
+import server
 import execution
 import nodes
 import comfy.sd1_clip
@@ -39,8 +40,11 @@ comfy_graph = None
 comfy_graph_utils = None
 
 try:
-	comfy_graph = __import__("comfy.graph")
-	comfy_graph_utils = __import__("comfy.graph_utils")
+	import comfy.graph as temp_graph
+	import comfy.graph_utils as temp_graph_utils
+	comfy_graph = temp_graph
+	comfy_graph_utils = temp_graph_utils
+	print("\033[95m" + f"{lib0246.HEAD_LOG}Topological Execution is detected." + "\033[0m")
 except ModuleNotFoundError:
 	pass
 
@@ -382,6 +386,32 @@ def trace_node(_prompt, _id, _workflow, _input = False, _func = trace_node_func)
 
 	return id_res
 
+def trace_node_back(node_id, dynprompt, upstream):
+	stack = [node_id]
+	while len(stack) > 0:
+		node_id = stack.pop()
+		node_info = dynprompt.get_node(node_id)
+		if "inputs" not in node_info:
+			continue
+		for k, v in node_info["inputs"].items():
+			if comfy_graph_utils.is_link(v):
+				parent_id = v[0]
+				if parent_id not in upstream:
+					upstream[parent_id] = []
+					stack.append(parent_id)
+				upstream[parent_id].append(node_id)
+
+def trace_node_front(node_id, upstream, contained):
+	stack = [node_id]
+	while len(stack) > 0:
+		node_id = stack.pop()
+		if node_id not in upstream:
+			continue
+		for child_id in upstream[node_id]:
+			if child_id not in contained:
+				contained[child_id] = True
+				stack.append(child_id)
+
 def find_input_node(nodes, link):
 	for node in nodes:
 		if node.get("inputs"):
@@ -459,6 +489,10 @@ def junction_unpack(pipe_in, input_type, regex_inst):
 			return True
 		return False
 	return temp_func
+
+class EventBoolStr(str):
+	def __ne__(self, other):
+		return other != "EVENT_TYPE" and other != "BOOL" and other != "BOOLEAN" and other != "toggle"
 
 CLOUD_METHOD = {
 	"text": None, # Cannot be used as function if None
@@ -945,20 +979,45 @@ def map_node_over_list_param_handle(*args, **kwargs):
 
 lib0246.hijack(execution, "map_node_over_list", map_node_over_list_param_handle)
 
+CLASS_LIST = None
+
 if comfy_graph is not None:
+	temp_info = None
+
+	def get_input_info_func_handle(func, *args, **kwargs):
+		temp_res = func(*args, **kwargs)
+		if temp_res[2] is None:
+			return (lib0246.TautologyStr("*"), "optional", temp_info)
+		return temp_res
+
 	def get_input_info_param_handle(*args, **kwargs):
+		global CLASS_LIST
+		global NODE_CLASS_MAPPINGS
+		global temp_info
+		if CLASS_LIST is None:
+			CLASS_LIST = set(obj for name, obj in inspect.getmembers(sys.modules[__name__]) if inspect.isclass(obj))
+		if args[0] == Loop:
+			temp_info = {"rawLink": True}
+			return get_input_info_func_handle, tuple(), {}
+		elif args[0] == Switch:
+			temp_info = {"rawLink": True, "lazy": True}
+			return get_input_info_func_handle, tuple(), {}
+		elif args[0] in CLASS_LIST:
+			temp_info = {}
+			return get_input_info_func_handle, tuple(), {}
 		return None, tuple(), {}
 	
 	def get_input_info_res_handle(result, *args, **kwargs):
 		return result
-	
-	lib0246.hijack(comfy_graph.TopologicalSort, "get_input_info", get_input_info_param_handle, get_input_info_res_handle)
+
+	lib0246.hijack(comfy_graph, "get_input_info", get_input_info_param_handle, get_input_info_res_handle)
+	lib0246.hijack(execution, "get_input_info", get_input_info_param_handle, get_input_info_res_handle)
 
 #####################################################################################
 ######################################## API ########################################
 #####################################################################################
 
-@PromptServer.instance.routes.post('/0246-parse-highway')
+@server.PromptServer.instance.routes.post('/0246-parse-highway')
 async def parse_highway_handler(request):
 	data = await request.json()
 
@@ -980,7 +1039,7 @@ async def parse_highway_handler(request):
 		"error": errors
 	})
 
-@PromptServer.instance.routes.post('/0246-parse-prompt')
+@server.PromptServer.instance.routes.post('/0246-parse-prompt')
 async def parse_prompt_handler(request):
 	data = await request.json()
 
@@ -994,7 +1053,7 @@ async def parse_prompt_handler(request):
 		"res": CloudData.text_to_dict(data["prompt"])
 	})
 
-@PromptServer.instance.routes.post('/0246-clear')
+@server.PromptServer.instance.routes.post('/0246-clear')
 async def clear_handler(request):
 	global BASE_EXECUTOR
 	if hasattr(BASE_EXECUTOR, "outputs"):
@@ -1008,11 +1067,11 @@ async def clear_handler(request):
 	
 	return aiohttp.web.json_response({})
 
-@PromptServer.instance.routes.post('/0246-terminate')
+@server.PromptServer.instance.routes.post('/0246-terminate')
 async def terminate_handler(request):
 	# This requires modifying source code of ComfyUI, which is required
 	# For personal purpose only
-	setattr(PromptServer.instance, "terminate", True)
+	setattr(server.PromptServer.instance, "terminate", True)
 	
 	return aiohttp.web.json_response({})
 
@@ -1217,22 +1276,24 @@ class Count:
 
 	def execute(self, _id = None, _node = None, _event = None, **kwargs):
 		global PROMPT_ID
+		if isinstance(_id, list):
+			_id = str(_id[0]) if len(_id) > 0 else None
+		if isinstance(_id, str):
+			_id = _id[_id.rfind(".") + 1:]
 		if Count.COUNT_ID != PROMPT_ID:
 			Count.COUNT_DB = {}
 			Count.COUNT_ID = PROMPT_ID
-		if _id[0] not in Count.COUNT_DB:
-			Count.COUNT_DB[_id[0]] = 0
-		temp = Count.COUNT_DB[_id[0]]
-		Count.COUNT_DB[_id[0]] += 1
+		if _id not in Count.COUNT_DB:
+			Count.COUNT_DB[_id] = 0
+		temp = Count.COUNT_DB[_id]
+		Count.COUNT_DB[_id] += 1
 
 		return {
 			"ui": {
 				"text": [f"Count: {temp}, Track: {Count.COUNT_ID}"]
 			},
 			"result": (temp, {
-				"data": {
-					"id": _id[0],
-				},
+				"id": _id,
 				"bool": temp >= int(_event[0]),
 			})
 		}
@@ -1291,9 +1352,13 @@ class RandomInt:
 	def execute(self, _id = None, val = None, min = None, max = None, seed = None, batch_size = None, mode = None, **kwargs):
 		if min[0] > max[0]:
 			raise Exception("Min is greater than max.")
+		if isinstance(_id, list):
+			_id = str(_id[0]) if len(_id) > 0 else None
+		if isinstance(_id, str):
+			_id = _id[_id.rfind(".") + 1:]
 		
-		if _id[0] not in RandomInt.RANDOM_DB:
-			RandomInt.RANDOM_DB[_id[0]] = {
+		if _id not in RandomInt.RANDOM_DB:
+			RandomInt.RANDOM_DB[_id] = {
 				"track": None,
 				"prev": [],
 				"prev_batch_size": 0,
@@ -1302,7 +1367,7 @@ class RandomInt:
 				"flag": 0
 			}
 
-		db = RandomInt.RANDOM_DB[_id[0]]
+		db = RandomInt.RANDOM_DB[_id]
 
 		if db["track"] != PROMPT_ID:
 			db["track"] = PROMPT_ID
@@ -1394,6 +1459,8 @@ class Hold:
 				break
 		if isinstance(_id, list):
 			_id = str(_id[0]) if len(_id) > 0 else None
+		if isinstance(_id, str):
+			_id = _id[_id.rfind(".") + 1:]
 		if isinstance(_prompt, list):
 			_prompt = _prompt[0] if len(_prompt) > 0 else None
 		if isinstance(_workflow, list):
@@ -1475,6 +1542,9 @@ class Hold:
 
 		ui_text += f"Track: {Hold.HOLD_DB[_id]['track']}"
 
+		if hasattr(BASE_EXECUTOR, "caches"):
+			BASE_EXECUTOR.caches.outputs.set(_id, result)
+
 		return {
 			"ui": {
 				"text": [ui_text]
@@ -1487,10 +1557,6 @@ class Hold:
 		return float("NaN")
 
 ######################################################################################
-
-class EventBoolStr(str):
-	def __ne__(self, other):
-		return other != "EVENT_TYPE" and other != "BOOL" and other != "BOOLEAN" and other != "toggle"
 
 class Loop:
 	@classmethod
@@ -1520,36 +1586,13 @@ class Loop:
 
 	LOOP_DB = {}
 
-	def explore_dependencies(self, node_id, dynprompt, upstream):
-		stack = [node_id]
-		while len(stack) > 0:
-			node_id = stack.pop()
-			node_info = dynprompt.get_node(node_id)
-			if "inputs" not in node_info:
-				continue
-			for k, v in node_info["inputs"].items():
-				if comfy_graph_utils.is_link(v):
-					parent_id = v[0]
-					if parent_id not in upstream:
-						upstream[parent_id] = []
-						stack.append(parent_id)
-					upstream[parent_id].append(node_id)
-
-	def collect_contained(self, node_id, upstream, contained):
-		stack = [node_id]
-		while len(stack) > 0:
-			node_id = stack.pop()
-			if node_id not in upstream:
-				continue
-			for child_id in upstream[node_id]:
-				if child_id not in contained:
-					contained[child_id] = True
-					stack.append(child_id)
-
 	def execute(self, _id = None, _prompt = None, _workflow = None, _event = None, _mode = None, _update = None, **kwargs):
 		global BASE_EXECUTOR
 		global PROMPT_ID
-		expand_graph = None
+		result = {
+			"result": (True, )
+		}
+
 		if (isinstance(_event[0], dict) and not _event[0]["bool"]) or (isinstance(_event[0], bool) and not _event[0]):
 
 			if hasattr(execution, "recursive_execute"):
@@ -1576,33 +1619,45 @@ class Loop:
 							for curr_id in Loop.LOOP_DB[(PROMPT_ID, _id[0])]["exec"]:
 								if curr_id in BASE_EXECUTOR.outputs:
 									del BASE_EXECUTOR.outputs[curr_id]
-							success, error, ex = execution.recursive_execute(PromptServer.instance, _prompt[0], BASE_EXECUTOR.outputs, _id[0], {"extra_pnginfo": _workflow[0]}, set(), PROMPT_ID, BASE_EXECUTOR.outputs_ui, BASE_EXECUTOR.object_storage)
+							success, error, ex = execution.recursive_execute(server.PromptServer.instance, _prompt[0], BASE_EXECUTOR.outputs, _id[0], {"extra_pnginfo": _workflow[0]}, set(), PROMPT_ID, BASE_EXECUTOR.outputs_ui, BASE_EXECUTOR.object_storage)
 							if success is not True:
 								raise ex
 						del Loop.LOOP_DB[(PROMPT_ID, _id[0])]
 			else:
-				pass
-				# Implementation plan:
-					# Use `rawLink` to force everything in kwargs and get he raw link list value
-						# Set `rawLink` by hijacking `execution.get_input_data`
-					# Then replace flow_control with proper loop
+				dynprompt = kwargs["_dynprompt"][0]
+				del kwargs["_dynprompt"]
+				adj_id = []
+				contained = {}
+				upstream = {}
+				trace_node_back(_id[0], dynprompt, upstream)
+				if isinstance(_event[0], dict):
+					kwargs["_event"] = [[_event[0]["id"]]]
+				for curr_key in kwargs:
+					node_id = kwargs[curr_key][0][0]
+					adj_id.append(node_id)
+					trace_node_front(node_id, upstream, contained)
+					contained[_id[0]] = True
+					contained[node_id] = True
+				graph = comfy_graph_utils.GraphBuilder()
+				for node_id in contained:
+					graph.node(
+						dynprompt.get_node(node_id)["class_type"],
+						"_" if node_id == _id[0] else node_id
+					).set_override_display_id(node_id)
+				for node_id in contained:
+					node = graph.lookup_node("_" if node_id == _id[0] else node_id)
+					for k, v in dynprompt.get_node(node_id)["inputs"].items():
+						if comfy_graph_utils.is_link(v) and v[0] in contained:
+							parent = graph.lookup_node(v[0])
+							node.set_input(k, parent.out(v[1]))
+						else:
+							node.set_input(k, v)
 
-				# this_node = _dynprompt[0].get_node(_id[0])
-				# upstream = {}
-				# self.explore_dependencies(_id[0], _dynprompt[0], upstream)
-				# contained = {}
-				# open_node = flow_control[0]
-				# self.collect_contained(open_node, upstream, contained)
-				# contained[unique_id] = True
-				# contained[open_node] = True
-			
-			# Reference:
-			# https://github.com/BadCafeCode/execution-inversion-demo-comfyui/blob/main/flow_control.py
+				# [TODO] Buggy: road blocker until there's someway to force add node into execution_list
+				result["result"] = [graph.lookup_node("_").out(0)]
+				result["expand"] = graph.finalize()
 
-		return {
-			"expand": expand_graph,
-			"result": (True, )
-		}
+		return result
 
 	@classmethod
 	def IS_CHANGED(cls, *args, **kwargs):

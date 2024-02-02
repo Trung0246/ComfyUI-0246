@@ -748,8 +748,10 @@ export function highway_impl(nodeType, nodeData, app, shape_in, shape_out) {
 		});
 
 		lib0246.hijack(this, "onRemoved", function () {
-			if (!this.mark)
+			if (!this.mark) {
+				app.graph.extra["0246.__NAME__"] = app.graph.extra["0246.__NAME__"] ?? {};
 				delete app.graph.extra["0246.__NAME__"][this.self.id];
+			}
 		});
 	};
 
