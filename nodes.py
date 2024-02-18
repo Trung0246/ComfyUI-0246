@@ -981,7 +981,7 @@ lib0246.hijack(execution, "map_node_over_list", map_node_over_list_param_handle)
 
 CLASS_LIST = None
 
-if comfy_graph is not None and execution.EXPERIMENTAL_EXECUTION:
+if comfy_graph is not None:
 	temp_info = None
 
 	def get_input_info_func_handle(func, *args, **kwargs):
