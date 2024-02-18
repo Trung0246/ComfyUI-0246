@@ -85,7 +85,7 @@ def highway_impl(_prompt, _id, _workflow, _way_in, flag, kwargs):
 				_way_in[("data", name)] = lib0246.RevisionBatch(*kwargs[curr_input["name"]])
 			else:
 				_way_in[("data", name)] = kwargs[curr_input["name"]]
-			_way_in[("type", name)] = curr_input["type"]
+			_way_in[("type", name)] = curr_input.get("type", "*") # Sometimes this does not exist. Weird.
 
 	res = []
 
@@ -324,7 +324,7 @@ def junction_unpack_raw(
 			param_tuple = lib0246.dict_get(param_dict, param_key)
 			defaults = {} if len(param_tuple) == 1 else param_tuple[1]
 
-			regex_res: re.Match = regex_inst.match(param_key[-1])
+			regex_res = regex_inst.match(param_key[-1])
 			if regex_res is not None and regex_res.lastgroup == "_":
 				continue
 
@@ -926,7 +926,7 @@ PROMPT_COUNT = 0
 PROMPT_DATA = None
 PROMPT_ID = None
 PROMPT_EXTRA = None
-PROMPT_CHANGE = set()
+PROMPT_CHANGE = set() # [TODO] Support topoligical execution for this (by maybe hijack IS_CHANGED)
 
 PROMPT_IGNORE = set()
 PROMPT_IGNORE_FLAG = False
@@ -981,7 +981,7 @@ lib0246.hijack(execution, "map_node_over_list", map_node_over_list_param_handle)
 
 CLASS_LIST = None
 
-if comfy_graph is not None:
+if comfy_graph is not None and execution.EXPERIMENTAL_EXECUTION:
 	temp_info = None
 
 	def get_input_info_func_handle(func, *args, **kwargs):
@@ -1445,10 +1445,11 @@ class Hold:
 	
 	HOLD_DB = {}
 	
-	RETURN_TYPES = lib0246.ByPassTypeTuple(("*", ))
-	RETURN_NAMES = ("_data_out", )
+	RETURN_TYPES = lib0246.ByPassTypeTuple(("*", "*"))
+	RETURN_NAMES = ("_data_out", "_data_out_all")
 	INPUT_IS_LIST = True
-	OUTPUT_IS_LIST = (True, )
+	OUTPUT_IS_LIST = (True, True)
+	# OUTPUT_NODE = True
 	FUNCTION = "execute"
 	CATEGORY = "0246"
 
@@ -1485,24 +1486,28 @@ class Hold:
 		param_flag = _key_id is not None and len(_key_id) > 0
 
 		if _hold:
-			if "data" not in Hold.HOLD_DB[_id]:
-				Hold.HOLD_DB[_id]["data"] = []
-			if "track" not in Hold.HOLD_DB or Hold.HOLD_DB[_id]["track"] != PROMPT_ID:
-				Hold.HOLD_DB[_id]["track"] = PROMPT_ID
-
-			if _mode == "clear" or Hold.HOLD_DB[_id].get("mode", "") != _mode:
+			if (
+				_mode == "clear" or
+				Hold.HOLD_DB[_id].get("mode", "") != _mode or
+				"data" not in Hold.HOLD_DB[_id] or
+				Hold.HOLD_DB[_id].get("track", "") != PROMPT_ID
+			):
 				Hold.HOLD_DB[_id]["data"] = []
 				Hold.HOLD_DB[_id]["mode"] = _mode
+				Hold.HOLD_DB[_id]["track"] = PROMPT_ID
+				
+			match Hold.HOLD_DB[_key_id]["mode"]:
+				case "save":
+					for curr in Hold.HOLD_DB[Hold.HOLD_DB[_key_id]["id"]]["data"]:
+						Hold.HOLD_DB[_id]["data"].extend(curr)
+				# case "pin" if _mode == "pin":
+				# 	Hold.HOLD_DB[_key_id]["data"].clear()
+				case _:
+					Hold.HOLD_DB[_id]["data"].extend(_data_in)
 
-			if Hold.HOLD_DB[_key_id]["mode"] == "save":
-				for curr in Hold.HOLD_DB[Hold.HOLD_DB[_key_id]["id"]]["data"]:
-					Hold.HOLD_DB[_id]["data"].extend(curr)
-			else:
-				Hold.HOLD_DB[_id]["data"].extend(_data_in)
+			result = [Hold.HOLD_DB[_id]["data"], [None]]
 
-			result = [Hold.HOLD_DB[_id]["data"]]
-
-			ui_text += f"Passed, Size: {len(result)}, "
+			ui_text += f"Passed, Size: {len(result[0])}, "
 		elif param_flag:
 			mode_flag = _key_id in Hold.HOLD_DB and "mode" in Hold.HOLD_DB[_key_id]
 
@@ -1517,28 +1522,41 @@ class Hold:
 				Hold.HOLD_DB[_key_id]["mode"] == "save" and \
 				_key_id in _prompt and _prompt[_key_id]["inputs"]["_mode"] == "save"
 			) or (
-				"track" in Hold.HOLD_DB[_id] and \
-				Hold.HOLD_DB[_id]["track"] == PROMPT_ID
+				Hold.HOLD_DB[_id].get("track", "") == PROMPT_ID
 			):
 				result = [Hold.HOLD_DB[_key_id]["data"][-1]]
 			elif _data_in is not None and len(_data_in) > 0:
 				result = [_data_in]
 			else:
 				result = [[None]]
-			Hold.HOLD_DB[_id]["mode"] = _mode
-			Hold.HOLD_DB[_id]["track"] = PROMPT_ID
-			Hold.HOLD_DB[_id]["id"] = _key_id
 
-			ui_text += f"Key: {_key_id}, Size: {len(result)}, "
-		else:
-			if "track" not in Hold.HOLD_DB[_id] or Hold.HOLD_DB[_id]["track"] != PROMPT_ID:
+			Hold.HOLD_DB[_id]["id"] = _key_id
+			if Hold.HOLD_DB[_id].get("mode", "") != _mode or Hold.HOLD_DB[_id].get("track", "") != PROMPT_ID:
 				Hold.HOLD_DB[_id]["track"] = PROMPT_ID
 				Hold.HOLD_DB[_id]["data"] = []
 				Hold.HOLD_DB[_id]["mode"] = _mode
-			Hold.HOLD_DB[_id]["data"].append(_data_in)
-			result = [_data_in]
 
-			ui_text += f"Size: {len(result)}, "
+			if "data" in Hold.HOLD_DB[_key_id] and len(Hold.HOLD_DB[_key_id]["data"][0]) > 0 and _mode == "pin":
+				result.append(Hold.HOLD_DB[_key_id]["data"][0])
+			else:
+				result.append([None])
+
+			ui_text += f"Key: {_key_id}, Size: {len(result[0])}, "
+		else:
+			if Hold.HOLD_DB[_id].get("mode", "") != _mode or Hold.HOLD_DB[_id].get("track", "") != PROMPT_ID:
+				Hold.HOLD_DB[_id]["track"] = PROMPT_ID
+				Hold.HOLD_DB[_id]["data"] = []
+				Hold.HOLD_DB[_id]["mode"] = _mode
+
+			Hold.HOLD_DB[_id]["data"].append(_data_in)
+			result = [_data_in, [None]]
+
+			# [TODO] Support "pin" which is to store data across different prompt
+				# To nuke data implement right cick action then call API
+			# if _mode == "pin":
+			# 	result.append(Hold.HOLD_DB[_id]["data"])
+
+			ui_text += f"Size: {len(result[0])}, "
 
 		ui_text += f"Track: {Hold.HOLD_DB[_id]['track']}"
 
@@ -1654,6 +1672,7 @@ class Loop:
 							node.set_input(k, v)
 
 				# [TODO] Buggy: road blocker until there's someway to force add node into execution_list
+				# https://github.com/BadCafeCode/execution-inversion-demo-comfyui/blob/main/flow_control.py
 				result["result"] = [graph.lookup_node("_").out(0)]
 				result["expand"] = graph.finalize()
 
@@ -2007,7 +2026,7 @@ class BoxRange:
 
 		full_res = [None]
 
-		script_regex: re.Pattern = BoxRange.FUNC_REGEX(script_box_regex)
+		script_regex = BoxRange.FUNC_REGEX(script_box_regex)
 
 		batch_res = []
 		for i in range(len(BoxRange.FUNC_KEY_LIST)):
@@ -2284,10 +2303,10 @@ class ScriptPile:
 		}
 		count = 0
 		for curr_pin in pin_key:
-			curr_match_pin: re.Match = script_rule_regex.match("@" + curr_pin)
+			curr_match_pin = script_rule_regex.match("@" + curr_pin)
 			if curr_match_pin:
 				for (i, curr_out), curr_type in zip(enumerate(script_name), script_type):
-					curr_match_out: re.Match = script_rule_regex.match("%" + curr_out)
+					curr_match_out = script_rule_regex.match("%" + curr_out)
 					if curr_match_out and curr_match_out.lastgroup == curr_match_pin.lastgroup:
 						pile_data["data"][(curr_out, curr_type)] = (i, curr_pin, count)
 						count += 1
@@ -2930,6 +2949,9 @@ class Meta:
 
 # [TODO] "RandomInt" node can have linger seed if batch len is different
 # [TODO] NestedNodeBuilder prematurely replace prompt (./ComfyUI_NestedNodeBuilder/nodeMenu.js:45)
+# [TODO] Another node pack that are spescialized on optimizing simple-purpose nodes (see work.md)
+# [TODO] Cloud node when connected to Script, the Script node will detect is Cloud is allowed to be
+	# converted (by having a cloud object "cloud" exist)
 
 NODE_CLASS_MAPPINGS.update({
 	"0246.Highway": Highway,

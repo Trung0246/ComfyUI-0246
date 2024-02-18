@@ -10,6 +10,9 @@ import math
 import collections
 import random
 
+import PIL
+import numpy
+
 contextlib = __import__("contextlib")
 collection = type('CollectionModule', (), {})
 setattr(collection, "abc", __import__("collections.abc"))
@@ -615,6 +618,12 @@ def parse_parentheses(string):
 	if current_item and current_item.strip():
 		result.append(current_item.strip())
 	return result
+
+def tensor2pil(image):
+	return PIL.Image.fromarray(numpy.clip(255. * image.cpu().numpy().squeeze(), 0, 255).astype(numpy.uint8))
+
+def pil2tensor(image):
+	return torch.from_numpy(numpy.array(image).astype(numpy.float32) / 255.0).unsqueeze(0)
 
 ######################################################################################
 ######################################## LANG ########################################

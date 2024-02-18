@@ -1407,6 +1407,13 @@ export function widget_flex(node, widget, options = {}) {
 				this.self.flex_data.force_h = this.self.size[1];
 			}
 		});
+
+		lib0246.hijack(node, "onComputeVisible", function () {
+			if (this.mark && node?.flex_data && !node?.flex_data?.init) {
+				node.flex_data.init = true;
+				this.res = true;
+			}
+		});
 	}
 
 	widget.flex.hold_draw = [];
@@ -1566,9 +1573,11 @@ lib0246.hijack(LGraphNode.prototype, "addDOMWidget", function (name, type, eleme
 
 lib0246.hijack(LGraphCanvas.prototype, "computeVisibleNodes", function () {
 	if (this.mark)
-		for (const node of app.graph._nodes)
+		for (const node of app.graph._nodes) {
+			if (node?.onComputeVisible?.())
+				this.res.push(node);
 			if (node.flex_data || DOM_NODE_DB.has(node)) {
-				const hidden = this.res.indexOf(node) === -1;
+				const hidden = this.res.indexOf(node) === -1 || node.flags?.collapsed;
 				for (const w of node.widgets)
 					if (w.element) {
 						w.element.hidden = hidden;
@@ -1577,6 +1586,7 @@ lib0246.hijack(LGraphCanvas.prototype, "computeVisibleNodes", function () {
 							w.options.onHide?.(w);
 					}
 			}
+		}
 });
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -4693,12 +4703,12 @@ app.registerExtension({
 				const preview_widget = ComfyWidgets["STRING"](node, `cloud:${inputName}:preview`, ["STRING", {
 					multiline: true,
 				}], app).widget;
-				preview_widget.flex.share = 0.4;
+				preview_widget.flex.share = 1.5;
 
 				cloud_widget = node.addCustomWidget(CLOUD_WIDGET("CLOUD_DATA", `cloud:${inputName}`));
 				widget_flex(node, cloud_widget, {
 					ratio: 0,
-					share: 1.25,
+					share: 3.5,
 					min_h: 100,
 					center: true,
 					margin_x: 10,
@@ -4796,6 +4806,9 @@ app.registerExtension({
 		}
 	},
 });
+
+// [TODO] Copy-paste specific cloud through implement right-click menu
+// [TODO] CLoud scrolling
 
 // LiteGraph.LGraphCanvas.link_type_colors
 

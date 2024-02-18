@@ -14,16 +14,24 @@ app.registerExtension({
 				const DATA_TEMP = [];
 
 				lib0246.hijack(this, "onConnectionsChange", function () {
-					if (!this.mark) {
-						DATA_TEMP[0] = this.self.inputs[0].type;
-						DATA_TEMP[1] = this.self.outputs[0].type;
-						DATA_TEMP[2] = this.self.size[0];
-						this.self.inputs[0].type = this.self.outputs[0].type = this.self.widgets[0].value;
-					} else {
-						this.self.inputs[0].type = DATA_TEMP[0];
-						this.self.outputs[0].type = DATA_TEMP[1];
-						this.self.size[0] = DATA_TEMP[2];
-					}
+					if (arguments[2])
+						if (!this.mark) {
+							DATA_TEMP[0] = this.self.inputs[0].type;
+							DATA_TEMP[1] = this.self.outputs[0].type;
+							DATA_TEMP[2] = this.self.size[0];
+							DATA_TEMP[3] = app.graph.getNodeById(arguments[3]?.target_id)?.inputs?.[arguments[3]?.target_slot];
+							if (DATA_TEMP[3]?.type === "*") {
+								DATA_TEMP[4] = DATA_TEMP[3].type;
+								DATA_TEMP[3].type = this.self.widgets[0].value;
+							}
+							this.self.inputs[0].type = this.self.outputs[0].type = this.self.widgets[0].value;
+						} else {
+							this.self.inputs[0].type = DATA_TEMP[0];
+							this.self.outputs[0].type = DATA_TEMP[1];
+							this.self.size[0] = DATA_TEMP[2];
+							if (DATA_TEMP[3])
+								DATA_TEMP[3].type = DATA_TEMP[4];
+						}
 				});
 
 				const type_widget = this.addWidget("combo", "", "*", function(value, widget, node) {
@@ -244,7 +252,8 @@ app.registerExtension({
 				case "0246.Hold": {
 					wg0246.single_impl_pin(nodeType, [
 						"_data_in", LiteGraph.INPUT, LiteGraph.CIRCLE_SHAPE,
-						"_data_out", LiteGraph.OUTPUT, LiteGraph.GRID_SHAPE
+						"_data_out", LiteGraph.OUTPUT, LiteGraph.GRID_SHAPE,
+						"_data_out_all", LiteGraph.OUTPUT, LiteGraph.GRID_SHAPE
 					]);
 					wg0246.setup_log(nodeType.prototype);
 				} break;
