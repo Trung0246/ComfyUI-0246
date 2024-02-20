@@ -584,7 +584,7 @@ class CloudFunc:
 				curr_state["seed_mode"][i] = curr_mode
 				curr_state["rand"].seed(curr_seed)
 				if curr_mode != "fix":
-					PROMPT_CHANGE.add(state["id"])
+					PROMPT_UPDATE.add(state["id"])
 			else:
 				match curr_mode:
 					case "fix":
@@ -600,7 +600,7 @@ class CloudFunc:
 						pass
 			
 			if curr_mode != "fix":
-				PROMPT_CHANGE.add(state["id"])
+				PROMPT_UPDATE.add(state["id"])
 
 			if curr_order:
 				lib0246.sort_dict_of_list(hold, "index")
@@ -646,12 +646,12 @@ class CloudFunc:
 				curr_state["track_data"][i] = curr_offset
 				curr_state["track_step"][i] = curr_step
 				if curr_step != 0:
-					PROMPT_CHANGE.add(state["id"])
+					PROMPT_UPDATE.add(state["id"])
 			else:
 				curr_state["track_data"][i] += curr_step
 
 			if curr_step != 0:
-				PROMPT_CHANGE.add(state["id"])
+				PROMPT_UPDATE.add(state["id"])
 			
 			lib0246.sort_dict_of_list(hold, "index")
 			for i, track in zip(itertools.count(start=curr_state["track_data"][i], step=curr_space), range(curr_count)):
@@ -926,10 +926,24 @@ PROMPT_COUNT = 0
 PROMPT_DATA = None
 PROMPT_ID = None
 PROMPT_EXTRA = None
-PROMPT_CHANGE = set() # [TODO] Support topoligical execution for this (by maybe hijack IS_CHANGED)
 
+PROMPT_UPDATE = set()
 PROMPT_IGNORE = set()
 PROMPT_IGNORE_FLAG = False
+PROMPT_NODE_ID = None
+
+PROMPT_HIJACK = set()
+
+def is_changed_res_handle(result, *args, **kwargs):
+	global PROMPT_NODE_ID
+	if PROMPT_NODE_ID in PROMPT_IGNORE:
+		PROMPT_NODE_ID = None
+		return False
+	if PROMPT_NODE_ID in PROMPT_UPDATE:
+		PROMPT_UPDATE.remove(PROMPT_NODE_ID)
+		PROMPT_NODE_ID = None
+		return float("NaN")
+	return result
 
 def execute_param_handle(*args, **kwargs):
 	global PROMPT_ID
@@ -945,13 +959,27 @@ def execute_param_handle(*args, **kwargs):
 	return None, tuple(), {}
 
 def executor_res_handle(result, *args, **kwargs):
-	global PROMPT_CHANGE
+	global PROMPT_UPDATE
 	global PROMPT_IGNORE
 	global PROMPT_IGNORE_FLAG
-	for node_id in PROMPT_CHANGE:
+	global PROMPT_HIJACK
+	
+	for node_id in PROMPT_UPDATE:
 		if hasattr(BASE_EXECUTOR, "outputs") and node_id in BASE_EXECUTOR.outputs:
 			del BASE_EXECUTOR.outputs[node_id]
-	PROMPT_CHANGE.clear()
+		else:
+			curr_class_type = args[1][node_id]["class_type"]
+			if curr_class_type not in PROMPT_HIJACK:
+				PROMPT_HIJACK.add(curr_class_type)
+				curr_class = nodes.NODE_CLASS_MAPPINGS[curr_class_type]
+
+				if hasattr(curr_class, "IS_CHANGED"):
+					lib0246.hijack(curr_class, "IS_CHANGED", res_func=is_changed_res_handle)
+				else:
+					curr_class.IS_CHANGED = functools.partial(is_changed_res_handle, None)
+
+	if hasattr(BASE_EXECUTOR, "outputs"):
+		PROMPT_UPDATE.clear()
 	PROMPT_IGNORE.clear()
 	PROMPT_IGNORE_FLAG = False
 	return result
@@ -961,7 +989,9 @@ lib0246.hijack(execution.PromptExecutor, "execute", execute_param_handle, execut
 def get_input_data_param_handle(*args, **kwargs):
 	global PROMPT_IGNORE
 	global PROMPT_IGNORE_FLAG
-	if args[2] in PROMPT_IGNORE: # Node id
+	global PROMPT_NODE_ID
+	PROMPT_NODE_ID = args[2]
+	if args[2] in PROMPT_IGNORE:
 		PROMPT_IGNORE_FLAG = True
 	return None, tuple(), {}
 
@@ -981,7 +1011,8 @@ lib0246.hijack(execution, "map_node_over_list", map_node_over_list_param_handle)
 
 CLASS_LIST = None
 
-if comfy_graph is not None:
+if not hasattr(execution, "recursive_execute") or \
+	(hasattr(execution, "EXPERIMENTAL_EXECUTION") and execution.EXPERIMENTAL_EXECUTION):
 	temp_info = None
 
 	def get_input_info_func_handle(func, *args, **kwargs):
@@ -1000,7 +1031,7 @@ if comfy_graph is not None:
 			temp_info = {"rawLink": True}
 			return get_input_info_func_handle, tuple(), {}
 		elif args[0] == Switch:
-			temp_info = {"rawLink": True, "lazy": True}
+			temp_info = {"lazy": True}
 			return get_input_info_func_handle, tuple(), {}
 		elif args[0] in CLASS_LIST:
 			temp_info = {}
@@ -1449,7 +1480,7 @@ class Hold:
 	RETURN_NAMES = ("_data_out", "_data_out_all")
 	INPUT_IS_LIST = True
 	OUTPUT_IS_LIST = (True, True)
-	# OUTPUT_NODE = True
+	NOT_IDEMPOTENT = True # Since this node is similar to CheckpointLoaderSimple (to save resources)
 	FUNCTION = "execute"
 	CATEGORY = "0246"
 
@@ -1612,7 +1643,6 @@ class Loop:
 		}
 
 		if (isinstance(_event[0], dict) and not _event[0]["bool"]) or (isinstance(_event[0], bool) and not _event[0]):
-
 			if hasattr(execution, "recursive_execute"):
 				# [TODO] Less shitty way to remove _event from inputs
 				try:
@@ -1671,8 +1701,6 @@ class Loop:
 						else:
 							node.set_input(k, v)
 
-				# [TODO] Buggy: road blocker until there's someway to force add node into execution_list
-				# https://github.com/BadCafeCode/execution-inversion-demo-comfyui/blob/main/flow_control.py
 				result["result"] = [graph.lookup_node("_").out(0)]
 				result["expand"] = graph.finalize()
 
@@ -2769,9 +2797,14 @@ class Switch:
 	SWITCH_PROMPT = None
 
 	def check_lazy_status(self, _id = None, _prompt = None, _workflow = None, **kwargs):
-		# [TODO] This function generally return array of string of input names that will NOT execute
-			# Which means we return input name that will NOT be executed
-		return []
+		res = []
+		for key in kwargs:
+			key_data = key.split(":")
+			if key_data[0] == "switch":
+				temp_index = kwargs[key][0].split(":")[0]
+				if temp_index != "_":
+					res.append(kwargs[key][0])
+		return res
 
 	def execute(self, _id = None, _prompt = None, _workflow = None, **kwargs):
 		if isinstance(_id, list):
@@ -2827,13 +2860,14 @@ class Switch:
 				if temp_index != "_":
 					valid_input.add(temp_index)
 
-		for key in Switch.SWITCH_PROMPT[_id[0]]["inputs"]:
-			curr_index = key.split(":")[0]
-			if curr_index.isnumeric():
-				if curr_index in valid_input:
-					PROMPT_DATA[_id[0]]["inputs"][key] = Switch.SWITCH_PROMPT[_id[0]]["inputs"][key]
-				else:
-					del PROMPT_DATA[_id[0]]["inputs"][key]
+		if hasattr(execution, "recursive_execute"):
+			for key in Switch.SWITCH_PROMPT[_id[0]]["inputs"]:
+				curr_index = key.split(":")[0]
+				if curr_index.isnumeric():
+					if curr_index in valid_input:
+						PROMPT_DATA[_id[0]]["inputs"][key] = Switch.SWITCH_PROMPT[_id[0]]["inputs"][key]
+					else:
+						del PROMPT_DATA[_id[0]]["inputs"][key]
 		return " ".join(kwargs.keys())
 
 ######################################################################################

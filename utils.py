@@ -62,6 +62,9 @@ class WildDict(dict):
 
 	def __contains__(self, item):
 		return True
+	
+	def __getitem__(self, key):
+		return None
 
 class TautologyDictStr(dict):
 	def __init__(self, *args, **kwargs):
@@ -363,7 +366,10 @@ def cycle_iter(func, iterable, sentinel=object()):
 			continue
 		yield item
 
-def hijack(scope, name, param_func, res_func = None, out_scope = None):
+def stub_param_handle(*args, **kwargs):
+	return None, tuple(), {}
+
+def hijack(scope, name, param_func = stub_param_handle, res_func = None, out_scope = None):
 	old_func = getattr(scope, name)
 	def new_func(*args, **kwargs):
 		call_func, new_args, new_kwargs = param_func(*args, **kwargs)
