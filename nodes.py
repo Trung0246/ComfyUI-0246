@@ -1008,18 +1008,24 @@ def map_node_over_list_param_handle(*args, **kwargs):
 	return None, tuple(), {}
 
 def map_node_over_list_res_handle(result, *args, **kwargs):
+	input_iter = None
 	if hasattr(args[0], "INPUT_IS_LIST") and args[0].INPUT_IS_LIST:
 		try:
-			wrap_obj = next(filter(lambda _: isinstance(_, lib0246.Wrapper), result))
-			return [*map(lambda _: lib0246.Wrapper(_, wrap_obj._0246), result)]
+			input_iter = zip([({"_": next(filter(
+				lambda _: isinstance(_, lib0246.Wrapper),
+				sum(list(args[1][_] for _ in args[1]), [])
+			))}, None)], [0])
 		except StopIteration:
 			return result
+	else:
+		input_iter = zip(lib0246.dict_slice(args[1]), range(len(result)))
 	
-	for (curr, index_info), i in zip(lib0246.dict_slice(args[1]), range(len(result))):
+	for (curr, index_info), i in input_iter:
 		for key in curr:
 			if isinstance(curr[key], lib0246.Wrapper):
 				if isinstance(result[i], dict):
-					result[i]["result"] = tuple(lib0246.Wrapper(_, curr[key]._0246) for _ in result[i]["result"])
+					if "result" in result[i]:
+						result[i]["result"] = tuple(lib0246.Wrapper(_, curr[key]._0246) for _ in result[i]["result"])
 				else:
 					result[i] = tuple(lib0246.Wrapper(_, curr[key]._0246) for _ in result[i])
 				break
@@ -2370,7 +2376,10 @@ class ScriptPile:
 	@classmethod
 	def process(cls, pile_data, pipe_iter, curr_func, count, script, func, pin, res, **kwargs):
 		curr_count = 0
-		pin.update(next(pipe_iter)[0])
+		try:
+			pin.update(next(pipe_iter)[0])
+		except StopIteration:
+			return True
 
 		while True:
 			flag = 0
@@ -3027,6 +3036,8 @@ class Tag:
 	RETURN_NAMES = ("data_out", )
 	FUNCTION = "execute"
 	CATEGORY = "0246"
+
+	TAG_DB = {}
 
 	def execute(
 		self, _id = None, _prompt = None, _workflow = None,
