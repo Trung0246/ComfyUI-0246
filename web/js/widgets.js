@@ -4425,7 +4425,7 @@ export function cloud_menu(name, options) {
 						}
 					)).json();
 
-					cloud_widget.value = {};
+					cloud_widget.value = {}; // [TODO] There's "pin" cloud, do do not remove those
 					let prev_text_cloud = null, prev_weight_cloud = null;
 
 					for (let i = 0; i < parse_data.res.length; ++ i) {

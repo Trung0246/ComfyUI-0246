@@ -384,12 +384,11 @@ def hijack(scope, name, param_func = stub_param_handle, res_func = None, out_sco
 		return res_value if res_func is None else res_func(res_value, *final_args, **kwargs)
 	setattr(scope if out_scope is None else out_scope, name, new_func)
 
-WRAP_DATA = "_self_0246_data_dict"
-
 class Wrapper(wrapt.ObjectProxy):
-	def __init__(self, wrapped):
+	_0246 = None
+	def __init__(self, wrapped, data):
 		super().__init__(wrapped)
-		setattr(self, WRAP_DATA, {})
+		self._0246 = data
 
 def check_update(data):
 	if isinstance(data, list):
@@ -441,7 +440,7 @@ def beautify_structure(data, indent=0, mode=0, stop=False):
 		for item in data:
 			res_str += beautify_structure(item, indent + 1, mode)
 	else:
-		res_str += f"{indent_str}Type: {type(data).__name__}\n"
+		res_str += f"{indent_str}Type: {(type(data.__wrapped__).__name__ + ' (wrap)') if isinstance(data, Wrapper) else type(data).__name__}\n"
 		# Attempt to loop through each attribute
 		match mode:
 			case 1:
@@ -457,11 +456,11 @@ def beautify_structure(data, indent=0, mode=0, stop=False):
 						res_str += beautify_structure(item, indent + 1, mode)
 				except TypeError:
 					# If data is not iterable, just print its repr.
-					res_str += f"{indent_str}  Data: {repr(data)}\n"
+					res_str += f"{indent_str}  Data: {repr(data.__wrapped__) if isinstance(data, Wrapper) else repr(data)}\n"
 			case 2:
 				try:
 					if isinstance(data, (int, float, str, bool, type(None))):
-						res_str += f"{indent_str}  Data: {repr(data)}\n"
+						res_str += f"{indent_str}  Data: {repr(data.__wrapped__) if isinstance(data, Wrapper) else repr(data)}\n"
 					else:
 						for attr in dir(data):
 							attr_value = getattr(data, attr)

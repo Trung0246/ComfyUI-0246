@@ -173,6 +173,10 @@ app.registerExtension({
 				node.color = "#652069";
 				node.bgcolor = LGraphCanvas.node_colors.green.bgcolor;
 			} break;
+			case "0246.Tag": {
+				node.color = "#652069";
+				node.bgcolor = LGraphCanvas.node_colors.yellow.bgcolor;
+			} break;
 		}
 		// use_everywhere.js messing with colors :(
 		node._color = node.color;

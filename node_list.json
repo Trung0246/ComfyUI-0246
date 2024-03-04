@@ -17,5 +17,6 @@
 	"0246.ScriptRule": "Specify how Script node should be executed.",
 	"0246.ScriptPile": "Generic stacker execution mechanism for Script node.",
 	"0246.Script": "General execution mechanism.",
-	"0246.Cloud": "Prompt/Data/etc management made \"easy\"."
+	"0246.Cloud": "Prompt/Data/etc management made \"easy\".",
+	"0246.Tag": "Data tagging mechanism."
 }

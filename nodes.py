@@ -93,7 +93,7 @@ def highway_impl(_prompt, _id, _workflow, _way_in, flag, kwargs):
 		if curr_output.get("links") and curr_output["name"] not in lib0246.BLACKLIST:
 			name = _workflow["workflow"]["extra"]["0246.__NAME__"][_id]["outputs"][str(i)]["name"][1:]
 			if ("data", name) in _way_in:
-				if curr_output["type"] == "*" or curr_output["type"] == _way_in[("type", name)]:
+				if curr_output["type"] == "*" or _way_in[("type", name)] == "*" or curr_output["type"] == _way_in[("type", name)]:
 					res.append(_way_in[("data", name)])
 				else:
 					raise Exception(f"Output \"{name}\" is not defined or is not of type \"{curr_output['type']}\". Expected \"{_way_in[('type', name)]}\".")
@@ -1007,7 +1007,26 @@ def map_node_over_list_param_handle(*args, **kwargs):
 		return map_node_over_list_func_handle, tuple(), {}
 	return None, tuple(), {}
 
-lib0246.hijack(execution, "map_node_over_list", map_node_over_list_param_handle)
+def map_node_over_list_res_handle(result, *args, **kwargs):
+	if hasattr(args[0], "INPUT_IS_LIST") and args[0].INPUT_IS_LIST:
+		try:
+			wrap_obj = next(filter(lambda _: isinstance(_, lib0246.Wrapper), result))
+			return [*map(lambda _: lib0246.Wrapper(_, wrap_obj._0246), result)]
+		except StopIteration:
+			return result
+	
+	for (curr, index_info), i in zip(lib0246.dict_slice(args[1]), range(len(result))):
+		for key in curr:
+			if isinstance(curr[key], lib0246.Wrapper):
+				if isinstance(result[i], dict):
+					result[i]["result"] = tuple(lib0246.Wrapper(_, curr[key]._0246) for _ in result[i]["result"])
+				else:
+					result[i] = tuple(lib0246.Wrapper(_, curr[key]._0246) for _ in result[i])
+				break
+
+	return result
+
+lib0246.hijack(execution, "map_node_over_list", map_node_over_list_param_handle, map_node_over_list_res_handle)
 
 CLASS_LIST = None
 
@@ -1447,8 +1466,10 @@ class RandomInt:
 		}
 	
 	@classmethod
-	def IS_CHANGED(cls, *args, **kwargs):
-		return float("NaN")
+	def IS_CHANGED(cls, val = None, *args, **kwargs):
+		if ("rand", "sub", "add") in map(lambda _: _.strip(), val[0].split(",")):
+			return float("NaN")
+		return val[0]
 
 ######################################################################################
 
@@ -2977,6 +2998,118 @@ class Meta:
 			[type(data[0]).__name__]
 		)
 
+######################################################################################
+
+class Tag:
+	@classmethod
+	def INPUT_TYPES(cls):
+		return {
+			"required": {
+				"data_in": (lib0246.TautologyStr("*"), ),
+				"ops_mode": (["apply", "check", "remove", "clear"], ),
+				"neg_mode": ("BOOLEAN", ),
+				"tag_mode": (["exact", "regex"], ),
+				"tag": ("STRING", {
+					"default": "tag",
+					"multiline": True
+				}),
+			},
+			"hidden": {
+				"_prompt": "PROMPT",
+				"_id": "UNIQUE_ID",
+				"_workflow": "EXTRA_PNGINFO"
+			}
+		}
+	
+	INPUT_IS_LIST = True
+	OUTPUT_IS_LIST = (True, )
+	RETURN_TYPES = (lib0246.TautologyStr("*"), )
+	RETURN_NAMES = ("data_out", )
+	FUNCTION = "execute"
+	CATEGORY = "0246"
+
+	def execute(
+		self, _id = None, _prompt = None, _workflow = None,
+		data_in = None, ops_mode = None, neg_mode = None, tag = None, tag_mode = None,
+		**kwargs
+	):
+		if isinstance(_id, list):
+			_id = _id[0]
+		if isinstance(_prompt, list):
+			_prompt = _prompt[0]
+		if isinstance(_workflow, list):
+			_workflow = _workflow[0]
+
+		if isinstance(ops_mode, list):
+			ops_mode = ops_mode[0]
+		if isinstance(neg_mode, list):
+			neg_mode = neg_mode[0]
+		if isinstance(tag, list):
+			tag = tag[0]
+		if isinstance(tag_mode, list):
+			tag_mode = tag_mode[0]
+
+		if ops_mode == "apply":
+			res = []
+			for curr in data_in:
+				if isinstance(curr, lib0246.Wrapper):
+					curr_attr = getattr(curr, "_0246")
+					try:
+						curr_attr["id"][curr_attr["tag"].index(tag)] = _id
+					except ValueError:
+						curr_attr = {
+							"tag": curr_attr["tag"] + [tag],
+							"id": curr_attr["id"] + [_id]
+						}
+					res.append(lib0246.Wrapper(curr.__wrapped__, curr_attr))
+				else:
+					res.append(lib0246.Wrapper(curr, {
+						"tag": [tag],
+						"id": [_id]
+					}))
+			return (res, )
+
+		res = []
+		hold = []
+		for curr in data_in:
+			if isinstance(curr, lib0246.Wrapper):
+				curr_attr = getattr(curr, "_0246")
+				curr_index = -1
+				if tag_mode == "exact":
+					try:
+						curr_index = curr_attr["tag"].index(tag)
+					except ValueError:
+						pass
+				else:
+					for i, curr_tag in enumerate(curr_attr["tag"]):
+						if regex.search(tag, curr_tag):
+							curr_index = i
+							break
+				if curr_index > -1: # Intentional double ifs
+					if ops_mode == "remove":
+						if len(curr_attr["tag"]) - 1 == 0:
+							res.append(curr.__wrapped__)
+							hold.append(curr)
+							continue
+						res.append(lib0246.Wrapper(curr.__wrapped__, {
+							"tag": curr_attr["tag"][:curr_index] + curr_attr["tag"][curr_index + 1:],
+							"id": curr_attr["id"][:curr_index] + curr_attr["id"][curr_index + 1:]
+						}))
+						continue
+					elif ops_mode == "clear":
+						res.append(curr.__wrapped__)
+						hold.append(curr)
+						continue
+					res.append(curr)
+
+		if neg_mode:
+			return ([
+				_.__wrapped__ if
+				ops_mode == "clear" and isinstance(_, lib0246.Wrapper) else
+				_ for _ in data_in if _ not in hold and _ not in res
+			], )
+		return (res, )
+
 ########################################################################################
 ######################################## EXPORT ########################################
 ########################################################################################
@@ -2986,6 +3119,12 @@ class Meta:
 # [TODO] Another node pack that are spescialized on optimizing simple-purpose nodes (see work.md)
 # [TODO] Cloud node when connected to Script, the Script node will detect is Cloud is allowed to be
 	# converted (by having a cloud object "cloud" exist)
+# [TODO] New cloud object for Cloud node
+	# dupe: give data to "dupe" cloud object current position using data from same group
+	# flip: enable or disable specific cloud
+# [TODO] CastReroute keep disconnecting when loading workflow
+# [TODO] Hub node cannot be copy-pasted between each tabs
+# [TODO] Beautify input pin name got stuck if connected to CastReroute
 
 NODE_CLASS_MAPPINGS.update({
 	"0246.Highway": Highway,
@@ -3010,6 +3149,7 @@ NODE_CLASS_MAPPINGS.update({
 	"0246.Switch": Switch,
 	"0246.Meta": Meta,
 	# "0246.Pick": Pick,
+	"0246.Tag": Tag,
 })
 
 NODE_DISPLAY_NAME_MAPPINGS.update({
@@ -3035,6 +3175,7 @@ NODE_DISPLAY_NAME_MAPPINGS.update({
 	"0246.Switch": "Switch",
 	"0246.Meta": "Meta",
 	# "0246.Pick": "Pick",
+	"0246.Tag": "Tag",
 })
 
 print("\033[95m" + lib0246.HEAD_LOG + "Loaded all nodes and apis." + "\033[0m")
