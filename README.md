@@ -28,6 +28,7 @@ Misc:
     - Image display does not work for now, alongside with other 3rd party custom. But it should generally stable.
 - `CastReroute`: basically like `Reroute` but have ability to specify custom type. Useful when dealing with `Highway`, `Junction` and such.
 - `Cloud`: Prompt/Data/etc management made "easy".
+- `Tag`: Data tagging mechanism.
 
 Control Flow:
 - `Loop`: very hacky recursive repetition by messing with ComfyUI internals.
@@ -43,6 +44,16 @@ Control Flow:
 ---
 
 ### Update
+
+#### **2024-03-03**
+
+Added **Tag** node to allow better data management. Demo workflow:
+
+<details>
+    <p align="center">
+        <img src="https://github.com/Trung0246/ComfyUI-0246/assets/11626920/2f59fbd8-af0a-4784-aa53-299fffb7a7cf">
+    </p>
+</details>
 
 #### **2024-01-18**
 
