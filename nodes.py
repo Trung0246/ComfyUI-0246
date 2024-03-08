@@ -1404,6 +1404,7 @@ class RandomInt:
 	RETURN_NAMES = ("rand_int", )
 	INPUT_IS_LIST = True
 	OUTPUT_IS_LIST = (True, )
+	# NOT_IDEMPOTENT = True
 	FUNCTION = "execute"
 	CATEGORY = "0246"
 
@@ -1475,7 +1476,7 @@ class RandomInt:
 	
 	@classmethod
 	def IS_CHANGED(cls, val = None, *args, **kwargs):
-		if ("rand", "sub", "add") in map(lambda _: _.strip(), val[0].split(",")):
+		if any(x in map(lambda _: _.strip(), val[0].split(",")) for x in ("rand", "sub", "add")):
 			return float("NaN")
 		return val[0]
 
@@ -1486,7 +1487,7 @@ class Hold:
 	def INPUT_TYPES(cls):
 		return {
 			"required": {
-				"_mode": (["save", "clear", "pin"], ),
+				"_mode": (["save", "clear", "pin", "share"], ),
 				"_key_id": ("STRING", {
 					"default": "",
 					"multiline": False
@@ -1509,11 +1510,16 @@ class Hold:
 	RETURN_NAMES = ("_data_out", "_data_out_all")
 	INPUT_IS_LIST = True
 	OUTPUT_IS_LIST = (True, True)
-	NOT_IDEMPOTENT = True # Since this node is similar to CheckpointLoaderSimple (to save resources)
+	# NOT_IDEMPOTENT = True # Since this node is similar to CheckpointLoaderSimple (to save resources)
 	FUNCTION = "execute"
 	CATEGORY = "0246"
 
-	def execute(self, _data_in = None, _id = None, _prompt = None, _workflow = None, _hold = None, _mode = None, _key_id = None, **kwargs):
+	def execute(
+		self, _data_in = None,
+		_id = None, _prompt = None, _workflow = None,
+		_hold = None, _mode = None, _key_id = None,
+		**kwargs
+	):
 		for key in kwargs:
 			if key.startswith("_data_in"):
 				_data_in = kwargs[key]
@@ -1573,10 +1579,20 @@ class Hold:
 
 			if (
 				mode_flag and \
+				Hold.HOLD_DB[_key_id]["mode"] == "share" and \
+				_key_id in _prompt and _prompt[_key_id]["inputs"]["_mode"] == "share"
+			):
+				result = Hold.HOLD_DB[_key_id]["data"] if \
+					"data" in Hold.HOLD_DB[_key_id] and \
+					len(Hold.HOLD_DB[_key_id]["data"]) > 0 and \
+					Hold.HOLD_DB[_key_id].get("track") != PROMPT_ID else \
+					[[None]]
+			elif (
+				mode_flag and \
 				Hold.HOLD_DB[_key_id]["mode"] == "pin" and \
 				_key_id in _prompt and _prompt[_key_id]["inputs"]["_mode"] == "pin"
 			):
-				result = [[None]] if _data_in is None or len(_data_in) == 0 else _data_in
+				result = [[None]] if _data_in is None or len(_data_in) == 0 else [_data_in]
 			elif (
 				mode_flag and \
 				Hold.HOLD_DB[_key_id]["mode"] == "save" and \
@@ -1597,10 +1613,9 @@ class Hold:
 				Hold.HOLD_DB[_id]["mode"] = _mode
 
 			if "data" in Hold.HOLD_DB[_key_id]:
-				if len(Hold.HOLD_DB[_key_id]["data"]) > 0 and len(Hold.HOLD_DB[_key_id]["data"][0]) > 0 and _mode == "pin":
-					result.append(Hold.HOLD_DB[_key_id]["data"][0])
+				result.append(sum(Hold.HOLD_DB[_key_id]["data"], []))
 			else:
-				result.append([None])
+				result.append(sum(Hold.HOLD_DB[_id]["data"], []))
 
 			ui_text += f"Key: {_key_id}, Size: {len(result[0])}, "
 		else:
@@ -1610,12 +1625,10 @@ class Hold:
 				Hold.HOLD_DB[_id]["mode"] = _mode
 
 			Hold.HOLD_DB[_id]["data"].append(_data_in)
-			result = [_data_in, [None]]
+			result = [_data_in, sum(Hold.HOLD_DB[_id]["data"], [])]
 
-			# [TODO] Support "pin" which is to store data across different prompt
-				# To nuke data implement right cick action then call API
-			# if _mode == "pin":
-			# 	result.append(Hold.HOLD_DB[_id]["data"])
+			if _mode == "share":
+				Hold.HOLD_DB[_id]["data"] = [_data_in]
 
 			ui_text += f"Size: {len(result[0])}, "
 
