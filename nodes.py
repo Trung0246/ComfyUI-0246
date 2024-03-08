@@ -1009,7 +1009,9 @@ def map_node_over_list_param_handle(*args, **kwargs):
 
 def map_node_over_list_res_handle(result, *args, **kwargs):
 	input_iter = None
-	if hasattr(args[0], "INPUT_IS_LIST") and args[0].INPUT_IS_LIST:
+	if hasattr(args[0], "WRAPPER"):
+		return getattr(args[0], "WRAPPER")(result, args, kwargs)
+	elif hasattr(args[0], "INPUT_IS_LIST") and args[0].INPUT_IS_LIST:
 		try:
 			input_iter = zip([({"_": next(filter(
 				lambda _: isinstance(_, lib0246.Wrapper),
@@ -1594,8 +1596,9 @@ class Hold:
 				Hold.HOLD_DB[_id]["data"] = []
 				Hold.HOLD_DB[_id]["mode"] = _mode
 
-			if "data" in Hold.HOLD_DB[_key_id] and len(Hold.HOLD_DB[_key_id]["data"][0]) > 0 and _mode == "pin":
-				result.append(Hold.HOLD_DB[_key_id]["data"][0])
+			if "data" in Hold.HOLD_DB[_key_id]:
+				if len(Hold.HOLD_DB[_key_id]["data"]) > 0 and len(Hold.HOLD_DB[_key_id]["data"][0]) > 0 and _mode == "pin":
+					result.append(Hold.HOLD_DB[_key_id]["data"][0])
 			else:
 				result.append([None])
 
