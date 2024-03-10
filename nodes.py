@@ -1553,10 +1553,9 @@ class Hold:
 
 		if _hold:
 			if (
-				_mode == "clear" or
+				(_mode == "clear" and Hold.HOLD_DB[_id].get("track", "") != PROMPT_ID) or
 				Hold.HOLD_DB[_id].get("mode", "") != _mode or
-				"data" not in Hold.HOLD_DB[_id] or
-				Hold.HOLD_DB[_id].get("track", "") != PROMPT_ID
+				"data" not in Hold.HOLD_DB[_id]
 			):
 				Hold.HOLD_DB[_id]["data"] = []
 				Hold.HOLD_DB[_id]["mode"] = _mode
@@ -1589,8 +1588,7 @@ class Hold:
 					[[None]]
 			elif (
 				mode_flag and \
-				Hold.HOLD_DB[_key_id]["mode"] == "pin" and \
-				_key_id in _prompt and _prompt[_key_id]["inputs"]["_mode"] == "pin"
+				Hold.HOLD_DB[_id]["mode"] == "pin"
 			):
 				result = [[None]] if _data_in is None or len(_data_in) == 0 else [_data_in]
 			elif (
@@ -1609,13 +1607,12 @@ class Hold:
 			Hold.HOLD_DB[_id]["id"] = _key_id
 			if Hold.HOLD_DB[_id].get("mode", "") != _mode or Hold.HOLD_DB[_id].get("track", "") != PROMPT_ID:
 				Hold.HOLD_DB[_id]["track"] = PROMPT_ID
-				Hold.HOLD_DB[_id]["data"] = []
 				Hold.HOLD_DB[_id]["mode"] = _mode
 
 			if "data" in Hold.HOLD_DB[_key_id]:
 				result.append(sum(Hold.HOLD_DB[_key_id]["data"], []))
 			else:
-				result.append(sum(Hold.HOLD_DB[_id]["data"], []))
+				result.append([None])
 
 			ui_text += f"Key: {_key_id}, Size: {len(result[0])}, "
 		else:
