@@ -10,6 +10,6 @@ Repository = "https://github.com/Trung0246/ComfyUI-0246"
 #  Used by Comfy Registry https://comfyregistry.org
 
 [tool.comfy]
-PublisherId = ""
+PublisherId = "trung0246"
 DisplayName = "ComfyUI-0246"
 Icon = ""
