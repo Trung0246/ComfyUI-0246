@@ -1475,8 +1475,8 @@ export function DOM_WIDGET(data_type, data_name, element, options = {}) {
 			Object.assign(this.element.style, {
 				transformOrigin: "0 0",
 				transform: new DOMMatrix().scaleSelf(transform.a, transform.d),
-				left: `${transform.a + transform.e}px`,
-				top: `${transform.d + transform.f}px`,
+				left: `${transform.a + transform.e + elem_rect.left}px`,
+				top: `${transform.d + transform.f + elem_rect.top}px`,
 				width: `${widget.flex.hold_draw[2]}px`,
 				height: `${widget.flex.hold_draw[3]}px`,
 				position: "absolute",
