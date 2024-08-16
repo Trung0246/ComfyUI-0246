@@ -40,8 +40,8 @@ comfy_graph = None
 comfy_graph_utils = None
 
 try:
-	import comfy.graph as temp_graph
-	import comfy.graph_utils as temp_graph_utils
+	import comfy_execution.graph as temp_graph
+	import comfy_execution.graph_utils as temp_graph_utils
 	comfy_graph = temp_graph
 	comfy_graph_utils = temp_graph_utils
 	print("\033[95m" + f"{lib0246.HEAD_LOG}Topological Execution is detected." + "\033[0m")
