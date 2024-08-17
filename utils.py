@@ -80,9 +80,6 @@ class OutputHandle(list):
 	def __init__(self, iter):
 		self.iter = iter
 
-	def __iter__(self):
-		return self.iter()
-
 TautologyRest = OutputHandle(lambda: itertools.chain([False], itertools.cycle([True])))
 ContradictRest = OutputHandle(lambda: itertools.chain([True], itertools.cycle([False])))
 TautologyAll = OutputHandle(lambda: itertools.cycle([True]))

@@ -1094,7 +1094,7 @@ if not hasattr(execution, "recursive_execute") or \
 
 	def merge_result_data_func_handle(func, *args, **kwargs):
 		old_output_is_list = args[1].OUTPUT_IS_LIST
-		args[1].OUTPUT_IS_LIST = itertools.islice(args[1].OUTPUT_IS_LIST, len(args[0][0]))
+		args[1].OUTPUT_IS_LIST = itertools.islice(args[1].OUTPUT_IS_LIST.iter(), len(args[0][0]))
 		res = func(*args, **kwargs)
 		args[1].OUTPUT_IS_LIST = old_output_is_list
 		return res
