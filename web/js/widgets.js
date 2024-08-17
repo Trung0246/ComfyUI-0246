@@ -4576,7 +4576,7 @@ app.registerExtension({
 					// }
 					// calc_flex(node, node.size[0]);
 					// console.log(node.size);
-					node.hubSize();
+					// node.hubSize();
 					// app.canvas.setDirty(true);
 				}
 			}

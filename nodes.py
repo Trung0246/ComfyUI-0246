@@ -29,21 +29,25 @@ from . import utils as lib0246
 import aiohttp.web
 import natsort
 import regex
+import torch
 
 # ComfyUI
 import server
 import execution
 import nodes
 import comfy.sd1_clip
+import comfy.samplers
 
 comfy_graph = None
 comfy_graph_utils = None
+wat = None
 
 try:
-	import comfy_execution.graph as temp_graph
-	import comfy_execution.graph_utils as temp_graph_utils
-	comfy_graph = temp_graph
-	comfy_graph_utils = temp_graph_utils
+	# import comfy.graph as temp_graph
+	# import comfy.graph_utils as temp_graph_utils
+	wat = wat = __import__("wat.inspection.inspection").inspection.inspection.inspect_format
+	comfy_graph = __import__("comfy_execution.graph").graph
+	comfy_graph_utils = __import__("comfy_execution.graph_utils").graph_utils
 	print("\033[95m" + f"{lib0246.HEAD_LOG}Topological Execution is detected." + "\033[0m")
 except ModuleNotFoundError:
 	pass
@@ -90,10 +94,12 @@ def highway_impl(_prompt, _id, _workflow, _way_in, flag, kwargs):
 	res = []
 
 	for i, curr_output in enumerate(curr_node["outputs"]):
-		if curr_output.get("links") and curr_output["name"] not in lib0246.BLACKLIST:
+		if curr_output["name"] not in lib0246.BLACKLIST:
 			name = _workflow["workflow"]["extra"]["0246.__NAME__"][_id]["outputs"][str(i)]["name"][1:]
 			if ("data", name) in _way_in:
-				if curr_output["type"] == "*" or _way_in[("type", name)] == "*" or curr_output["type"] == _way_in[("type", name)]:
+				if curr_output.get("links") is None:
+					res.append([None])
+				elif curr_output["type"] == "*" or _way_in[("type", name)] == "*" or curr_output["type"] == _way_in[("type", name)]:
 					res.append(_way_in[("data", name)])
 				else:
 					raise Exception(f"Output \"{name}\" is not defined or is not of type \"{curr_output['type']}\". Expected \"{_way_in[('type', name)]}\".")
@@ -542,16 +548,6 @@ def group_query_inst(group_dict, group_id, group_list = None, inst_curr = None):
 class CloudFunc:
 	def __init__(self, kind):
 		self.func = getattr(CloudFunc, f"func_{kind}")
-
-	@classmethod
-	def func_text(cls, obj, hold, state):
-		return obj.inst[state["index"]]["widgets_values"][0]
-	
-	@classmethod
-	def func_weight(cls, obj, hold, state):
-		hold["data"] = list(map(lambda _: f"({re.sub(STR_BRACKET, STR_REPLACE, _[0])}: {lib0246.snap_place(_[1], round, 2)})", itertools.product(hold["data"], obj.inst[state["index"]]["widgets_values"][0])))
-		state["index"] = None
-		return []
 	
 	@classmethod
 	def func_rand(cls, obj, hold, state):
@@ -661,6 +657,16 @@ class CloudFunc:
 			hold["index"][i] = None
 
 		return res
+
+	@classmethod
+	def func_text(cls, obj, hold, state):
+		return obj.inst[state["index"]]["widgets_values"][0]
+	
+	@classmethod
+	def func_weight(cls, obj, hold, state):
+		hold["data"] = list(map(lambda _: f"({re.sub(STR_BRACKET, STR_REPLACE, _[0])}: {lib0246.snap_place(_[1], round, 2)})", itertools.product(hold["data"], obj.inst[state["index"]]["widgets_values"][0])))
+		state["index"] = None
+		return []
 	
 	@classmethod
 	def func_merge(cls, obj, hold, state):
@@ -687,6 +693,18 @@ class CloudData:
 		self.order = None
 		self.id = None
 
+	@classmethod
+	def full_dict_to_data(cls, curr_id, inst_list, group_dict, db_dict = None, kwargs = None):
+		dict_dupe = dict(filter(lambda item: item[0].split(":")[0].isnumeric(), kwargs.items()))
+		if len(dict_dupe) == 0:
+			return [
+				CloudData().dict_to_data(curr_id, inst_list, group_dict, db_dict, dict_dupe)
+			]
+		return [
+			CloudData().dict_to_data(curr_id, inst_list, group_dict, db_dict, dupe[0]) for dupe in
+				lib0246.dict_product(dict_dupe)
+		]
+
 	def dict_to_data(self, curr_id, inst_list, group_dict, db_dict = None, kwargs = None):
 		if kwargs is not None:
 			self.track = PROMPT_COUNT
@@ -694,6 +712,7 @@ class CloudData:
 		if db_dict is not None:
 			self.db.update(db_dict)
 		self.db[curr_id] = self.db.get(curr_id, {})
+
 		for inst in inst_list:
 			old_id = inst["id"]
 			new_id = str(uuid.uuid4())
@@ -703,7 +722,7 @@ class CloudData:
 					for key in kwargs:
 						curr_int = key.split(":")[0]
 						if curr_int.isnumeric() and int(curr_int) == inst["widgets_values"][0]:
-							curr_value = kwargs[key][0]
+							curr_value = kwargs[key]
 							break
 					match curr_value:
 						case CloudData():
@@ -778,6 +797,8 @@ class CloudData:
 							break
 					else:
 						self.db[curr_id][new_id] = old_id
+
+		return self
 
 	@classmethod
 	def text_to_dict(cls, text):
@@ -1071,6 +1092,28 @@ if not hasattr(execution, "recursive_execute") or \
 	lib0246.hijack(comfy_graph, "get_input_info", get_input_info_param_handle, get_input_info_res_handle)
 	lib0246.hijack(execution, "get_input_info", get_input_info_param_handle, get_input_info_res_handle)
 
+	def merge_result_data_func_handle(func, *args, **kwargs):
+		old_output_is_list = args[1].OUTPUT_IS_LIST
+		args[1].OUTPUT_IS_LIST = itertools.islice(args[1].OUTPUT_IS_LIST, len(args[0][0]))
+		res = func(*args, **kwargs)
+		args[1].OUTPUT_IS_LIST = old_output_is_list
+		return res
+
+	def merge_result_data_param_handle(*args, **kwargs):
+		if hasattr(args[1], "OUTPUT_IS_LIST") and isinstance(args[1].OUTPUT_IS_LIST, lib0246.OutputHandle):
+			return merge_result_data_func_handle, tuple(), {}
+		return None, tuple(), {}
+	
+	lib0246.hijack(execution, "merge_result_data", merge_result_data_param_handle)
+
+DEFAULT_JSON_ENCODER = json.JSONEncoder.default
+def wrapper_encoder_func_handle(self, obj):
+	if isinstance(obj, lib0246.Wrapper):
+		return obj.__wrapped__
+	return DEFAULT_JSON_ENCODER(self, obj)
+
+json.JSONEncoder.default = wrapper_encoder_func_handle
+
 #####################################################################################
 ######################################## API ########################################
 #####################################################################################
@@ -1201,7 +1244,7 @@ class HighwayBatch:
 	RETURN_TYPES = lib0246.ByPassTypeTuple(("HIGHWAY_PIPE", ))
 	RETURN_NAMES = lib0246.ByPassTypeTuple(("_way_out", ))
 	INPUT_IS_LIST = True
-	OUTPUT_IS_LIST = lib0246.TautologyRest()
+	OUTPUT_IS_LIST = lib0246.TautologyRest
 	FUNCTION = "execute"
 	CATEGORY = "0246"
 
@@ -1292,7 +1335,7 @@ class JunctionBatch:
 			# To prevent people being stupid and we force them to use correct combination
 
 		if _mode == "batch":
-			setattr(JunctionBatch, "OUTPUT_IS_LIST", lib0246.TautologyRest())
+			setattr(JunctionBatch, "OUTPUT_IS_LIST", lib0246.TautologyRest)
 			return junction_impl(self, _id, _prompt, _workflow, gather_junction_impl(_junc_in, _id), _offset, _in_mode = True, _out_mode = True, _offset_mode = True, **kwargs)
 		else:
 			try:
@@ -1300,6 +1343,8 @@ class JunctionBatch:
 			except AttributeError:
 				pass
 			return junction_impl(self, _id, _prompt, _workflow, gather_junction_impl(_junc_in, _id), _offset, _in_mode = True, _out_mode = False, **kwargs)
+
+		# [TODO] "hoard" (keep batch when in) and "spread" (keep batch when out, else will spread to junction list and behave like "pluck" or "batch")
 
 	@classmethod
 	def IS_CHANGED(cls, *args, **kwargs):
@@ -1346,6 +1391,18 @@ class Count:
 		temp = Count.COUNT_DB[_id]
 		Count.COUNT_DB[_id] += 1
 
+		# [TODO] Syntax:
+		# @12, 56, 99, ... # Specific number
+		# (0, 9] # 0 to 9 (exclusive, inclusive)
+		# [0, 9) # 0 to 9 (inclusive, exclusive)
+		# [0, 9] # 0 to 9 (inclusive)
+		# (0, 9) # 0 to 9 (exclusive)
+		# [0, 9, 2] # 0 to 9 (inclusive) with step 2
+		# (0, 9, 2) # 0 to 9 (exclusive) with step 2
+		# [0, 9, 2) # 0 to 9 (inclusive, exclusive) with step 2
+		# (0, 9, 2] # 0 to 9 (exclusive, inclusive) with step 2
+		# @[0, 9], (1, 4, -2), 3, ... # Multiple ranges and numbers
+		
 		return {
 			"ui": {
 				"text": [f"Count: {temp}, Track: {Count.COUNT_ID}"]
@@ -1561,7 +1618,9 @@ class Hold:
 				Hold.HOLD_DB[_id]["mode"] = _mode
 				Hold.HOLD_DB[_id]["track"] = PROMPT_ID
 				
-			match Hold.HOLD_DB[_key_id]["mode"]:
+			# match Hold.HOLD_DB[_key_id]["mode"]:
+			# _key_id can be invalid key
+			match Hold.HOLD_DB.get(_key_id, {}).get("mode", ""):
 				case "save":
 					for curr in Hold.HOLD_DB[Hold.HOLD_DB[_key_id]["id"]]["data"]:
 						Hold.HOLD_DB[_id]["data"].extend(curr)
@@ -1570,7 +1629,7 @@ class Hold:
 				case _:
 					Hold.HOLD_DB[_id]["data"].extend(_data_in)
 
-			result = [Hold.HOLD_DB[_id]["data"], [None]]
+			result = [Hold.HOLD_DB[_id]["data"], sum(Hold.HOLD_DB.get(_key_id, {}).get("data", [[None]]), [])]
 
 			ui_text += f"Passed, Size: {len(result[0])}, "
 		elif param_flag:
@@ -1588,7 +1647,7 @@ class Hold:
 					[[None]]
 			elif (
 				mode_flag and \
-				Hold.HOLD_DB[_id]["mode"] == "pin"
+				Hold.HOLD_DB[_id].get("mode", "") == "pin"
 			):
 				result = [[None]] if _data_in is None or len(_data_in) == 0 else [_data_in]
 			elif (
@@ -1839,7 +1898,7 @@ class Beautify:
 				"data": (lib0246.TautologyStr("*"), ),
 			},
 			"required": {
-				"mode": (["basic", "more", "full", "json"], ),
+				"mode": (["basic", "more", "full", "json", "wat"], ),
 			},
 		}
 	
@@ -1870,6 +1929,8 @@ class Beautify:
 					res_str = json.dumps(data, indent=2)
 				except TypeError:
 					res_str = "Cannot convert to JSON."
+			case "wat":
+				res_str = str(wat(data, dunder=True, long=True))
 		
 		if res_str is None:
 			res_str = lib0246.beautify_structure(data, 0, raw_mode)
@@ -1903,17 +1964,24 @@ class Stringify:
 	RETURN_TYPES = ("STRING", )
 	RETURN_NAMES = ("_str", )
 	INPUT_IS_LIST = True
+	OUTPUT_IS_LIST = (True, )
 	FUNCTION = "execute"
 	CATEGORY = "0246"
 
 	def execute(self, _delimiter = None, _mode = None, _id = None, _prompt = None, _workflow = None, **kwargs):
 		res = []
+		cloud_delim = None
+		_delimiter = copy.copy(_delimiter)
 
 		for value in kwargs.values():
 			if isinstance(value, list):
 				for item in value:
 					if isinstance(item, CloudData) and (_mode[0] == "basic" or _mode[0] == "value"):
-						item = _delimiter[0].join(map(str, item.data_eval(_id[0], _prompt[0], _workflow[0])))
+						if cloud_delim is None:
+							if _delimiter[-1] is None:
+								raise Exception("Last delimiter in delimiter batch cannot be None if Cloud is present.")
+							cloud_delim = _delimiter.pop()
+						item = cloud_delim.join(map(str, item.data_eval(_id[0], _prompt[0], _workflow[0])))
 					elif _mode[0] == "basic" and type(item).__str__ is object.__str__:
 						continue
 					elif _mode[0] == "value":
@@ -1925,8 +1993,9 @@ class Stringify:
 							res.append(item_str)
 					except Exception:
 						continue
-
-		res = _delimiter[0].join(res)
+		
+		if _delimiter is not None and len(_delimiter) > 0 and all(isinstance(_, str) for _ in _delimiter):
+			res = [curr.join(res) for curr in _delimiter]
 		return {
 			"ui": {
 				"text": [res]
@@ -1973,7 +2042,7 @@ class BoxRange:
 	RETURN_TYPES = lib0246.ByPassTypeTuple(("*", ))
 	RETURN_NAMES = lib0246.ByPassTypeTuple(("_data", ))
 	INPUT_IS_LIST = True
-	OUTPUT_IS_LIST = lib0246.TautologyRest()
+	OUTPUT_IS_LIST = lib0246.TautologyRest
 	FUNCTION = "execute"
 	CATEGORY = "0246"
 
@@ -2189,7 +2258,7 @@ class ScriptNode:
 	RETURN_TYPES = (lib0246.TautologyStr("*"), "SCRIPT_DATA", "SCRIPT_DATA", "SCRIPT_DATA")
 	RETURN_NAMES = ("pipe_out", "script_pin_data", "script_exec_data", "script_res_data")
 	INPUT_IS_LIST = False
-	OUTPUT_IS_LIST = lib0246.ContradictAll()
+	OUTPUT_IS_LIST = lib0246.ContradictAll
 	FUNCTION = "execute"
 	CATEGORY = "0246"
 
@@ -2579,7 +2648,7 @@ class Script:
 	RETURN_TYPES = lib0246.ByPassTypeTuple(("SCRIPT_PIPE", ))
 	RETURN_NAMES = lib0246.ByPassTypeTuple(("_script_out", ))
 	INPUT_IS_LIST = True
-	OUTPUT_IS_LIST = lib0246.TautologyRest()
+	OUTPUT_IS_LIST = lib0246.TautologyRest
 	FUNCTION = "execute"
 	CATEGORY = "0246"
 
@@ -2695,7 +2764,7 @@ class Hub:
 	
 	RETURN_TYPES = lib0246.TautologyDictStr()
 	INPUT_IS_LIST = True
-	OUTPUT_IS_LIST = lib0246.TautologyAll()
+	OUTPUT_IS_LIST = lib0246.TautologyAll
 	FUNCTION = "execute"
 	CATEGORY = "0246"
 
@@ -2801,19 +2870,17 @@ class Cloud:
 	RETURN_TYPES = lib0246.ByPassTypeTuple(("CLOUD_PIPE", ))
 	RETURN_NAMES = lib0246.ByPassTypeTuple(("_cloud_out", ))
 	INPUT_IS_LIST = True
-	OUTPUT_IS_LIST = lib0246.TautologyAll()
+	OUTPUT_IS_LIST = lib0246.TautologyAll
 	FUNCTION = "execute"
 	CATEGORY = "0246"
 
 	def execute(self, _id = None, _prompt = None, _workflow = None, **kwargs):
-		res = CloudData()
 		curr_cloud = copy.deepcopy(kwargs["cloud:cloud"][0])
-		res.dict_to_data(_id[0], curr_cloud["inst"], curr_cloud["group"], None, kwargs)
 		return {
 			"ui": {
 				"text": [""]
 			},
-			"result": [[res]]
+			"result": [[*CloudData.full_dict_to_data(_id[0], curr_cloud["inst"], curr_cloud["group"], None, kwargs)]]
 		}
 
 ######################################################################################
@@ -2832,7 +2899,7 @@ class Switch:
 	
 	RETURN_TYPES = lib0246.TautologyDictStr()
 	INPUT_IS_LIST = True
-	OUTPUT_IS_LIST = lib0246.TautologyAll()
+	OUTPUT_IS_LIST = lib0246.TautologyAll
 	FUNCTION = "execute"
 	CATEGORY = "0246"
 
@@ -2894,7 +2961,10 @@ class Switch:
 		global PROMPT_ID
 		if Switch.SWITCH_TRACK is None or Switch.SWITCH_TRACK != PROMPT_ID:
 			Switch.SWITCH_TRACK = PROMPT_ID
-			Switch.SWITCH_PROMPT = copy.deepcopy(PROMPT_DATA)
+			Switch.SWITCH_PROMPT = copy.deepcopy(
+				PROMPT_DATA.__wrapped__ if isinstance(PROMPT_DATA, lib0246.Wrapper)
+				else PROMPT_DATA
+			)
 
 		valid_input = set()
 		for key in kwargs:
@@ -2916,6 +2986,7 @@ class Switch:
 ######################################################################################
 
 class Meta:
+
 	@classmethod
 	def INPUT_TYPES(cls):
 		return {
@@ -2933,7 +3004,7 @@ class Meta:
 	RETURN_TYPES = ("INT", "INT", "STRING", "STRING", "STRING", "STRING")
 	RETURN_NAMES = ("batch_size", "data_size", "key_list", "type_list", "comfy_type", "py_type")
 	INPUT_IS_LIST = True
-	OUTPUT_IS_LIST = lib0246.TautologyAll()
+	OUTPUT_IS_LIST = lib0246.TautologyAll
 	FUNCTION = "execute"
 	CATEGORY = "0246"
 
@@ -3149,6 +3220,8 @@ class Tag:
 # [TODO] CastReroute keep disconnecting when loading workflow
 # [TODO] Hub node cannot be copy-pasted between each tabs
 # [TODO] Beautify input pin name got stuck if connected to CastReroute
+# [TODO] Copy-pasting Cloud with "pin" does not retain position
+# [TODO] Find ways to hide control widgets in Hub
 
 NODE_CLASS_MAPPINGS.update({
 	"0246.Highway": Highway,
@@ -3162,7 +3235,6 @@ NODE_CLASS_MAPPINGS.update({
 	"0246.Beautify": Beautify,
 	"0246.Stringify": Stringify,
 	"0246.Merge": Merge,
-	# "0246.Convert": Convert,
 	"0246.BoxRange": BoxRange,
 	"0246.ScriptNode": ScriptNode,
 	"0246.ScriptRule": ScriptRule,
@@ -3172,7 +3244,6 @@ NODE_CLASS_MAPPINGS.update({
 	"0246.Cloud": Cloud,
 	"0246.Switch": Switch,
 	"0246.Meta": Meta,
-	# "0246.Pick": Pick,
 	"0246.Tag": Tag,
 })
 
@@ -3188,7 +3259,6 @@ NODE_DISPLAY_NAME_MAPPINGS.update({
 	"0246.Beautify": "Beautify",
 	"0246.Stringify": "Stringify",
 	"0246.Merge": "Merge",
-	# "0246.Convert": "Convert",
 	"0246.BoxRange": "Box Range",
 	"0246.ScriptNode": "Script Node",
 	"0246.ScriptRule": "Script Rule",
@@ -3198,7 +3268,6 @@ NODE_DISPLAY_NAME_MAPPINGS.update({
 	"0246.Cloud": "Cloud",
 	"0246.Switch": "Switch",
 	"0246.Meta": "Meta",
-	# "0246.Pick": "Pick",
 	"0246.Tag": "Tag",
 })
 

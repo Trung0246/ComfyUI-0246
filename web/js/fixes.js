@@ -480,6 +480,7 @@ app.registerExtension({
 			if (!this.mark)
 				app.graph.extra["0246.VERSION"] = [0, 0, 4];
 		});
+		window.monitor_array = monitor_array;
 	}
 });
 

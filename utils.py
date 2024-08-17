@@ -9,6 +9,7 @@ import itertools
 import math
 import collections
 import random
+import copy
 
 import PIL
 import numpy
@@ -66,52 +67,26 @@ class WildDict(dict):
 	def __getitem__(self, key):
 		return None
 
-class TautologyDictStr(dict):
+class TautologyDictStr(list):
 	def __init__(self, *args, **kwargs):
-		self.update(*args, **kwargs)
+		self.extend(args)
 
 	def __getitem__(self, index):
 		if isinstance(index, str) or isinstance(index, int):
 			return TautologyStr("")
 		return super().__getitem__(index)
 
-class TautologyRest(dict):
+class OutputHandle(list):
+	def __init__(self, iter):
+		self.iter = iter
+
 	def __iter__(self):
-		yield False
-		while True:
-			yield True
+		return self.iter()
 
-	def __getitem__(self, index):
-		if index == 0:
-			return False
-		return True
-
-class ContradictRest(dict):
-	def __iter__(self):
-		yield True
-		while True:
-			yield False
-
-	def __getitem__(self, index):
-		if index == 0:
-			return True
-		return False
-
-class TautologyAll(dict):
-	def __iter__(self):
-		while True:
-			yield True
-
-	def __getitem__(self, index):
-		return True
-
-class ContradictAll(dict):
-	def __iter__(self):
-		while True:
-			yield False
-
-	def __getitem__(self, index):
-		return False
+TautologyRest = OutputHandle(lambda: itertools.chain([False], itertools.cycle([True])))
+ContradictRest = OutputHandle(lambda: itertools.chain([True], itertools.cycle([False])))
+TautologyAll = OutputHandle(lambda: itertools.cycle([True]))
+ContradictAll = OutputHandle(lambda: itertools.cycle([False]))
 
 ######################################################################################
 ######################################## UTIL ########################################
@@ -389,6 +364,9 @@ class Wrapper(wrapt.ObjectProxy):
 	def __init__(self, wrapped, data):
 		super().__init__(wrapped)
 		self._0246 = data
+
+	def __deepcopy__(self, memo):
+		return Wrapper(copy.deepcopy(self.__wrapped__, memo), copy.deepcopy(self._0246, memo))
 
 def check_update(data):
 	if isinstance(data, list):

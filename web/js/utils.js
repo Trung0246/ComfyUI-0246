@@ -7,7 +7,7 @@ export async function try_import(name) {
 		return null;
 	}
 }
-/*
+
 export async function load_script(url) {
 	return new Promise((resolve, reject) => {
 		const script = document.createElement('script');
@@ -25,7 +25,7 @@ export async function load_script(url) {
 		document.head.appendChild(script);
 	});
 }
-*/
+
 export function compare_version(a, b) {
 	for (let i = 0; i < a.length; ++ i) {
 		if (a[i] > b[i])
