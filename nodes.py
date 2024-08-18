@@ -43,9 +43,7 @@ comfy_graph_utils = None
 wat = None
 
 try:
-	# import comfy.graph as temp_graph
-	# import comfy.graph_utils as temp_graph_utils
-	wat = wat = __import__("wat.inspection.inspection").inspection.inspection.inspect_format
+	wat = __import__("wat")
 	comfy_graph = __import__("comfy_execution.graph").graph
 	comfy_graph_utils = __import__("comfy_execution.graph_utils").graph_utils
 	print("\033[95m" + f"{lib0246.HEAD_LOG}Topological Execution is detected." + "\033[0m")
@@ -1930,7 +1928,7 @@ class Beautify:
 				except TypeError:
 					res_str = "Cannot convert to JSON."
 			case "wat":
-				res_str = str(wat(data, dunder=True, long=True))
+				res_str = str(wat.str.long.dunder / data)
 		
 		if res_str is None:
 			res_str = lib0246.beautify_structure(data, 0, raw_mode)
@@ -2812,7 +2810,11 @@ class Hub:
 				case "__BATCH_COMBO__":
 					res_data[index_temp] = []
 					for index_type in type_data:
-						if name_data[index_type].endswith(temp_data[index_temp] + ":COMBO"):
+						if name_data[index_type].endswith(
+							temp_data[index_temp] if isinstance(temp_data[index_temp], str) else \
+								":".join(temp_data[index_temp])
+							+ ":COMBO"
+						):
 							res_data[index_temp].extend(res_data[index_type])
 				case "__PIPE__":
 					if temp_data[index_temp] == "HIGHWAY_PIPE":
@@ -2966,21 +2968,21 @@ class Switch:
 				else PROMPT_DATA
 			)
 
-		valid_input = set()
-		for key in kwargs:
-			if key.startswith("switch:"):
-				temp_index = kwargs[key][0].split(":")[0]
-				if temp_index != "_":
-					valid_input.add(temp_index)
-
 		if hasattr(execution, "recursive_execute"):
-			for key in Switch.SWITCH_PROMPT[_id[0]]["inputs"]:
-				curr_index = key.split(":")[0]
-				if curr_index.isnumeric():
-					if curr_index in valid_input:
-						PROMPT_DATA[_id[0]]["inputs"][key] = Switch.SWITCH_PROMPT[_id[0]]["inputs"][key]
-					else:
-						del PROMPT_DATA[_id[0]]["inputs"][key]
+			valid_input = set()
+			for key in kwargs:
+				if key.startswith("switch:"):
+					temp_index = kwargs[key][0].split(":")[0]
+					if temp_index != "_":
+						valid_input.add(temp_index)
+
+				for key in Switch.SWITCH_PROMPT[_id[0]]["inputs"]:
+					curr_index = key.split(":")[0]
+					if curr_index.isnumeric():
+						if curr_index in valid_input:
+							PROMPT_DATA[_id[0]]["inputs"][key] = Switch.SWITCH_PROMPT[_id[0]]["inputs"][key]
+						else:
+							del PROMPT_DATA[_id[0]]["inputs"][key]
 		return " ".join(kwargs.keys())
 
 ######################################################################################
