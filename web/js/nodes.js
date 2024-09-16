@@ -967,7 +967,7 @@ app.registerExtension({
 								window.setTimeout(() => {
 									node.widgets = node.widgets ?? [];
 									for (let i = 0; i < node.widgets.length; ++ i)
-										if (node.inputs.findIndex(_ => _.name === node.widgets[i].value) === -1)
+										if (node.inputs.findIndex(_ => (_.label ?? _.name) === node.widgets[i].value) === -1)
 											node.widgets[i].value = "_";
 								}, 0);
 							}
@@ -976,7 +976,7 @@ app.registerExtension({
 					nodeType.prototype.onNameExpand = function (type, kind, ...args) {
 						const index = type ? args[1] : args[0];
 						if (kind === LiteGraph.OUTPUT)
-							return `${this.inputs?.find?.(_ => _.name === lib0246.get_array(this, "widgets")?.[index]?.value)?.type ?? "_"}:${index}`;
+							return `${this.inputs?.find?.(_ => (_.label ?? _.name) === lib0246.get_array(this, "widgets")?.[index]?.value)?.type ?? "_"}:${index}`;
 					};
 					lib0246.hijack(nodeType.prototype, "onConfigure", function (data) {
 						if (this.mark) {

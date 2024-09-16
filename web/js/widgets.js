@@ -4548,7 +4548,7 @@ export function switch_widget(node, index, value) {
 				return node.inputs[i].name;
 		if (node.widgets[Number(index_str)].value === "_")
 			return "_";
-		const msg = `Invalid switch value "${node.widgets[Number(index_str)].value}" (slot ${index_str} node ${node.id}).`;
+		const msg = `Invalid switch value "${node.widgets[Number(index_str)].value}" ("switch:${index_str}" at node ${node.id}).`;
 		lib0246.error_popup(msg);
 		throw new Error(msg);
 	};
