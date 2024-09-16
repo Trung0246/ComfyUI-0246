@@ -677,3 +677,15 @@ export async function safe_eval(code) {
 export function dummy(...args) {
 	return args[0];
 }
+
+export function get_array(obj, key) {
+	if (!obj.hasOwnProperty(key))
+		obj[key] = [];
+	return obj[key];
+}
+
+export function get_dict(obj, key) {
+	if (!obj.hasOwnProperty(key))
+		obj[key] = {};
+	return obj[key];
+}

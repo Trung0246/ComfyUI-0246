@@ -9,7 +9,7 @@ export function monitor_value(obj, key) {
 			return originalValue;
 		},
 		set: function (newValue) {
-			console.log(`${key} changed from ${originalValue} to ${newValue}`);
+			console.log(`${key} changed from ${lib0246.text_snip(String(originalValue), 20)} to ${lib0246.text_snip(String(newValue), 20)}`);
 			if (window.debug_flag) {
 				console.trace();
 				// debugger;
@@ -481,6 +481,7 @@ app.registerExtension({
 				app.graph.extra["0246.VERSION"] = [0, 0, 4];
 		});
 		window.monitor_array = monitor_array;
+		window.monitor_value = monitor_value;
 	}
 });
 
@@ -520,3 +521,27 @@ app.registerExtension({
 
 // 	LiteGraph.registerNodeType("0246.Test", Test);
 // }
+
+// [TODO] Temporary. Probably we wants to rebuild widget list dynamically
+// for (let i = 8; i < node.widgets.length; ++ i) {
+// 	let found = false, widget_self = node.widgets[i][WIDGETS_SELF];
+// 	if (!widget_self) continue;
+// 	for (let id in node.hub.node_widget)
+// 		if (
+// 			node.hub.node_widget[id].indexOf(widget_self) > -1 ||
+// 			node.hub.sole_widget.includes(widget_self)
+// 		) {
+// 			found = true;
+// 			break;
+// 		}
+// 	if (!found && widget_self.type !== "space_title")
+// 		node.widgets.splice(i --, 1);
+// }
+// calc_flex(node, node.size[0]);
+// console.log(node.size);
+// app.canvas.setDirty(true);
+
+// lib0246.hijack(Cloud.prototype, "onNodeCreated", function () {}, function (mode) {
+	// if (mode === 0b100000)
+	// 	this.self.size[0] = Math.max(this.self.size[0], 350);
+// });

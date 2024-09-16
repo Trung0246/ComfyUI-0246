@@ -454,7 +454,8 @@ function setup_expand(node, kind, real, pin, shape, callback) {
 		upper_name = raw_name.charAt(0).toUpperCase() + raw_name.slice(1),
 		more_name = raw_name + "s";
 
-	node["add" + upper_name](pin, "*");
+	if (!node[more_name].find(e => e.name === pin))
+		node["add" + upper_name](pin, "*");
 
 	if (node[more_name])
 		for (let i = 0; i < node[more_name].length; ++ i)
@@ -462,8 +463,8 @@ function setup_expand(node, kind, real, pin, shape, callback) {
 				node[more_name][i].shape = shape;
 				break;
 			}
-
-	lib0246.hijack(node, "configure", function (data) {
+	
+	lib0246.hijack(node, "onConfigure", function (data) {
 		if (this.mark && this.self[more_name])
 			for (let i = 0; i < this.self[more_name].length; ++ i) {
 				if (!node?.onConnectExpand?.("configure_expand", this.self[more_name][i].name, data, raw_name, i))
@@ -1083,58 +1084,57 @@ function single_impl_output_raw(inst, app, real, shape_out) {
 
 export function junction_impl(nodeType, nodeData, app, name, shape_in, shape_out) {
 	lib0246.hijack(nodeType.prototype, "onConnectExpand", expand_blacklist_func);
-	nodeType.prototype.onNodeCreated = function () {
-		if (typeof name === "string")
-			init_update(this, name);
-		
-		if (this.widgets) {
-			const offset = this.widgets.find(w => w.name === "_offset");
-			if (offset) {
-				offset.options = offset.options ?? {};
-				offset.options.multiline = true;
+	lib0246.hijack(nodeType.prototype, "onNodeCreated", function () {
+		if (this.mark) {
+			init_update(this.self, name);
+			
+			if (this.self.widgets) {
+				const offset = this.self.widgets.find(w => w.name === "_offset");
+				if (offset) {
+					offset.options = offset.options ?? {};
+					offset.options.multiline = true;
+				}
 			}
+		} else {
+			const real = {
+				input: 0,
+				output: 0,
+			};
+
+			single_impl_input_raw(this.self, app, real, shape_in);
+
+			single_impl_output_raw(this.self, app, real, shape_out);
+
+			lib0246.hijack(this.self, "getExtraMenuOptions", function (canvas, options) {
+				if (!this.self.mark)
+					help_option(nodeType, HELP["junction"], options);
+			});
 		}
-
-		const real = {
-			input: 0,
-			output: 0,
-		};
-		
-		single_impl_input_raw(this, app, real, shape_in);
-
-		single_impl_output_raw(this, app, real, shape_out);
-
-		lib0246.hijack(this, "getExtraMenuOptions", function (canvas, options) {
-			if (!this.mark)
-				help_option(nodeType, HELP["junction"], options);
-		});
-	};
+	});
 	rgthree_exec("addConnectionLayoutSupport", nodeType, app);
 }
 
 export function single_impl_input(nodeType, nodeData, app, shape_in) {
 	lib0246.hijack(nodeType.prototype, "onConnectExpand", expand_blacklist_func);
 	lib0246.hijack(nodeType.prototype, "onNodeCreated", function () {
-		if (this.mark) {
+		if (this.mark)
 			setup_loop_update(this.self);
-			
+		else
 			single_impl_input_raw(this.self, app, {
 				input: 0,
 			}, shape_in);
-		}
 	});
 }
 
 export function single_impl_output(nodeType, nodeData, app, shape_out) {
 	lib0246.hijack(nodeType.prototype, "onConnectExpand", expand_blacklist_func);
 	lib0246.hijack(nodeType.prototype, "onNodeCreated", function () {
-		if (this.mark) {
+		if (this.mark)
 			setup_loop_update(this.self);
-
+		else
 			single_impl_output_raw(this.self, app, {
 				output: 0,
 			}, shape_out);
-		}
 	});
 }
 
@@ -3100,6 +3100,7 @@ export function hub_setup_widget(node, data, id) {
 	for (let node_id of app.graph.extra["0246.HUB_DATA"][id].node_list)
 		node.hubPushNode(app.graph.getNodeById(node_id), true);
 
+	// [TODO] Wrong load order
 	if (node.outputs && node.outputs.length > 0) {
 		let count = 0, widget;
 		for (let name in node.hub.data.sole_type) {
@@ -3733,6 +3734,7 @@ function cloud_build(node, kind, data = null, input = null, full = null) {
 	if (data === null)
 		this.cloud.data.inst.push(hold_inst);
 
+	++ this.cloud.data.track;
 	return hold_inst;
 }
 
@@ -3828,6 +3830,8 @@ function cloud_remove(node, inst_id, func = cloud_remove_handler) {
 			this.cloud.data.group[group_id]?.inst?.splice?.(idx, 1);
 	}
 	cloud_clean_group(this.cloud.data.group);
+
+	++ this.cloud.data.track;
 }
 
 function cloud_build_group(node, mode, second = null, color = undefined) {
@@ -3906,6 +3910,8 @@ function cloud_build_group(node, mode, second = null, color = undefined) {
 		}
 	}
 	cloud_clean_group(this.cloud.data.group);
+
+	++ this.cloud.data.track;
 }
 
 function cloud_remove_group(node, group_id, mode) {
@@ -3927,6 +3933,8 @@ function cloud_remove_group(node, group_id, mode) {
 		} break;
 	}
 	cloud_clean_group(this.cloud.data.group);
+
+	++ this.cloud.data.track;
 }
 
 function cloud_clean_group(group_dict) {
@@ -4059,6 +4067,7 @@ export function CLOUD_WIDGET(data_type, data_name, options = {}) {
 				inst: this.cloud.data.inst,
 				group: this.cloud.data.group,
 				id: this.cloud.data.id,
+				track: this.cloud.data.track,
 			};
 		},
 		set value(v) {
@@ -4066,6 +4075,7 @@ export function CLOUD_WIDGET(data_type, data_name, options = {}) {
 			this.cloud.data.inst = v.inst ?? [];
 			this.cloud.data.group = v.group ?? {};
 			this.cloud.data.id = v.id ?? 0;
+			this.cloud.data.track = v.track ?? Number.MIN_SAFE_INTEGER;
 			if (this.cloud.node) {
 				const node = app.graph.getNodeById(this.cloud.node);
 				for (let inst_id of this.cloud.select)
@@ -4074,6 +4084,7 @@ export function CLOUD_WIDGET(data_type, data_name, options = {}) {
 				const stub_obj = {};
 				stub_obj.widgets_values = [];
 				stub_obj.widgets_values[node.widgets.indexOf(this)] = v;
+				stub_obj.inputs = node.inputs;
 				node.onConfigure(stub_obj);
 			}
 		},
@@ -4309,7 +4320,8 @@ export function CLOUD_WIDGET(data_type, data_name, options = {}) {
 		pos: {},
 		hit: {},
 		curr: {},
-		id: 0
+		id: 0,
+		track: Number.MIN_SAFE_INTEGER
 	};
 
 	widget.cloud.delay_dbl = widget.cloud.delay_dbl ?? options.delay_dbl ?? 200;
@@ -4470,7 +4482,7 @@ export function cloud_menu(name, options) {
 
 const WIDGETS_MAP = new WeakMap(), WIDGETS_SELF = Symbol("widgets_self");
 
-function setup_hijack_widget(node, name_fn) {
+export function setup_hijack_widget(node, name_fn) {
 	const original_widgets = node.widgets;
 	if (!original_widgets) return;
 
@@ -4496,7 +4508,7 @@ function setup_hijack_widget(node, name_fn) {
 	});
 }
 
-function reset_hijack_widget(node) {
+export function reset_hijack_widget(node) {
 	if (WIDGETS_MAP.has(node)) {
 		node.widgets = WIDGETS_MAP.get(node);
 		WIDGETS_MAP.delete(node);
@@ -4505,7 +4517,7 @@ function reset_hijack_widget(node) {
 
 export const NODE_PARENT = Symbol("node_parent");
 
-function hijack_widget_name(node, widget) {
+export function hijack_widget_name(node, widget) {
 	if (node.comfyClass === "0246.Hub" && widget[NODE_PARENT])
 		return `node:${widget[NODE_PARENT].id}:${widget.name}`;
 	return widget.name;
@@ -4555,57 +4567,6 @@ app.registerExtension({
 				PROCESS_WIDGET_NODE = null;
 		});
 
-		lib0246.hijack(app.canvas, "drawNodeWidgets", function () {
-			if (!this.mark) {
-				const node = arguments[0];
-				if (node.comfyClass === "0246.Hub") {
-					// [TODO] Temporary. Probably we wants to rebuild widget list dynamically
-					// for (let i = 8; i < node.widgets.length; ++ i) {
-					// 	let found = false, widget_self = node.widgets[i][WIDGETS_SELF];
-					// 	if (!widget_self) continue;
-					// 	for (let id in node.hub.node_widget)
-					// 		if (
-					// 			node.hub.node_widget[id].indexOf(widget_self) > -1 ||
-					// 			node.hub.sole_widget.includes(widget_self)
-					// 		) {
-					// 			found = true;
-					// 			break;
-					// 		}
-					// 	if (!found && widget_self.type !== "space_title")
-					// 		node.widgets.splice(i --, 1);
-					// }
-					// calc_flex(node, node.size[0]);
-					// console.log(node.size);
-					// node.hubSize();
-					// app.canvas.setDirty(true);
-				}
-			}
-		});
-
-		lib0246.hijack(app, "graphToPrompt", async function () {
-			if (!this.mark)
-				for (let i = 0; i < this.self.graph._nodes.length; ++ i) {
-					const node = this.self.graph._nodes[i];
-					if (node.comfyClass === "0246.Hub")
-						setup_hijack_widget(node, hijack_widget_name);
-				}
-			else
-				for (let i = 0; i < this.self.graph._nodes.length; ++ i) {
-					const node = this.self.graph._nodes[i];
-					if (node.comfyClass === "0246.Hub")
-						reset_hijack_widget(node);
-				}
-		});
-
-		lib0246.hijack(app.graph, "remove", function (node) {
-			if (!this.mark && node.type === "0246.Junction") {
-				for (let i = node.inputs.length - 1; i >= 0; -- i)
-					node.removeInput(i);
-				for (let i = node.outputs.length - 1; i >= 0; -- i)
-					node.removeOutput(i);
-			}
-		});
-
 		app.ui.settings.addSetting({
 			id: "0246.AlternateDOMWidget",
 			name: "[ComfyUI-0246] Alternative DOM widget implementation",
@@ -4648,7 +4609,7 @@ app.registerExtension({
 				box_widget.options.hideOnZoom = inputData?.[1]?.hideOnZoom ?? true;
 				return {
 					widget: box_widget,
-				}
+				};
 			},
 			CLOUD_DATA: function(node, inputName, inputData, app) {
 				if (!app.ui.settings.getSettingValue("0246.AlternateDOMWidget", false)) {
@@ -4738,18 +4699,19 @@ app.registerExtension({
 								if (node.widgets[i].type === "CLOUD_DATA")
 									for (let inst_id in data.widgets_values[i].inst) {
 										const curr_inst = data.widgets_values[i].inst[inst_id];
-										node.widgets[i].build(
-											node, curr_inst.kind,
-											curr_inst,
-											data.inputs.filter(_ => curr_inst.widgets_names.includes(_.name)),
-											data
-										);
+										if (node.id !== -1 || (node.id === -1 && curr_inst.kind !== "pin"))
+											node.widgets[i].build(
+												node, curr_inst.kind,
+												curr_inst,
+												data.inputs.filter(_ => curr_inst.widgets_names.includes(_.name)),
+												data
+											);
 									}
 					});
 
 					lib0246.hijack(node, "clone", function () {
 						const node = this.res;
-						if (this.mark)
+						if (this.mark) {
 							for (let j = 0; j < node.widgets.length; ++ j)
 								if (node.widgets[j].type === "CLOUD_DATA")
 									for (let i = 0; i < node.widgets[j].cloud.data.inst.length; ++ i)
@@ -4757,6 +4719,7 @@ app.registerExtension({
 											node.widgets[j].remove(this.res, node.widgets[j].cloud.data.inst[i].id);
 											-- i;
 										}
+						}
 					});
 
 					lib0246.hijack(node, "onConnectInput", function (
@@ -4780,7 +4743,7 @@ app.registerExtension({
 								const curr_pin_index = Number(this.self.inputs[index].name.split(":")?.[0]);
 								if (!Number.isNaN(curr_pin_index))
 									for (let i = 0; i < this.self.widgets.length; ++ i)
-										if (this.self.widgets[i].type === "CLOUD_DATA"){
+										if (this.self.widgets[i].type === "CLOUD_DATA") {
 											const cloud_widget = this.self.widgets[i],
 													curr_inst = cloud_widget.cloud.data.inst.findLast(
 														_ => _.kind === "pin" && _.widgets_values[0] === curr_pin_index

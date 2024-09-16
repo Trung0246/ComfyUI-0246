@@ -826,10 +826,11 @@ class CloudData:
 		self.state["prompt"] = prompt
 		self.state["workflow"] = workflow
 
-		if self.state["change"]:
+		if self.state["change"] or self.order is None:
 			self.order = self.sort()
 			self.func = {}
 			self.state["data"] = {}
+			self.track = PROMPT_COUNT
 			for inst in self.inst:
 				self.func[inst["id"]] = CloudFunc(inst["kind"]) if \
 					isinstance(inst["kind"], str) else \
@@ -845,13 +846,12 @@ class CloudData:
 			for inst_id_dep in self.order["dep"][curr_id]:
 				hold_curr["data"].extend(self.state["eval"][inst_id_dep]["data"])
 				hold_curr["index"].extend([self.state["eval"][inst_id_dep]["index"]] * len(self.state["eval"][inst_id_dep]["data"]))
-			res = self.func[curr_id].func(
-				obj=self,
-				hold=hold_curr,
-				state=self.state
-			)
 			self.state["eval"][curr_id] = {
-				"data": res,
+				"data": self.func[curr_id].func(
+					obj=self,
+					hold=hold_curr,
+					state=self.state
+				),
 				"index": self.state["index"]
 			}
 			i = 0
@@ -1027,33 +1027,35 @@ def map_node_over_list_param_handle(*args, **kwargs):
 	return None, tuple(), {}
 
 def map_node_over_list_res_handle(result, *args, **kwargs):
-	input_iter = None
-	if hasattr(args[0], "WRAPPER"):
-		return getattr(args[0], "WRAPPER")(result, args, kwargs)
-	elif hasattr(args[0], "INPUT_IS_LIST") and args[0].INPUT_IS_LIST:
-		try:
-			input_iter = zip([({"_": next(filter(
-				lambda _: isinstance(_, lib0246.Wrapper),
-				sum(list(args[1][_] for _ in args[1]), [])
-			))}, None)], [0])
-		except StopIteration:
-			return result
-	else:
-		input_iter = zip(lib0246.dict_slice(args[1]), range(len(result)))
-	
-	for (curr, index_info), i in input_iter:
-		for key in curr:
-			if isinstance(curr[key], lib0246.Wrapper):
-				if isinstance(result[i], dict):
-					if "result" in result[i]:
-						result[i]["result"] = tuple(lib0246.Wrapper(_, curr[key]._0246) for _ in result[i]["result"])
-				else:
-					result[i] = tuple(lib0246.Wrapper(_, curr[key]._0246) for _ in result[i])
-				break
-
+	if (hasattr(args[0], "FUNCTION") and args[0].FUNCTION == args[2]):
+		input_iter = None
+		if hasattr(args[0], "WRAPPER"):
+			return getattr(args[0], "WRAPPER")(result, args, kwargs)
+		elif hasattr(args[0], "INPUT_IS_LIST") and args[0].INPUT_IS_LIST:
+			try:
+				input_iter = zip([({"_": next(filter(
+					lambda _: isinstance(_, lib0246.Wrapper),
+					itertools.chain.from_iterable(args[1][_] for _ in args[1])
+				))}, None)], [0])
+			except StopIteration:
+				return result
+		else:
+			input_iter = zip(lib0246.dict_slice(args[1]), range(len(result)))
+		
+		for (curr, index_info), i in input_iter:
+			for key in curr:
+				if isinstance(curr[key], lib0246.Wrapper):
+					if isinstance(result[i], dict):
+						if "result" in result[i]:
+							result[i]["result"] = tuple(lib0246.Wrapper(_, curr[key]._0246) for _ in result[i]["result"])
+					else:
+						result[i] = tuple(lib0246.Wrapper(_, curr[key]._0246) for _ in result[i])
+					break
 	return result
 
 lib0246.hijack(execution, "map_node_over_list", map_node_over_list_param_handle, map_node_over_list_res_handle)
+# Honestly not many option beside hijacking _map_node_over_list
+lib0246.hijack(execution, "_map_node_over_list", map_node_over_list_param_handle, map_node_over_list_res_handle)
 
 CLASS_LIST = None
 
@@ -2885,6 +2887,10 @@ class Cloud:
 			"result": [[*CloudData.full_dict_to_data(_id[0], curr_cloud["inst"], curr_cloud["group"], None, kwargs)]]
 		}
 
+	@classmethod
+	def IS_CHANGED(cls, *args, **kwargs):
+		return kwargs["cloud:cloud"][0]["track"]
+
 ######################################################################################
 
 class Switch:
@@ -2988,7 +2994,6 @@ class Switch:
 ######################################################################################
 
 class Meta:
-
 	@classmethod
 	def INPUT_TYPES(cls):
 		return {

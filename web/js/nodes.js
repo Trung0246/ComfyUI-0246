@@ -4,9 +4,11 @@ import { GroupNodeHandler } from "../../../extensions/core/groupNode.js";
 import * as lib0246 from "./utils.js";
 import * as wg0246 from "./widgets.js";
 
+const hub_list = [];
+
 app.registerExtension({
 	name: "0246.Node",
-	registerCustomNodes (app) {
+	registerCustomNodes(app) {
 		const reroute_class = lib0246.clone_class(LiteGraph.registered_node_types.Reroute);
 
 		reroute_class.prototype.onNodeCreated = function() {
@@ -181,7 +183,40 @@ app.registerExtension({
 		node._color = node.color;
 		node._bgcolor = node.bgcolor;
 	},
-	async beforeRegisterNodeDef (nodeType, nodeData, app) {
+	async setup(app) {
+		lib0246.hijack(app, "graphToPrompt", async function () {
+			if (!this.mark)
+				for (let i = 0; i < this.self.graph._nodes.length; ++ i) {
+					const node = this.self.graph._nodes[i];
+					if (node.comfyClass === "0246.Hub")
+						wg0246.setup_hijack_widget(node, wg0246.hijack_widget_name);
+				}
+			else
+				for (let i = 0; i < this.self.graph._nodes.length; ++ i) {
+					const node = this.self.graph._nodes[i];
+					if (node.comfyClass === "0246.Hub")
+						wg0246.reset_hijack_widget(node);
+				}
+		});
+
+		lib0246.hijack(app.canvas, "drawNodeWidgets", function () {
+			if (!this.mark) {
+				const node = arguments[0];
+				if (node.comfyClass === "0246.Hub")
+					node.hubSize();
+			}
+		});
+
+		lib0246.hijack(app.graph, "remove", function (node) {
+			if (!this.mark && node.type === "0246.Junction") {
+				for (let i = node.inputs.length - 1; i >= 0; -- i)
+					node.removeInput(i);
+				for (let i = node.outputs.length - 1; i >= 0; -- i)
+					node.removeOutput(i);
+			}
+		});
+	},
+	async beforeRegisterNodeDef(nodeType, nodeData, app) {
 		if (typeof nodeData.category === "string" && nodeData.category.startsWith("0246")) {
 			switch (nodeData.name) {
 				case "0246.BoxRange": {
@@ -451,7 +486,7 @@ app.registerExtension({
 							this.self.size[0] = Math.max(this.self.size[0], 350);
 					});
 
-					const HUB_PASS_DATA = Symbol("pass_data");
+					const HUB_PASS_DATA = Symbol("pass_data"), HUB_PASS_CALL = Symbol("pass_call");
 
 					lib0246.hijack(Hub.prototype, "onAdded", function () {
 						if (this.mark) {
@@ -490,9 +525,9 @@ app.registerExtension({
 					lib0246.hijack(Hub.prototype, "onConfigure", function (data) {
 						if (this.mark) {
 							const node = this.self;
-
+							
 							if (node.id)
-								wg0246.hub_setup_widget(node, data, node.id);
+								hub_list.push(node, structuredClone(data));
 							else
 								node[HUB_PASS_DATA] = data;
 						}
@@ -567,10 +602,14 @@ app.registerExtension({
 						}
 					});
 
+					lib0246.hijack(Hub.prototype, "computeSize", function () {
+						if (this.mark)
+							this.res[1] -= this.self.outputs.length > 0 ? 0 : LiteGraph.NODE_SLOT_HEIGHT;
+					});
+
 					Hub.prototype.hubSize = function (extra = 0) {
 						const curr_size = this.computeSize();
 						curr_size[0] = Math.max(curr_size[0], LiteGraph.NODE_WIDTH, this.size[0]);
-						// curr_size[1] += extra - 32;
 						this.setSize(curr_size);
 					};
 
@@ -664,10 +703,10 @@ app.registerExtension({
 					Hub.prototype.hubPushWidget = function (widget, id_type, pin_type, extra_name = [], full_name = "") {
 						if (!this.hub.sole_space) {
 							this.hub.sole_space = wg0246.SPACE_TITLE_WIDGET();
-							this.widgets.splice(wg0246.HUB_SOLE + 1, 0, this.hub.sole_space);
+							lib0246.get_array(this, "widgets").splice(wg0246.HUB_SOLE + 1, 0, this.hub.sole_space);
 						}
 
-						this.widgets.splice(wg0246.HUB_SOLE + 2 + this.hub.sole_widget.length, 0, widget);
+						lib0246.get_array(this, "widgets").splice(wg0246.HUB_SOLE + 2 + this.hub.sole_widget.length, 0, widget);
 						this.hub.sole_widget.push(widget);
 
 						if (full_name.length > 0) {
@@ -703,10 +742,10 @@ app.registerExtension({
 					};
 
 					Hub.prototype.hubPullWidget = function (widget) {
-						const widget_index = this.widgets.indexOf(widget);
+						const widget_index = lib0246.get_array(this, "widgets").indexOf(widget);
 						if (widget_index === -1)
 							return;
-						this.widgets.splice(widget_index, 1);
+						lib0246.get_array(this, "widgets").splice(widget_index, 1);
 						
 						delete this.hub.data.sole_type[widget.name];
 
@@ -721,7 +760,7 @@ app.registerExtension({
 							this.hub.sole_widget.splice(sole_widget_index, 1);
 
 						if (this.hub.sole_widget.length === 0) {
-							this.widgets.splice(wg0246.HUB_SOLE + 1, 1);
+							lib0246.get_array(this, "widgets").splice(wg0246.HUB_SOLE + 1, 1);
 							this.hub.sole_space = null;
 						}
 
@@ -801,16 +840,16 @@ app.registerExtension({
 						delete this.hub.node_area[curr_id];
 						if (this.hub.node_widget[curr_id]) {
 							for (let widget of this.hub.node_widget[curr_id]) {
-								let widget_index = this.widgets.indexOf(widget);
+								let widget_index = lib0246.get_array(this, "widgets").indexOf(widget);
 								if (widget_index > -1)
-									this.widgets.splice(widget_index, 1);
+									lib0246.get_array(this, "widgets").splice(widget_index, 1);
 							}
 							delete this.hub.node_widget[curr_id];
 						}
 						// [TODO] For some reason there's trailing space_widget
-						const space_widget_index = this.widgets.indexOf(this.hub.space_widget[curr_id]);
+						const space_widget_index = lib0246.get_array(this, "widgets").indexOf(this.hub.space_widget[curr_id]);
 						if (space_widget_index > -1)
-							this.widgets.splice(space_widget_index, 1);
+							lib0246.get_array(this, "widgets").splice(space_widget_index, 1);
 						delete this.hub.space_widget[curr_id];
 
 						const curr_node = app.graph.getNodeById(curr_id);
@@ -898,11 +937,6 @@ app.registerExtension({
 				case "0246.Cloud": {
 					const Cloud = nodeType;
 
-					lib0246.hijack(Cloud.prototype, "onNodeCreated", function () {}, function (mode) {
-						if (mode === 0b100000)
-							this.self.size[0] = Math.max(this.self.size[0], 350);
-					});
-
 					lib0246.hijack(nodeType.prototype, "getExtraMenuOptions", function (canvas, options) {
 						if (!this.mark) {
 							this.self.constructor.nodeData[wg0246.CLOUD_MARK].self = this.self;
@@ -941,7 +975,7 @@ app.registerExtension({
 					nodeType.prototype.onNameExpand = function (type, kind, ...args) {
 						const index = type ? args[1] : args[0];
 						if (kind === LiteGraph.OUTPUT)
-							return `${this.inputs?.find?.(_ => _.name === this.widgets?.[index]?.value)?.type ?? "_"}:${index}`;
+							return `${this.inputs?.find?.(_ => _.name === lib0246.get_array(this, "widgets")?.[index]?.value)?.type ?? "_"}:${index}`;
 					};
 					lib0246.hijack(nodeType.prototype, "onConfigure", function (data) {
 						if (this.mark) {
@@ -974,6 +1008,14 @@ app.registerExtension({
 				} break;
 			}
 		}
+	},
+	async afterConfigureGraph() {
+		// "setup" only called once so we have to move this here
+		window.setTimeout(() => {
+			for (let i = 0; i < hub_list.length; i += 2)
+				wg0246.hub_setup_widget(hub_list[i], hub_list[i + 1], hub_list[i].id);
+			hub_list.length = 0;
+		}, 0);
 	},
 });
 
