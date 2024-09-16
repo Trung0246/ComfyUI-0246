@@ -189,7 +189,7 @@ app.registerExtension({
 				for (let i = 0; i < this.self.graph._nodes.length; ++ i) {
 					const node = this.self.graph._nodes[i];
 					if (node.comfyClass === "0246.Hub")
-						wg0246.setup_hijack_widget(node, wg0246.hijack_widget_name);
+						wg0246.setup_hijack_widget(node, ["0246.Hub"], wg0246.hijack_widget_name);
 				}
 			else
 				for (let i = 0; i < this.self.graph._nodes.length; ++ i) {
@@ -965,6 +965,7 @@ app.registerExtension({
 								}
 								// [TODO] Maybe avoid setTimeout
 								window.setTimeout(() => {
+									node.widgets = node.widgets ?? [];
 									for (let i = 0; i < node.widgets.length; ++ i)
 										if (node.inputs.findIndex(_ => _.name === node.widgets[i].value) === -1)
 											node.widgets[i].value = "_";

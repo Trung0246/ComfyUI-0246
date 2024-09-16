@@ -252,6 +252,7 @@ async function init_update_raw(node, widget, callback) {
 
 function init_update(node, name) {
 	node.__update = false;
+	node.widgets = node.widgets ?? [];
 	for (let i = 0; i < node.widgets.length; ++ i) {
 		if (node.widgets[i].name === name) {
 			node.widgets[i].serializeValue = async function (inner_node, index_str) {
@@ -264,6 +265,7 @@ function init_update(node, name) {
 
 function init_update_direct(node, name, callback) {
 	node.__update = false;
+	node.widgets = node.widgets ?? [];
 	node.addCustomWidget({
 		name: name,
 		computeSize: () => [0, -4],
@@ -4482,7 +4484,7 @@ export function cloud_menu(name, options) {
 
 const WIDGETS_MAP = new WeakMap(), WIDGETS_SELF = Symbol("widgets_self");
 
-export function setup_hijack_widget(node, name_fn) {
+export function setup_hijack_widget(node, name_list, name_fn) {
 	const original_widgets = node.widgets;
 	if (!original_widgets) return;
 
@@ -4496,7 +4498,7 @@ export function setup_hijack_widget(node, name_fn) {
 				return new Proxy(original_widget, {
 					get(widget_target, widget_prop) {
 						if (widget_prop === 'name')
-							return name_fn(node, widget_target);
+							return name_fn(node, name_list, widget_target);
 						else if (widget_prop === WIDGETS_SELF)
 							return original_widget;
 						return Reflect.get(widget_target, widget_prop);
@@ -4517,8 +4519,8 @@ export function reset_hijack_widget(node) {
 
 export const NODE_PARENT = Symbol("node_parent");
 
-export function hijack_widget_name(node, widget) {
-	if (node.comfyClass === "0246.Hub" && widget[NODE_PARENT])
+export function hijack_widget_name(node, name_list, widget) {
+	if (name_list.includes(node.comfyClass) && widget[NODE_PARENT])
 		return `node:${widget[NODE_PARENT].id}:${widget.name}`;
 	return widget.name;
 }
@@ -4540,7 +4542,16 @@ export function switch_widget(node, index, value) {
 					res.push(node.inputs[i]?.label ?? node.inputs[i].name);
 			return res;
 		}
-	});
+	}).serializeValue = async function (node, index_str) {
+		for (let i = 0; i < node.inputs.length; ++ i)
+			if ((node.inputs[i].label ?? node.inputs[i].name) === node.widgets[Number(index_str)].value)
+				return node.inputs[i].name;
+		if (node.widgets[Number(index_str)].value === "_")
+			return "_";
+		const msg = `Invalid switch value "${node.widgets[Number(index_str)].value}" (slot ${index_str} node ${node.id}).`;
+		lib0246.error_popup(msg);
+		throw new Error(msg);
+	};
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
