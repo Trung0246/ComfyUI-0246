@@ -4532,7 +4532,7 @@ export function hijack_widget_name(node, name_list, widget) {
 export function switch_widget(node, index, value) {
 	node.addWidget("combo", `switch:${index}`, value, function (value, canvas, node, pos, evt) {
 		const index = node.widgets.findIndex(_ => _ === this);
-		node.outputs[index].name = `${node.inputs.find(_ => _.name === value)?.type ?? "_"}:${index}`;
+		node.outputs[index].name = `${node.inputs.find(_ => (_.label ?? _.name) === value)?.type ?? "_"}:${index}`;
 	}, {
 		serialize: true,
 		values: function (widget) {
