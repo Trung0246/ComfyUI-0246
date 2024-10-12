@@ -467,6 +467,7 @@ app.registerExtension({
 
 							lib0246.hijack(node, "clone", function () {
 								if (this.mark) {
+									this.res.widgets = this.res.widgets ?? [];
 									for (let i = 0; i < node.widgets.length; ++ i) {
 										this.res.widgets[i] = this.res.widgets[i] ?? {};
 										this.res.widgets[i].value = structuredClone(node.widgets[i].value);
@@ -513,11 +514,13 @@ app.registerExtension({
 							node.hub.sole_space = null;
 
 							if (node[HUB_PASS_DATA]) {
-								Object.assign(node.hub.data, structuredClone(app.graph.extra["0246.HUB_DATA"][node[HUB_PASS_DATA].__id__]));
-								node[HUB_PASS_DATA].widgets_values = structuredClone(app.graph.getNodeById(node[HUB_PASS_DATA].__id__).widgets_values);
-								wg0246.hub_setup_widget(node, node[HUB_PASS_DATA], node[HUB_PASS_DATA].__id__);
+								window.setTimeout(() => {
+									Object.assign(node.hub.data, structuredClone(app.graph.extra["0246.HUB_DATA"][node[HUB_PASS_DATA].__id__]));
+									node[HUB_PASS_DATA].widgets_values = structuredClone(app.graph.getNodeById(node[HUB_PASS_DATA].__id__).widgets_values);
+									wg0246.hub_setup_widget(node, node[HUB_PASS_DATA], node[HUB_PASS_DATA].__id__);
 
-								delete node[HUB_PASS_DATA];
+									delete node[HUB_PASS_DATA];
+								}, 0);
 							}
 						}
 					});
@@ -526,7 +529,7 @@ app.registerExtension({
 						if (this.mark) {
 							const node = this.self;
 							
-							if (node.id)
+							if (node.id > -1)
 								hub_list.push(node, structuredClone(data));
 							else
 								node[HUB_PASS_DATA] = data;

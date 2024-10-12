@@ -428,38 +428,38 @@ lib0246.hijack(app, "loadGraphData", function (workflow) {
 /////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////
 
-let error_flag = false;
-lib0246.hijack(app, "showMissingNodesError", function (nodes) {
-	if (!this.mark) {
-		if (!error_flag)
-			for (let i = 0; i < nodes.length; ++ i)
-				for (let j = 0; j < patch_node_db.length; ++ j)
-					if (nodes[i] === patch_node_db[j][0]) {
-						lib0246.error_popup(lib0246.indent_str `
-							[ComfyUI-0246] Unfortunately I have to change node internal ID due to I'm being dumb for using generic name. Sorry for inconvenience.
+// let error_flag = false;
+// lib0246.hijack(app, "showMissingNodesError", function (nodes) {
+// 	if (!this.mark) {
+// 		if (!error_flag)
+// 			for (let i = 0; i < nodes.length; ++ i)
+// 				for (let j = 0; j < patch_node_db.length; ++ j)
+// 					if (nodes[i] === patch_node_db[j][0]) {
+// 						lib0246.error_popup(lib0246.indent_str `
+// 							[ComfyUI-0246] Unfortunately I have to change node internal ID due to I'm being dumb for using generic name. Sorry for inconvenience.
 
-							If this error message shown then that mean automatic patching failed. Please replace each nodes manually :(
+// 							If this error message shown then that mean automatic patching failed. Please replace each nodes manually :(
 
-							Affected node:
+// 							Affected node:
 
-							- Highway -> 0246.Highway
-							- Junction -> 0246.Junction
-							- JunctionBatch -> 0246.JunctionBatch
-							- Loop -> 0246.Loop
-							- Count -> 0246.Count
-							- Hold -> 0246.Hold
-							- Beautify -> 0246.Beautify
-							- Random -> 0246.RandomInt
-							- Stringify -> 0246.Stringify
+// 							- Highway -> 0246.Highway
+// 							- Junction -> 0246.Junction
+// 							- JunctionBatch -> 0246.JunctionBatch
+// 							- Loop -> 0246.Loop
+// 							- Count -> 0246.Count
+// 							- Hold -> 0246.Hold
+// 							- Beautify -> 0246.Beautify
+// 							- Random -> 0246.RandomInt
+// 							- Stringify -> 0246.Stringify
 
-							- 0246.ScriptPlan -> 0246.ScriptRule
-							- 0246.ScriptImbue -> 0246.ScriptNode
-						`);
-						error_flag = true;
-						break;
-					}
-	}
-});
+// 							- 0246.ScriptPlan -> 0246.ScriptRule
+// 							- 0246.ScriptImbue -> 0246.ScriptNode
+// 						`);
+// 						error_flag = true;
+// 						break;
+// 					}
+// 	}
+// });
 
 // Extremely hacky ways to fix issues with Reroute (rgthree). Maybe open issue about this?
 app.registerExtension({
@@ -545,3 +545,23 @@ app.registerExtension({
 	// if (mode === 0b100000)
 	// 	this.self.size[0] = Math.max(this.self.size[0], 350);
 // });
+
+// TODO: HUB copy-paste broken.
+
+// const hidden =
+// 	node.flags?.collapsed ||
+// 	(!!options.hideOnZoom && app.canvas.ds.scale < 0.5) ||
+// 	widget.flex.hold_draw[3] <= 0 ||
+// 	widget.type === "converted-widget";
+// this.element.hidden = hidden;
+// this.element.style.display = hidden ? "none" : "";
+// if (hidden) {
+// 	widget.options.onHide?.(widget);
+// 	return;
+// }
+
+// computeVisibleNodes
+	// w.element.hidden = hidden;
+	// w.element.style.display = hidden ? "none" : "";
+	// if (hidden)
+	// 	w.options.onHide?.(w);

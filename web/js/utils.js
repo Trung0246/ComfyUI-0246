@@ -679,13 +679,13 @@ export function dummy(...args) {
 }
 
 export function get_array(obj, key) {
-	if (!obj.hasOwnProperty(key))
+	if (!obj.hasOwnProperty(key) || !Array.isArray(obj[key]))
 		obj[key] = [];
 	return obj[key];
 }
 
 export function get_dict(obj, key) {
-	if (!obj.hasOwnProperty(key))
+	if (!obj.hasOwnProperty(key) || typeof obj[key] !== "object")
 		obj[key] = {};
 	return obj[key];
 }

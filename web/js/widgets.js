@@ -456,8 +456,8 @@ function setup_expand(node, kind, real, pin, shape, callback) {
 		upper_name = raw_name.charAt(0).toUpperCase() + raw_name.slice(1),
 		more_name = raw_name + "s";
 
-	if (!node[more_name].find(e => e.name === pin))
-		node["add" + upper_name](pin, "*");
+	// if (!node[more_name].find(e => e.name === pin))
+	// 	node["add" + upper_name](pin, "*");
 
 	if (node[more_name])
 		for (let i = 0; i < node[more_name].length; ++ i)
@@ -1456,17 +1456,25 @@ export function DOM_WIDGET(data_type, data_name, element, options = {}) {
 			this.callback?.(value);
 		},
 		draw: function (ctx, node, widget_width, y, widget_height) {
+			// https://github.com/Comfy-Org/ComfyUI_frontend/commit/ea01fde6076a30675c11294954d3ca64f0e016f7
+
 			const hidden =
-				node.flags?.collapsed ||
 				(!!options.hideOnZoom && app.canvas.ds.scale < 0.5) ||
+				widget.computedHeight <= 0 ||
+				widget.type === "converted-widget" ||
 				widget.flex.hold_draw[3] <= 0 ||
-				widget.type === "converted-widget";
-			this.element.hidden = hidden;
-			this.element.style.display = hidden ? "none" : "";
-			if (hidden) {
-				widget.options.onHide?.(widget);
+				widget.type === "hidden";
+			element.dataset.shouldHide = hidden ? "true" : "false";
+			const wasHidden = element.hidden,
+				actualHidden = hidden ||
+					!(element.dataset.isInVisibleNodes === "true") ||
+					(element.dataset.collapsed === "true");
+			element.hidden = actualHidden;
+			element.style.display = actualHidden ? "none" : "";
+			if (actualHidden && !wasHidden)
+				widget.options.onHide?.(widget)
+			if (actualHidden)
 				return;
-			}
 
 			const elem_rect = ctx.canvas.getBoundingClientRect(),
 				transform = new DOMMatrix()
@@ -1483,7 +1491,10 @@ export function DOM_WIDGET(data_type, data_name, element, options = {}) {
 				height: `${widget.flex.hold_draw[3]}px`,
 				position: "absolute",
 				zIndex: app.graph._nodes.indexOf(node),
+				pointerEvents: app.canvas.read_only ? "none" : "auto"
 			});
+
+			// void(element.offsetHeight); // Force reflow
 
 			// [TODO]
 			// if (app.ui.settings.getSettingValue("Comfy.DOMClippingEnabled", false)) {
@@ -1570,6 +1581,10 @@ lib0246.hijack(LGraphNode.prototype, "addDOMWidget", function (name, type, eleme
 		widget.options.flex = options.flex;
 		this.stop = true;
 		this.res = widget;
+		
+		// https://github.com/Comfy-Org/ComfyUI_frontend/commit/5f979e844cb2ee185a5d61ea9b2a2c74c7b59209
+		element.hidden = true;
+		element.style.display = "none";
 	}
 });
 
@@ -1579,13 +1594,16 @@ lib0246.hijack(LGraphCanvas.prototype, "computeVisibleNodes", function () {
 			if (node?.onComputeVisible?.())
 				this.res.push(node);
 			if (node.flex_data || DOM_NODE_DB.has(node)) {
-				const hidden = this.res.indexOf(node) === -1 || node.flags?.collapsed;
+				const hidden = this.res.indexOf(node) === -1; // || node.flags?.collapsed;
 				for (const w of node.widgets)
 					if (w.element) {
-						w.element.hidden = hidden;
-						w.element.style.display = hidden ? "none" : "";
-						if (hidden)
-							w.options.onHide?.(w);
+						w.element.dataset.isInVisibleNodes = hidden ? "false" : "true";
+						const wasHidden = w.element.hidden,
+							actualHidden = hidden || w.element.dataset.shouldHide === "true" || w.element.dataset.collapsed === "true";
+						w.element.hidden = actualHidden;
+						w.element.style.display = actualHidden ? "none" : "";
+						if (actualHidden && !wasHidden)
+							w.options.onHide?.(w)
 					}
 			}
 		}
