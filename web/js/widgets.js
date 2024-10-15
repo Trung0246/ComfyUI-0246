@@ -456,8 +456,10 @@ function setup_expand(node, kind, real, pin, shape, callback) {
 		upper_name = raw_name.charAt(0).toUpperCase() + raw_name.slice(1),
 		more_name = raw_name + "s";
 
-	// if (!node[more_name].find(e => e.name === pin))
-	// 	node["add" + upper_name](pin, "*");
+	window.setTimeout(() => {
+		if (!node[more_name].find(e => e.name === pin))
+			node["add" + upper_name](pin, "*");
+	}, 0);
 
 	if (node[more_name])
 		for (let i = 0; i < node[more_name].length; ++ i)
