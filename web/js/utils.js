@@ -132,6 +132,21 @@ export function hijack(obj, key, func, evt) {
 	return old_func;
 }
 
+export function hijack_value(obj, key, fn) {
+	let originalValue = obj[key];
+
+	Object.defineProperty(obj, key, {
+		get: function () {
+			return originalValue;
+		},
+		set: function (newValue) {
+			originalValue = fn(newValue, originalValue);
+		},
+		enumerable: true,
+		configurable: true
+	});
+}
+
 export function clone_class(original) {
 	return class extends original {
 		constructor(...args) {

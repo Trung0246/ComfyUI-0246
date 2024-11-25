@@ -2,22 +2,13 @@ import { app } from "../../../scripts/app.js";
 import * as lib0246 from "./utils.js";
 
 export function monitor_value(obj, key) {
-	let originalValue = obj[key];
-
-	Object.defineProperty(obj, key, {
-		get: function () {
-			return originalValue;
-		},
-		set: function (newValue) {
-			console.log(`${key} changed from ${lib0246.text_snip(String(originalValue), 20)} to ${lib0246.text_snip(String(newValue), 20)}`);
-			if (window.debug_flag) {
-				console.trace();
-				// debugger;
-			}
-			originalValue = newValue;
-		},
-		enumerable: true,
-		configurable: true
+	return lib0246.hijack_value(obj, key, (newValue, originalValue) => {
+		console.log(`${key} changed from ${lib0246.text_snip(String(originalValue), 20)} to ${lib0246.text_snip(String(newValue), 20)}`);
+		if (window.debug_flag) {
+			console.trace();
+			// debugger;
+		}
+		return newValue;
 	});
 }
 

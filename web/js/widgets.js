@@ -451,11 +451,12 @@ function expand_y_save(node, off, func) {
 	}
 }
 
-function setup_expand(node, kind, real, pin, shape, callback) {
+function setup_expand(app, node, kind, real, pin, shape, callback) {
 	const raw_name = kind === LiteGraph.INPUT ? "input" : "output",
 		upper_name = raw_name.charAt(0).toUpperCase() + raw_name.slice(1),
 		more_name = raw_name + "s";
 
+	// Better way to do this is hijack `configure` instead of `onConfigure` since it's more guaranteed.
 	window.setTimeout(() => {
 		if (!node[more_name].find(e => e.name === pin))
 			node["add" + upper_name](pin, "*");
@@ -1011,7 +1012,7 @@ function querify_output_pin(widget, from, ops) {
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 function single_impl_input_raw(inst, app, real, shape_in) {
-	setup_expand(inst, LiteGraph.INPUT, real, "...", shape_in, function () {
+	setup_expand(app, inst, LiteGraph.INPUT, real, "...", shape_in, function () {
 		switch (this.mode) {
 			case 0: {
 				if (this.self.inputs[arguments[0]].link !== null) {
@@ -1037,7 +1038,7 @@ function single_impl_input_raw(inst, app, real, shape_in) {
 }
 
 function single_impl_output_raw(inst, app, real, shape_out) {
-	setup_expand(inst, LiteGraph.OUTPUT, real, "...", shape_out, function () {
+	setup_expand(app, inst, LiteGraph.OUTPUT, real, "...", shape_out, function () {
 		switch (this.mode) {
 			case 0: {
 				// Prevent the case of connecting "..." to "..." to form "0:* 0:*" then connect "..." to "0:*"
@@ -4572,6 +4573,16 @@ export function switch_widget(node, index, value) {
 		lib0246.error_popup(msg);
 		throw new Error(msg);
 	};
+}
+
+export function switch_input_label_change(node, index, new_val, old_val) {
+	if (old_val === undefined)
+		old_val = node.widgets[index].value;
+	if (new_val !== old_val)
+		for (let i = 0; i < node.widgets.length; ++ i)
+			if (node.widgets[i].value === old_val)
+				node.widgets[i].value = new_val;
+	return new_val;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

@@ -984,6 +984,8 @@ app.registerExtension({
 					lib0246.hijack(nodeType.prototype, "onConfigure", function (data) {
 						if (this.mark) {
 							const node = this.self;
+							for (let i = 0; i < node.inputs.length; ++ i)
+								lib0246.hijack_value(node.inputs[i], "label", wg0246.switch_input_label_change.bind(null, node, i));
 							for (let i = 0; i < node.outputs.length; ++ i)
 								if (node.outputs[i].name !== "...")
 									wg0246.switch_widget(node, i, data.widgets_values[i]);
@@ -999,6 +1001,20 @@ app.registerExtension({
 						const node = this.self;
 						if (!this.mark && node.outputs[this_slot_index].name === "..." && !other_node.inputs[other_slot_index].link)
 							wg0246.switch_widget(node, this_slot_index, "_");
+					});
+					lib0246.hijack(nodeType.prototype, "onConnectInput", function (
+						this_slot_index,
+						other_slot_type,
+						other_slot_obj,
+						other_node,
+						other_slot_index
+					) {
+						const node = this.self;
+						if (this.mark)
+							window.setTimeout(lib0246.hijack_value.bind(
+								null, node.inputs[this_slot_index], "label",
+								wg0246.switch_input_label_change.bind(null, node, this_slot_index)
+							), 0);
 					});
 					lib0246.hijack(nodeType.prototype, "onConnectExpand", function (mode, name) {
 						if (this.mark && this.res !== true)
