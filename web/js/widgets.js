@@ -4580,9 +4580,7 @@ export function switch_input_label_change(app, node, index, new_val, old_val) {
 		if (old_val === undefined)
 			old_val = node.widgets[index].value;
 		if (new_val !== old_val)
-			for (let i = 0; i < node.widgets.length; ++ i)
-				if (node.widgets[i].value === old_val)
-					node.widgets[i].value = new_val;
+			node.widgets[index].value = new_val;
 	}
 	return new_val;
 }
