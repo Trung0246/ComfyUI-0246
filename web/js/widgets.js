@@ -4625,7 +4625,7 @@ app.registerExtension({
 
 		app.ui.settings.addSetting({
 			id: "0246.AutoChangeSwitch",
-			name: "[ComfyUI-0246] Alternative DOM widget implementation",
+			name: "[ComfyUI-0246] Auto change [0246.Switch] option value",
 			tooltip: lib0246.indent_str `
 				Enable the behavior of switch option auto change when pin name is changed.
 			`,
