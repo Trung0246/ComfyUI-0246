@@ -556,3 +556,43 @@ app.registerExtension({
 	// w.element.style.display = hidden ? "none" : "";
 	// if (hidden)
 	// 	w.options.onHide?.(w);
+
+
+// Some crashes:
+
+	// https://github.com/chaojie/ComfyUI-LightGlue
+	// https://github.com/tusharbhutt/Endless-Nodes
+	// https://github.com/receyuki/comfyui-prompt-reader-node
+
+	// ♾️🌊✨ Float to String // output key is not array
+	// ♾️🌊✨ Integer to Number // output key is not array
+	// ♾️🌊✨ Integer to String // output key is not array
+	// LightGlue Simple // Weird ProxyObject stuff
+	// SD Prompt Saver // Weird ProxyObject stuff
+
+	// getAllNodeOptions(nodeDefs) {
+	// 	return [
+	// 		...new Set(
+	// 			nodeDefs.reduce((acc, nodeDef) => {
+	// 				return [...acc, ...(this.getNodeOptions(nodeDef).some(x => typeof x !== 'string') ? (console.log(nodeDef), []) : this.getNodeOptions(nodeDef))];
+	// 			}, [])
+	// 		)
+	// 	];
+	// }
+
+	// static transformOutputSpec(obj) {
+	// 	const { output, output_is_list, output_name, output_tooltips } = obj;
+	// 	if (!output?.map) console.log(obj);
+	// 	const result = (output?.map?.bind(output) ?? Array.prototype.map.bind([])).call(output ?? [], (type, index2) => {
+	// 		const typeString = Array.isArray(type) ? "COMBO" : type;
+	// 		return new ComfyOutputSpec(
+	// 			index2,
+	// 			output_name?.[index2],
+	// 			typeString,
+	// 			output_is_list?.[index2],
+	// 			Array.isArray(type) ? type : void 0,
+	// 			output_tooltips?.[index2]
+	// 		);
+	// 	});
+	// 	return new ComfyOutputsSpec(result);
+	// }

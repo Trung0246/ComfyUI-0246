@@ -985,7 +985,7 @@ app.registerExtension({
 						if (this.mark) {
 							const node = this.self;
 							for (let i = 0; i < node.inputs.length; ++ i)
-								lib0246.hijack_value(node.inputs[i], "label", wg0246.switch_input_label_change.bind(null, node, i));
+								lib0246.hijack_value(node.inputs[i], "label", wg0246.switch_input_label_change.bind(null, app, node, i));
 							for (let i = 0; i < node.outputs.length; ++ i)
 								if (node.outputs[i].name !== "...")
 									wg0246.switch_widget(node, i, data.widgets_values[i]);
@@ -1013,7 +1013,7 @@ app.registerExtension({
 						if (this.mark)
 							window.setTimeout(lib0246.hijack_value.bind(
 								null, node.inputs[this_slot_index], "label",
-								wg0246.switch_input_label_change.bind(null, node, this_slot_index)
+								wg0246.switch_input_label_change.bind(null, app, node, this_slot_index)
 							), 0);
 					});
 					lib0246.hijack(nodeType.prototype, "onConnectExpand", function (mode, name) {

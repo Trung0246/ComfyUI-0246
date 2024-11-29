@@ -4575,13 +4575,15 @@ export function switch_widget(node, index, value) {
 	};
 }
 
-export function switch_input_label_change(node, index, new_val, old_val) {
-	if (old_val === undefined)
-		old_val = node.widgets[index].value;
-	if (new_val !== old_val)
-		for (let i = 0; i < node.widgets.length; ++ i)
-			if (node.widgets[i].value === old_val)
-				node.widgets[i].value = new_val;
+export function switch_input_label_change(app, node, index, new_val, old_val) {
+	if (app.ui.settings.getSettingValue("0246.AutoChangeSwitch", false)) {
+		if (old_val === undefined)
+			old_val = node.widgets[index].value;
+		if (new_val !== old_val)
+			for (let i = 0; i < node.widgets.length; ++ i)
+				if (node.widgets[i].value === old_val)
+					node.widgets[i].value = new_val;
+	}
 	return new_val;
 }
 
@@ -4618,6 +4620,16 @@ app.registerExtension({
 				Disable if you're experiencing issues relating to text boxes floating/lingering and other rendering stuff.
 
 				This setting are required to use "[0246.Cloud]" node.
+			`,
+			type: "boolean",
+			defaultValue: true,
+		});
+
+		app.ui.settings.addSetting({
+			id: "0246.AutoChangeSwitch",
+			name: "[ComfyUI-0246] Alternative DOM widget implementation",
+			tooltip: lib0246.indent_str `
+				Enable the behavior of switch option auto change when pin name is changed.
 			`,
 			type: "boolean",
 			defaultValue: true,
