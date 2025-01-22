@@ -1534,6 +1534,7 @@ export function DOM_WIDGET(data_type, data_name, element, options = {}) {
 						widget.element.hidden = true;
 						widget.element.style.display = "none";
 					}
+					widget.element.dataset.collapsed = this.self.flags?.collapsed ? 'true' : 'false';
 				});
 
 				lib0246.hijack(node, "onRemoved", function () {
