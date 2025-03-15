@@ -1,7 +1,7 @@
 [project]
 name = "comfyui-0246"
 description = "Random nodes for ComfyUI I made to solve my struggle with ComfyUI (ex: pipe, process). Have varying quality."
-version = "1.1.2"
+version = "1.1.3"
 license = { file = "LICENSE" }
 dependencies = ["wrapt", "natsort"]
 
