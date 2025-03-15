@@ -516,10 +516,10 @@ function setup_expand(app, node, kind, real, pin, shape, callback) {
 		}
 	});
 
-	lib0246.hijack(node, "onConnectionsChange", function (type, index, connected, link_info) {
+	lib0246.hijack(node, "onConnectionsChange", function (type, index, connected, link_info, pin_info) {
 		if (this.mark) {
 			const args = arguments;
-			if (link_info === null) {
+			if (link_info === null && !Number.isInteger(pin_info.shape) && index < this.self[more_name].length - 1) {
 				// Clean up when copy paste or template load
 				if (this.self[more_name])
 					lib0246.remove_elem_arr(
@@ -1534,7 +1534,7 @@ export function DOM_WIDGET(data_type, data_name, element, options = {}) {
 						widget.element.hidden = true;
 						widget.element.style.display = "none";
 					}
-					widget.element.dataset.collapsed = this.self.flags?.collapsed ? 'true' : 'false';
+					widget.element.dataset.collapsed = this.self.flags?.collapsed ? "true" : "false";
 				});
 
 				lib0246.hijack(node, "onRemoved", function () {
@@ -4581,6 +4581,9 @@ export function switch_input_label_change(app, node, index, new_val, old_val) {
 		if (old_val === undefined)
 			old_val = node.widgets[index].value;
 		if (new_val !== old_val)
+			// for (let i = 0; i < node.widgets.length; ++ i)
+			// 	if (node.widgets[i].value === old_val)
+			// 		node.widgets[i].value = new_val;
 			node.widgets[index].value = new_val;
 	}
 	return new_val;
